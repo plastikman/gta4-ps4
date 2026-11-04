@@ -10,6 +10,9 @@ Vulkan driver on the PS4's GPU. This is a port of
 
 ## Status (2026-11-04, build CX)
 
+**Try it:** [v0.1.0-ps4](https://github.com/plastikman/gta4-ps4/releases/tag/v0.1.0-ps4)
+(pre-release: the PKG, the tested `native.toml` and install steps).
+
 Playable, not yet smooth. From the start of a new game to Roman's apartment it
 runs at 20-25 FPS while driving and 17-20 in busy streets, with sound that is
 clean in cutscenes and slightly slow in busy driving.
