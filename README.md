@@ -114,8 +114,9 @@ symbolizing logs, and **never package it as `eboot.bin`**.
 
 ## Packaging
 
-The package staging directory is not in this repository (it holds Sony system
-modules and a key file from your own copy of the game). It looks like this:
+The package staging directory is not in this repository yet. It looks like this
+(`libc.prx` and `libSceFios2.prx` are OpenOrbis's ~3 KB homebrew stub modules,
+which point the loader at the system's own libraries; they hold no Sony code):
 
 ```
 stage/
