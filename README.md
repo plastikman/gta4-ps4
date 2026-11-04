@@ -114,9 +114,12 @@ symbolizing logs, and **never package it as `eboot.bin`**.
 
 ## Packaging
 
-The package staging directory is not in this repository yet. It looks like this
-(`libc.prx` and `libSceFios2.prx` are OpenOrbis's ~3 KB homebrew stub modules,
-which point the loader at the system's own libraries; they hold no Sony code):
+The package staging directory is not in this repository yet. It looks like the
+tree below. `libc.prx` and `libSceFios2.prx` are OpenOrbis's empty homebrew stub
+modules, which point the loader at the system's own libraries and hold no Sony
+code. [orbis-win](https://github.com/plastikman/orbis-win) builds them from the
+OpenOrbis sources (GPL-3.0) with `scripts/build-openorbis-module-stubs.sh`; the
+packages tested so far used OpenOrbis's prebuilt 3.4 KB versions.
 
 ```
 stage/
