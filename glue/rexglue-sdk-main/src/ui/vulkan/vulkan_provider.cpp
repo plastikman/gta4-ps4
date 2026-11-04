@@ -15,9 +15,14 @@
 #include <rex/cvar.h>
 #include <rex/diagnostics/policy.h>
 #include <rex/logging.h>
+#include <rex/platform.h>
 #include <rex/ui/vulkan/immediate_drawer.h>
 #include <rex/ui/vulkan/presenter.h>
 #include <rex/ui/vulkan/provider.h>
+#if REX_PLATFORM_PS4
+#include <cstdio>
+#include <orbis/libkernel.h>
+#endif
 
 REXCVAR_DEFINE_BOOL(vulkan_validation_enabled, false, "UI/Vulkan",
                     "Enable Vulkan validation layers")
@@ -41,27 +46,67 @@ REXCVAR_DEFINE_BOOL(vulkan_prefer_fill_mode_non_solid, true, "UI/Vulkan",
                     "Prefer physical devices supporting fillModeNonSolid when auto-selecting")
     .lifecycle(rex::cvar::Lifecycle::kInitOnly);
 
+#if REX_PLATFORM_PS4
+#include <cstdlib>
+#include <string>
+// The PS4 driver puts all GPU memory in one direct-memory arena, from a ladder
+// that tops out at 1 GiB; ORBIS_ARENA_MIB asks for a size instead.
+REXCVAR_DEFINE_UINT32(ps4_gpu_arena_mib, 0, "UI/Vulkan",
+                      "PS4: GPU memory arena size in MiB (0 leaves the driver's ladder, max 1024)")
+    .lifecycle(rex::cvar::Lifecycle::kInitOnly);
+#endif
+
 namespace rex {
 namespace ui {
 namespace vulkan {
+
+#if REX_PLATFORM_PS4
+namespace {
+void Ps4VulkanInitTrace(const char* stage, uint64_t value = 0) {
+  char line[192];
+  std::snprintf(line, sizeof(line), "[PS4 Vulkan init] %s value=%llx\n", stage,
+                static_cast<unsigned long long>(value));
+  sceKernelDebugOutText(0, line);
+}
+}  // namespace
+#endif
 
 std::unique_ptr<VulkanProvider> VulkanProvider::Create(const bool with_gpu_emulation,
                                                        const bool with_presentation,
                                                        const bool with_native_shader_support,
                                                        const bool with_dynamic_rendering) {
+#if REX_PLATFORM_PS4
+  Ps4VulkanInitTrace("provider-create-begin");
+  if (const uint32_t arena_mib = REXCVAR_GET(ps4_gpu_arena_mib)) {
+    setenv("ORBIS_ARENA_MIB", std::to_string(arena_mib).c_str(), 1);
+    Ps4VulkanInitTrace("arena-mib", arena_mib);
+  }
+#endif
   std::unique_ptr<VulkanProvider> provider(new VulkanProvider());
 
   const bool enable_validation =
       rex::diagnostics::IsEnabled(rex::diagnostics::Category::kVulkan) &&
       REXCVAR_GET(vulkan_validation_enabled);
+#if REX_PLATFORM_PS4
+  Ps4VulkanInitTrace("instance-create-begin");
+#endif
   provider->vulkan_instance_ =
       VulkanInstance::Create(with_presentation, enable_validation);
+#if REX_PLATFORM_PS4
+  Ps4VulkanInitTrace("instance-create-end", provider->vulkan_instance_ != nullptr);
+#endif
   if (!provider->vulkan_instance_) {
     return nullptr;
   }
 
   std::vector<VkPhysicalDevice> physical_devices;
+#if REX_PLATFORM_PS4
+  Ps4VulkanInitTrace("enumerate-devices-begin");
+#endif
   provider->vulkan_instance_->EnumeratePhysicalDevices(physical_devices);
+#if REX_PLATFORM_PS4
+  Ps4VulkanInitTrace("enumerate-devices-end", physical_devices.size());
+#endif
 
   if (physical_devices.empty()) {
     REXLOG_WARN("No Vulkan physical devices available");
@@ -137,6 +182,9 @@ std::unique_ptr<VulkanProvider> VulkanProvider::Create(const bool with_gpu_emula
       }
     }
 
+#if REX_PLATFORM_PS4
+    Ps4VulkanInitTrace("logical-device-create-begin", physical_devices_ordered.size());
+#endif
     for (const VkPhysicalDevice physical_device : physical_devices_ordered) {
       provider->vulkan_device_ = VulkanDevice::CreateIfSupported(
           provider->vulkan_instance_.get(), physical_device, with_gpu_emulation, with_presentation,
@@ -145,6 +193,9 @@ std::unique_ptr<VulkanProvider> VulkanProvider::Create(const bool with_gpu_emula
         break;
       }
     }
+#if REX_PLATFORM_PS4
+    Ps4VulkanInitTrace("logical-device-create-end", provider->vulkan_device_ != nullptr);
+#endif
 
     if (!provider->vulkan_device_) {
       REXLOG_WARN(
@@ -155,18 +206,34 @@ std::unique_ptr<VulkanProvider> VulkanProvider::Create(const bool with_gpu_emula
   }
 
   if (with_presentation) {
+#if REX_PLATFORM_PS4
+    Ps4VulkanInitTrace("ui-samplers-create-begin");
+#endif
     provider->ui_samplers_ = UISamplers::Create(provider->vulkan_device_.get());
+#if REX_PLATFORM_PS4
+    Ps4VulkanInitTrace("ui-samplers-create-end", provider->ui_samplers_ != nullptr);
+#endif
     if (!provider->ui_samplers_) {
       return nullptr;
     }
   }
 
+#if REX_PLATFORM_PS4
+  Ps4VulkanInitTrace("provider-create-end");
+#endif
   return provider;
 }
 
 std::unique_ptr<Presenter> VulkanProvider::CreatePresenter(
     Presenter::HostGpuLossCallback host_gpu_loss_callback) {
-  return VulkanPresenter::Create(host_gpu_loss_callback, vulkan_device(), ui_samplers());
+#if REX_PLATFORM_PS4
+  Ps4VulkanInitTrace("presenter-create-begin");
+#endif
+  auto presenter = VulkanPresenter::Create(host_gpu_loss_callback, vulkan_device(), ui_samplers());
+#if REX_PLATFORM_PS4
+  Ps4VulkanInitTrace("presenter-create-end", presenter != nullptr);
+#endif
+  return presenter;
 }
 
 std::unique_ptr<ImmediateDrawer> VulkanProvider::CreateImmediateDrawer() {

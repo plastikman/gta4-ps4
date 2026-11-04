@@ -1,4 +1,25 @@
+
+
 #include "gta4_init.h"
+#include "gta4_ps4_crash_trace.h"
+void GTA4_Ps4GuestStoreTrace(const char* site, uint32_t address, uint32_t base,
+							 uint32_t index, uint32_t value, uint32_t lr);
+#undef REX_STORE_U32
+#define REX_STORE_U32(x, y) \
+	(((u32)(x) >= 0x8285e000u && (u32)(x) < 0x82860000u) ? \
+		(GTA4_Ps4GuestStoreTrace("gta4_recomp.53-write32", (u32)(x), ctx.r1.u32, \
+			ctx.r3.u32, (u32)(y), static_cast<uint32_t>(ctx.lr)), \
+		 GTA4_Ps4GuestMemoryWriteAllowedContext((u32)(x), "write32", ctx, (u32)(y)), (u32)0) : \
+		(REX_TRACE_GUEST_ADDR_OP(x, "write32"), \
+		 *(volatile u32*)(base + (u32)(x) + REX_PHYS_HOST_OFFSET(x)) = __builtin_bswap32(y)))
+#if REX_PLATFORM_PS4 && defined(REX_PS4_GUEST_MEMORY_TRACE)  // bring-up tracing: every guest load and store
+#undef REX_TRACE_GUEST_ADDR
+#undef REX_TRACE_GUEST_ADDR_OP
+#define REX_TRACE_GUEST_ADDR(addr) \
+	((((u32)(addr) < 0x10000u || ((u32)(addr) >= 0x10a96000u && (u32)(addr) < 0x10a97000u)) || ((u32)(addr) >= 0x3a000u && (u32)(addr) < 0x3b000u) || ((u32)(addr) >= 0x8285e000u && (u32)(addr) < 0x82860000u)) ? GTA4_Ps4GuestMemoryTraceContextSite((u32)(addr), "raw", ctx, __FILE__, __LINE__, __func__) : (void)0)
+#define REX_TRACE_GUEST_ADDR_OP(addr, op) \
+	(((u32)(addr) < 0x10000u || ((u32)(addr) >= 0x10a96000u && (u32)(addr) < 0x10a97000u)) ? GTA4_Ps4GuestMemoryTraceContextSite((u32)(addr), op, ctx, __FILE__, __LINE__, __func__) : (void)0)
+#endif
 
 DEFINE_REX_FUNC(sub_826D59B0) {
 	REX_FUNC_PROLOGUE();
@@ -64,8 +85,6 @@ DEFINE_REX_FUNC(sub_826D59B0) {
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
 		const auto s_f30 = ctx.f30; ctx.f30 = f30;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; sub_826ED600(ctx, base); v0 = ctx.v0; }
 		r25 = ctx.r25;
 		ctx.r25 = s_r25;
@@ -81,8 +100,6 @@ DEFINE_REX_FUNC(sub_826D59B0) {
 		ctx.f30 = s_f30;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r25,r3
 	r25.u64 = ctx.r3.u64;
@@ -107,8 +124,6 @@ loc_826D59F8:
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
 		const auto s_f30 = ctx.f30; ctx.f30 = f30;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; sub_826ED600(ctx, base); v0 = ctx.v0; }
 		r25 = ctx.r25;
 		ctx.r25 = s_r25;
@@ -124,8 +139,6 @@ loc_826D59F8:
 		ctx.f30 = s_f30;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r30,r3
 	r30.u64 = ctx.r3.u64;
@@ -150,8 +163,6 @@ loc_826D5A14:
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
 		const auto s_f30 = ctx.f30; ctx.f30 = f30;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; sub_826ED600(ctx, base); v0 = ctx.v0; }
 		r25 = ctx.r25;
 		ctx.r25 = s_r25;
@@ -167,8 +178,6 @@ loc_826D5A14:
 		ctx.f30 = s_f30;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r29,r3
 	r29.u64 = ctx.r3.u64;
@@ -2162,13 +2171,9 @@ loc_826D66FC:
 	ctx.lr = 0x826D6718;
 	{
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826ED600(ctx, base);
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r30,r3
 	r30.u64 = ctx.r3.u64;
@@ -3154,8 +3159,6 @@ loc_826D6D60:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82238C28(ctx, base);
 		r28 = ctx.r28;
 		ctx.r28 = s_r28;
@@ -3165,8 +3168,6 @@ loc_826D6D60:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// lwz r11,0(r30)
 	ctx.r11.u64 = REX_LOAD_U32(r30.u32 + 0);
@@ -3399,17 +3400,11 @@ DEFINE_REX_FUNC(sub_826D6E78) {
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82701F58(ctx, base);
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// mr r11,r3
 	ctx.r11.u64 = ctx.r3.u64;
@@ -3422,17 +3417,11 @@ DEFINE_REX_FUNC(sub_826D6E78) {
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82701F88(ctx, base);
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// extsb r11,r3
 	ctx.r11.s64 = ctx.r3.s8;
@@ -3787,8 +3776,6 @@ loc_826D70FC:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826ED600(ctx, base);
 		r28 = ctx.r28;
 		ctx.r28 = s_r28;
@@ -3798,8 +3785,6 @@ loc_826D70FC:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -3937,15 +3922,11 @@ DEFINE_REX_FUNC(sub_826D71A0) {
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; ctx.v13 = v13; sub_827087D8(ctx, base); v0 = ctx.v0; v13 = ctx.v13; }
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r31,r3
 	r31.u64 = ctx.r3.u64;
@@ -3966,15 +3947,11 @@ DEFINE_REX_FUNC(sub_826D71A0) {
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; ctx.v13 = v13; sub_82238C28(ctx, base); v0 = ctx.v0; v13 = ctx.v13; }
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -3987,15 +3964,11 @@ DEFINE_REX_FUNC(sub_826D71A0) {
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; ctx.v13 = v13; sub_82238C28(ctx, base); v0 = ctx.v0; v13 = ctx.v13; }
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// lwz r10,1400(r31)
 	ctx.r10.u64 = REX_LOAD_U32(r31.u32 + 1400);
@@ -4034,9 +4007,9 @@ DEFINE_REX_FUNC(sub_826D71A0) {
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 88);
 	ctx.f13.f64 = double(temp.f32);
 	// fmadds f0,f0,f0,f12
-	ctx.f0.f64 = double(float(std::fma(ctx.f0.f64, ctx.f0.f64, ctx.f12.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f0.f64, ctx.f12.f64)));
 	// fmadds f13,f13,f13,f0
-	ctx.f13.f64 = double(float(std::fma(ctx.f13.f64, ctx.f13.f64, ctx.f0.f64)));
+	ctx.f13.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f13.f64, ctx.f0.f64)));
 	// lfs f0,12148(r11)
 	temp.u32 = REX_LOAD_U32(ctx.r11.u32 + 12148);
 	ctx.f0.f64 = double(temp.f32);
@@ -4237,15 +4210,11 @@ DEFINE_REX_FUNC(sub_826D7338) {
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_827087D8(ctx, base);
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -4488,17 +4457,11 @@ DEFINE_REX_FUNC(sub_826D74A0) {
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82701F58(ctx, base);
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// mr r11,r3
 	ctx.r11.u64 = ctx.r3.u64;
@@ -4511,17 +4474,11 @@ DEFINE_REX_FUNC(sub_826D74A0) {
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82701F88(ctx, base);
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// extsb r11,r3
 	ctx.r11.s64 = ctx.r3.s8;
@@ -5738,9 +5695,6 @@ loc_826D7C80:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; sub_824DC670(ctx, base); v0 = ctx.v0; }
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -5758,9 +5712,6 @@ loc_826D7C80:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// lbz r11,168(r1)
 	ctx.r11.u64 = REX_LOAD_U8(ctx.r1.u32 + 168);
@@ -5974,8 +5925,6 @@ DEFINE_REX_FUNC(sub_826D7DF8) {
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; ctx.v8 = v8; ctx.v9 = v9; ctx.v10 = v10; ctx.v11 = v11; ctx.v12 = v12; ctx.v13 = v13; sub_826ED600(ctx, base); v0 = ctx.v0; v8 = ctx.v8; v9 = ctx.v9; v10 = ctx.v10; v11 = ctx.v11; v12 = ctx.v12; v13 = ctx.v13; }
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -5987,8 +5936,6 @@ DEFINE_REX_FUNC(sub_826D7DF8) {
 		ctx.r31 = s_r31;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r30,r3
 	r30.u64 = ctx.r3.u64;
@@ -6011,8 +5958,6 @@ loc_826D7E40:
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; ctx.v8 = v8; ctx.v9 = v9; ctx.v10 = v10; ctx.v11 = v11; ctx.v12 = v12; ctx.v13 = v13; sub_826ED600(ctx, base); v0 = ctx.v0; v8 = ctx.v8; v9 = ctx.v9; v10 = ctx.v10; v11 = ctx.v11; v12 = ctx.v12; v13 = ctx.v13; }
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -6024,8 +5969,6 @@ loc_826D7E40:
 		ctx.r31 = s_r31;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r27,r3
 	r27.u64 = ctx.r3.u64;
@@ -6150,9 +6093,6 @@ loc_826D7E40:
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; ctx.v8 = v8; ctx.v9 = v9; ctx.v10 = v10; ctx.v11 = v11; ctx.v12 = v12; ctx.v13 = v13; sub_824DC670(ctx, base); v0 = ctx.v0; v8 = ctx.v8; v9 = ctx.v9; v10 = ctx.v10; v11 = ctx.v11; v12 = ctx.v12; v13 = ctx.v13; }
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -6166,9 +6106,6 @@ loc_826D7E40:
 		ctx.r31 = s_r31;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// lwz r11,0(r27)
 	ctx.r11.u64 = REX_LOAD_U32(r27.u32 + 0);
@@ -6655,9 +6592,6 @@ loc_826D8124:
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; ctx.v8 = v8; ctx.v9 = v9; ctx.v10 = v10; ctx.v11 = v11; ctx.v12 = v12; ctx.v13 = v13; sub_824DC670(ctx, base); v0 = ctx.v0; v8 = ctx.v8; v9 = ctx.v9; v10 = ctx.v10; v11 = ctx.v11; v12 = ctx.v12; v13 = ctx.v13; }
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -6677,9 +6611,6 @@ loc_826D8124:
 		ctx.r31 = s_r31;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// lbz r11,184(r1)
 	ctx.r11.u64 = REX_LOAD_U8(ctx.r1.u32 + 184);
@@ -7490,9 +7421,6 @@ DEFINE_REX_FUNC(sub_826D8690) {
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82701F88(ctx, base);
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -7510,9 +7438,6 @@ DEFINE_REX_FUNC(sub_826D8690) {
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// extsb r11,r26
 	ctx.r11.s64 = r26.s8;
@@ -7655,9 +7580,6 @@ loc_826D8884:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82702CD8(ctx, base);
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -7675,9 +7597,6 @@ loc_826D8884:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// clrlwi r11,r3,24
 	ctx.r11.u64 = ctx.r3.u32 & 0xFF;
@@ -7777,9 +7696,6 @@ loc_826D890C:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826ED600(ctx, base);
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -7797,9 +7713,6 @@ loc_826D890C:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// stw r3,80(r1)
 	REX_STORE_U32(ctx.r1.u32 + 80, ctx.r3.u32);
@@ -8639,8 +8552,6 @@ DEFINE_REX_FUNC(sub_826D8E98) {
 		const auto s_r28 = ctx.r28; ctx.r28 = r28;
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82238C28(ctx, base);
 		r28 = ctx.r28;
 		ctx.r28 = s_r28;
@@ -8648,8 +8559,6 @@ DEFINE_REX_FUNC(sub_826D8E98) {
 		ctx.r29 = s_r29;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// lwz r11,572(r3)
 	ctx.r11.u64 = REX_LOAD_U32(ctx.r3.u32 + 572);
@@ -8667,8 +8576,6 @@ DEFINE_REX_FUNC(sub_826D8E98) {
 		const auto s_r28 = ctx.r28; ctx.r28 = r28;
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82238C28(ctx, base);
 		r28 = ctx.r28;
 		ctx.r28 = s_r28;
@@ -8676,8 +8583,6 @@ DEFINE_REX_FUNC(sub_826D8E98) {
 		ctx.r29 = s_r29;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// lwz r30,2688(r3)
 	r30.u64 = REX_LOAD_U32(ctx.r3.u32 + 2688);
@@ -8700,8 +8605,6 @@ loc_826D8EEC:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_827087D8(ctx, base);
 		r28 = ctx.r28;
 		ctx.r28 = s_r28;
@@ -8711,8 +8614,6 @@ loc_826D8EEC:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -8727,8 +8628,6 @@ loc_826D8EEC:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_827087D8(ctx, base);
 		r28 = ctx.r28;
 		ctx.r28 = s_r28;
@@ -8738,8 +8637,6 @@ loc_826D8EEC:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// lwz r31,1400(r3)
 	r31.u64 = REX_LOAD_U32(ctx.r3.u32 + 1400);
@@ -8766,8 +8663,6 @@ loc_826D8F18:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82238C28(ctx, base);
 		r28 = ctx.r28;
 		ctx.r28 = s_r28;
@@ -8777,8 +8672,6 @@ loc_826D8F18:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r4,r3
 	ctx.r4.u64 = ctx.r3.u64;
@@ -8876,13 +8769,9 @@ DEFINE_REX_FUNC(sub_826D8F98) {
 	ctx.lr = 0x826D8FC8;
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826FE880(ctx, base);
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r31,r3
 	r31.u64 = ctx.r3.u64;
@@ -8895,15 +8784,11 @@ DEFINE_REX_FUNC(sub_826D8F98) {
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_827087D8(ctx, base);
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -8916,15 +8801,11 @@ DEFINE_REX_FUNC(sub_826D8F98) {
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_827087D8(ctx, base);
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// lwz r28,1400(r3)
 	r28.u64 = REX_LOAD_U32(ctx.r3.u32 + 1400);
@@ -9014,8 +8895,6 @@ loc_826D906C:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82238C28(ctx, base);
 		r27 = ctx.r27;
 		ctx.r27 = s_r27;
@@ -9027,8 +8906,6 @@ loc_826D906C:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// lwzx r11,r30,r29
 	ctx.r11.u64 = REX_LOAD_U32(r30.u32 + r29.u32);
@@ -9254,8 +9131,6 @@ DEFINE_REX_FUNC(sub_826D9198) {
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; sub_826ED600(ctx, base); v0 = ctx.v0; }
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -9269,8 +9144,6 @@ DEFINE_REX_FUNC(sub_826D9198) {
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r28,r3
 	r28.u64 = ctx.r3.u64;
@@ -9294,8 +9167,6 @@ loc_826D91DC:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; sub_826ED600(ctx, base); v0 = ctx.v0; }
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -9309,8 +9180,6 @@ loc_826D91DC:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r27,r3
 	r27.u64 = ctx.r3.u64;
@@ -9334,8 +9203,6 @@ loc_826D91F8:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; sub_826ED600(ctx, base); v0 = ctx.v0; }
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -9349,8 +9216,6 @@ loc_826D91F8:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r26,r3
 	r26.u64 = ctx.r3.u64;
@@ -9495,9 +9360,6 @@ loc_826D928C:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; sub_822343C0(ctx, base); v0 = ctx.v0; }
 		r25 = ctx.r25;
 		ctx.r25 = s_r25;
@@ -9513,9 +9375,6 @@ loc_826D928C:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// li r3,1
 	ctx.r3.s64 = 1;
@@ -9765,9 +9624,6 @@ loc_826D9458:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; sub_822343C0(ctx, base); v0 = ctx.v0; }
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -9785,9 +9641,6 @@ loc_826D9458:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// lwz r11,32(r31)
 	ctx.r11.u64 = REX_LOAD_U32(r31.u32 + 32);
@@ -10468,15 +10321,11 @@ DEFINE_REX_FUNC(sub_826D98C8) {
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3560(ctx, base);
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r3,r31
 	ctx.r3.u64 = r31.u64;
@@ -11411,9 +11260,6 @@ loc_826D9EDC:
 		const auto s_r28 = ctx.r28; ctx.r28 = r28;
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826FE880(ctx, base);
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -11425,9 +11271,6 @@ loc_826D9EDC:
 		ctx.r29 = s_r29;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// mr r30,r3
 	r30.u64 = ctx.r3.u64;
@@ -11497,9 +11340,6 @@ loc_826D9EDC:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82705BD0(ctx, base);
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -11513,9 +11353,6 @@ loc_826D9EDC:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 loc_826D9F54:
 	// addi r11,r29,1
@@ -11585,9 +11422,6 @@ loc_826D9FA8:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82701F88(ctx, base);
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -11601,9 +11435,6 @@ loc_826D9FA8:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// extsb r10,r3
 	ctx.r10.s64 = ctx.r3.s8;
@@ -11631,9 +11462,6 @@ loc_826D9FA8:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82701F88(ctx, base);
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -11647,9 +11475,6 @@ loc_826D9FA8:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// extsb r10,r3
 	ctx.r10.s64 = ctx.r3.s8;
@@ -11678,9 +11503,6 @@ loc_826D9FFC:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82701F88(ctx, base);
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -11694,9 +11516,6 @@ loc_826D9FFC:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// mr r11,r3
 	ctx.r11.u64 = ctx.r3.u64;
@@ -11728,9 +11547,6 @@ loc_826D9FFC:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82705BD0(ctx, base);
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -11744,9 +11560,6 @@ loc_826D9FFC:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 loc_826DA034:
 	// mr r3,r31
@@ -13767,8 +13580,6 @@ DEFINE_REX_FUNC(sub_826DAC48) {
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_8278CCE8(ctx, base);
 		r27 = ctx.r27;
 		ctx.r27 = s_r27;
@@ -13780,8 +13591,6 @@ DEFINE_REX_FUNC(sub_826DAC48) {
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// li r5,989
 	ctx.r5.s64 = 989;
@@ -14569,15 +14378,11 @@ DEFINE_REX_FUNC(sub_826DB198) {
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3560(ctx, base);
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r3,r31
 	ctx.r3.u64 = r31.u64;
@@ -14668,15 +14473,11 @@ DEFINE_REX_FUNC(sub_826DB1E8) {
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826DAD70(ctx, base);
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// lis r11,-32067
 	ctx.r11.s64 = -2101542912;
@@ -14825,17 +14626,11 @@ DEFINE_REX_FUNC(sub_826DB2E0) {
 	{
 		const auto s_r24 = ctx.r24; ctx.r24 = r24;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826FE808(ctx, base);
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -15367,9 +15162,6 @@ loc_826DB6F0:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826FE808(ctx, base);
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -15387,9 +15179,6 @@ loc_826DB6F0:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// mr r29,r3
 	r29.u64 = ctx.r3.u64;
@@ -15465,9 +15254,6 @@ loc_826DB6F0:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82701F88(ctx, base);
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -15485,9 +15271,6 @@ loc_826DB6F0:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// mr r4,r31
 	ctx.r4.u64 = r31.u64;
@@ -15502,9 +15285,6 @@ loc_826DB6F0:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_8278CCE8(ctx, base);
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -15522,9 +15302,6 @@ loc_826DB6F0:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// addi r1,r1,1216
 	ctx.r1.s64 = ctx.r1.s64 + 1216;
@@ -15914,9 +15691,6 @@ loc_826DB934:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826FE808(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -15936,9 +15710,6 @@ loc_826DB934:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// mr r31,r3
 	r31.u64 = ctx.r3.u64;
@@ -15969,9 +15740,6 @@ loc_826DB934:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82701F88(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -15991,9 +15759,6 @@ loc_826DB934:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// mr r4,r3
 	ctx.r4.u64 = ctx.r3.u64;
@@ -16013,9 +15778,6 @@ loc_826DB934:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82705390(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -16035,9 +15797,6 @@ loc_826DB934:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// addi r1,r1,1216
 	ctx.r1.s64 = ctx.r1.s64 + 1216;
@@ -16214,8 +15973,6 @@ loc_826DBB78:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3510(ctx, base);
 		r28 = ctx.r28;
 		ctx.r28 = s_r28;
@@ -16225,8 +15982,6 @@ loc_826DBB78:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -16975,15 +16730,11 @@ loc_826DC048:
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826C4CA8(ctx, base);
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// clrlwi r11,r3,24
 	ctx.r11.u64 = ctx.r3.u32 & 0xFF;
@@ -17187,15 +16938,11 @@ loc_826DC1A4:
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826C4CA8(ctx, base);
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// clrlwi r11,r3,24
 	ctx.r11.u64 = ctx.r3.u32 & 0xFF;
@@ -18834,15 +18581,11 @@ DEFINE_REX_FUNC(sub_826DCBF0) {
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826DBFB0(ctx, base);
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r27,r3
 	r27.u64 = ctx.r3.u64;
@@ -18854,8 +18597,6 @@ DEFINE_REX_FUNC(sub_826DCBF0) {
 		const auto s_r27 = ctx.r27; ctx.r27 = r27;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826DC168(ctx, base);
 		r27 = ctx.r27;
 		ctx.r27 = s_r27;
@@ -18863,8 +18604,6 @@ DEFINE_REX_FUNC(sub_826DCBF0) {
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// extsw r29,r27
 	r29.s64 = r27.s32;
@@ -19179,13 +18918,9 @@ DEFINE_REX_FUNC(sub_826DCE68) {
 	ctx.lr = 0x826DCE8C;
 	{
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826DBFB0(ctx, base);
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// extsw r3,r3
 	ctx.r3.s64 = ctx.r3.s32;
@@ -19250,13 +18985,9 @@ loc_826DCED0:
 	ctx.lr = 0x826DCEFC;
 	{
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826C4CA8(ctx, base);
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// clrlwi r11,r3,24
 	ctx.r11.u64 = ctx.r3.u32 & 0xFF;
@@ -19318,13 +19049,9 @@ loc_826DCF60:
 	ctx.lr = 0x826DCF68;
 	{
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826DBFB0(ctx, base);
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// extsw r3,r3
 	ctx.r3.s64 = ctx.r3.s32;
@@ -19397,15 +19124,11 @@ DEFINE_REX_FUNC(sub_826DCF88) {
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3560(ctx, base);
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 loc_826DCFD4:
 	// li r11,0
@@ -19991,8 +19714,6 @@ loc_826DD308:
 		const auto s_r28 = ctx.r28; ctx.r28 = r28;
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3510(ctx, base);
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -20004,8 +19725,6 @@ loc_826DD308:
 		ctx.r29 = s_r29;
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -20125,8 +19844,6 @@ loc_826DD428:
 		const auto s_r28 = ctx.r28; ctx.r28 = r28;
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826DBCE8(ctx, base);
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -20138,8 +19855,6 @@ loc_826DD428:
 		ctx.r29 = s_r29;
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 loc_826DD45C:
 	// li r31,0
@@ -20268,8 +19983,6 @@ DEFINE_REX_FUNC(sub_826DD4F0) {
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3510(ctx, base);
 		r28 = ctx.r28;
 		ctx.r28 = s_r28;
@@ -20279,8 +19992,6 @@ DEFINE_REX_FUNC(sub_826DD4F0) {
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -20646,8 +20357,6 @@ loc_826DD76C:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826DBFB0(ctx, base);
 		r22 = ctx.r22;
 		ctx.r22 = s_r22;
@@ -20667,8 +20376,6 @@ loc_826DD76C:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// extsw r3,r3
 	ctx.r3.s64 = ctx.r3.s32;
@@ -20849,8 +20556,6 @@ loc_826DD864:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3510(ctx, base);
 		r22 = ctx.r22;
 		ctx.r22 = s_r22;
@@ -20872,8 +20577,6 @@ loc_826DD864:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -21172,8 +20875,6 @@ loc_826DDA8C:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82708978(ctx, base);
 		r27 = ctx.r27;
 		ctx.r27 = s_r27;
@@ -21185,8 +20886,6 @@ loc_826DDA8C:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// clrlwi r11,r3,24
 	ctx.r11.u64 = ctx.r3.u32 & 0xFF;
@@ -21228,8 +20927,6 @@ loc_826DDA8C:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826DBFB0(ctx, base);
 		r27 = ctx.r27;
 		ctx.r27 = s_r27;
@@ -21241,8 +20938,6 @@ loc_826DDA8C:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmpwi cr6,r3,0
 	cr6.compare<int32_t>(ctx.r3.s32, 0, xer);
@@ -21258,8 +20953,6 @@ loc_826DDA8C:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826DBFB0(ctx, base);
 		r27 = ctx.r27;
 		ctx.r27 = s_r27;
@@ -21271,8 +20964,6 @@ loc_826DDA8C:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// stw r3,80(r1)
 	REX_STORE_U32(ctx.r1.u32 + 80, ctx.r3.u32);
@@ -21292,8 +20983,6 @@ loc_826DDB04:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826DC168(ctx, base);
 		r27 = ctx.r27;
 		ctx.r27 = s_r27;
@@ -21305,8 +20994,6 @@ loc_826DDB04:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// stw r3,84(r1)
 	REX_STORE_U32(ctx.r1.u32 + 84, ctx.r3.u32);
@@ -21455,8 +21142,6 @@ loc_826DDBCC:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82708978(ctx, base);
 		r25 = ctx.r25;
 		ctx.r25 = s_r25;
@@ -21472,8 +21157,6 @@ loc_826DDBCC:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// clrlwi r11,r3,24
 	ctx.r11.u64 = ctx.r3.u32 & 0xFF;
@@ -21601,15 +21284,11 @@ DEFINE_REX_FUNC(sub_826DDC70) {
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826DBFB0(ctx, base);
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmpwi cr6,r3,0
 	cr6.compare<int32_t>(ctx.r3.s32, 0, xer);
@@ -21622,15 +21301,11 @@ DEFINE_REX_FUNC(sub_826DDC70) {
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826DBFB0(ctx, base);
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// stw r3,80(r1)
 	REX_STORE_U32(ctx.r1.u32 + 80, ctx.r3.u32);
@@ -21649,15 +21324,11 @@ loc_826DDCD8:
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826DC168(ctx, base);
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// stw r3,84(r1)
 	REX_STORE_U32(ctx.r1.u32 + 84, ctx.r3.u32);
@@ -21859,9 +21530,6 @@ loc_826DDDFC:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82708978(ctx, base);
 		r27 = ctx.r27;
 		ctx.r27 = s_r27;
@@ -21873,9 +21541,6 @@ loc_826DDDFC:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// clrlwi r11,r3,24
 	ctx.r11.u64 = ctx.r3.u32 & 0xFF;
@@ -21979,9 +21644,6 @@ loc_826DDEB4:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_827087D8(ctx, base);
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -21995,9 +21657,6 @@ loc_826DDEB4:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// bl 0x829dbab0
 	ctx.lr = 0x826DDECC;
@@ -22057,9 +21716,6 @@ loc_826DDF08:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82708978(ctx, base);
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -22073,9 +21729,6 @@ loc_826DDF08:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// clrlwi r11,r3,24
 	ctx.r11.u64 = ctx.r3.u32 & 0xFF;
@@ -22179,9 +21832,6 @@ loc_826DDFC0:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_827087D8(ctx, base);
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -22195,9 +21845,6 @@ loc_826DDFC0:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// bl 0x829dbab0
 	ctx.lr = 0x826DDFD8;
@@ -22266,9 +21913,6 @@ loc_826DE024:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82708978(ctx, base);
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -22282,9 +21926,6 @@ loc_826DE024:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// clrlwi r11,r3,24
 	ctx.r11.u64 = ctx.r3.u32 & 0xFF;
@@ -22420,8 +22061,6 @@ DEFINE_REX_FUNC(sub_826DE0D8) {
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3560(ctx, base);
 		r29 = ctx.r29;
 		ctx.r29 = s_r29;
@@ -22429,8 +22068,6 @@ DEFINE_REX_FUNC(sub_826DE0D8) {
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 loc_826DE118:
 	// stw r30,4(r31)
@@ -22461,8 +22098,6 @@ loc_826DE11C:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3560(ctx, base);
 		r29 = ctx.r29;
 		ctx.r29 = s_r29;
@@ -22470,8 +22105,6 @@ loc_826DE11C:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 loc_826DE144:
 	// mr r3,r29
@@ -22482,8 +22115,6 @@ loc_826DE144:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3560(ctx, base);
 		r29 = ctx.r29;
 		ctx.r29 = s_r29;
@@ -22491,8 +22122,6 @@ loc_826DE144:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// stw r30,0(r31)
 	REX_STORE_U32(r31.u32 + 0, r30.u32);
@@ -22769,8 +22398,6 @@ loc_826DE2EC:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82708978(ctx, base);
 		r25 = ctx.r25;
 		ctx.r25 = s_r25;
@@ -22786,8 +22413,6 @@ loc_826DE2EC:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// clrlwi r11,r3,24
 	ctx.r11.u64 = ctx.r3.u32 & 0xFF;
@@ -22818,8 +22443,6 @@ loc_826DE2EC:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_827087D8(ctx, base);
 		r25 = ctx.r25;
 		ctx.r25 = s_r25;
@@ -22835,8 +22458,6 @@ loc_826DE2EC:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// bl 0x829dbab0
 	ctx.lr = 0x826DE334;
@@ -22983,8 +22604,6 @@ loc_826DE404:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826C4CA8(ctx, base);
 		r29 = ctx.r29;
 		ctx.r29 = s_r29;
@@ -22992,8 +22611,6 @@ loc_826DE404:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// clrlwi r11,r3,24
 	ctx.r11.u64 = ctx.r3.u32 & 0xFF;
@@ -23258,8 +22875,6 @@ loc_826DE5B4:
 		const auto s_r28 = ctx.r28; ctx.r28 = r28;
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_8225CF68(ctx, base);
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -23271,8 +22886,6 @@ loc_826DE5B4:
 		ctx.r29 = s_r29;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r30,r3
 	r30.u64 = ctx.r3.u64;
@@ -23394,8 +23007,6 @@ loc_826DE64C:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3560(ctx, base);
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -23411,8 +23022,6 @@ loc_826DE64C:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 loc_826DE684:
 	// stw r24,4(r31)
@@ -23444,8 +23053,6 @@ loc_826DE690:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826DCBF0(ctx, base);
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -23461,8 +23068,6 @@ loc_826DE690:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// b 0x826de6b0
 	goto loc_826DE6B0;
@@ -23477,8 +23082,6 @@ loc_826DE6AC:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826DD580(ctx, base);
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -23494,8 +23097,6 @@ loc_826DE6AC:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 loc_826DE6B0:
 	// lbz r11,576(r31)
@@ -23530,8 +23131,6 @@ loc_826DE6C4:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826DBCE8(ctx, base);
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -23547,8 +23146,6 @@ loc_826DE6C4:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 loc_826DE6DC:
 	// lis r11,-32086
@@ -23591,8 +23188,6 @@ loc_826DE714:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826C4CA8(ctx, base);
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -23608,8 +23203,6 @@ loc_826DE714:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// clrlwi r11,r3,24
 	ctx.r11.u64 = ctx.r3.u32 & 0xFF;
@@ -23677,8 +23270,6 @@ loc_826DE758:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826DE3C8(ctx, base);
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -23694,8 +23285,6 @@ loc_826DE758:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// addi r1,r1,224
 	ctx.r1.s64 = ctx.r1.s64 + 224;
@@ -23893,8 +23482,6 @@ loc_826DE8C4:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826DDA10(ctx, base);
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -23912,8 +23499,6 @@ loc_826DE8C4:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// stb r24,579(r31)
 	REX_STORE_U8(r31.u32 + 579, r24.u8);
@@ -23985,8 +23570,6 @@ loc_826DE90C:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826DDB48(ctx, base);
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -24004,8 +23587,6 @@ loc_826DE90C:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 loc_826DE948:
 	// lbz r11,11(r31)
@@ -24038,8 +23619,6 @@ loc_826DE968:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_8225CF68(ctx, base);
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -24057,8 +23636,6 @@ loc_826DE968:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r30,r3
 	r30.u64 = ctx.r3.u64;
@@ -24440,8 +24017,6 @@ loc_826DEBF8:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3560(ctx, base);
 		r27 = ctx.r27;
 		ctx.r27 = s_r27;
@@ -24453,8 +24028,6 @@ loc_826DEBF8:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 loc_826DEC00:
 	// mr r3,r30
@@ -24562,15 +24135,11 @@ DEFINE_REX_FUNC(sub_826DEC60) {
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3560(ctx, base);
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r3,r31
 	ctx.r3.u64 = r31.u64;
@@ -24839,15 +24408,11 @@ DEFINE_REX_FUNC(sub_826DEE10) {
 	{
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82701F88(ctx, base);
 		r29 = ctx.r29;
 		ctx.r29 = s_r29;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// extsb r11,r3
 	ctx.r11.s64 = ctx.r3.s8;
@@ -24862,15 +24427,11 @@ DEFINE_REX_FUNC(sub_826DEE10) {
 	{
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82701F88(ctx, base);
 		r29 = ctx.r29;
 		ctx.r29 = s_r29;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// extsb r11,r3
 	ctx.r11.s64 = ctx.r3.s8;
@@ -24890,15 +24451,11 @@ DEFINE_REX_FUNC(sub_826DEE10) {
 	{
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82701F88(ctx, base);
 		r29 = ctx.r29;
 		ctx.r29 = s_r29;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// extsb r11,r3
 	ctx.r11.s64 = ctx.r3.s8;
@@ -24927,8 +24484,6 @@ loc_826DEE9C:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82701F88(ctx, base);
 		r28 = ctx.r28;
 		ctx.r28 = s_r28;
@@ -24938,8 +24493,6 @@ loc_826DEE9C:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// extsb r11,r3
 	ctx.r11.s64 = ctx.r3.s8;
@@ -25917,8 +25470,6 @@ loc_826DF48C:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3560(ctx, base);
 		r29 = ctx.r29;
 		ctx.r29 = s_r29;
@@ -25926,8 +25477,6 @@ loc_826DF48C:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 loc_826DF4B8:
 	// addi r29,r29,-1
@@ -26262,8 +25811,6 @@ loc_826DF6A4:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82701F88(ctx, base);
 		r20 = ctx.r20;
 		ctx.r20 = s_r20;
@@ -26289,8 +25836,6 @@ loc_826DF6A4:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// extsb r11,r3
 	ctx.r11.s64 = ctx.r3.s8;
@@ -26323,8 +25868,6 @@ loc_826DF6A4:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82701F88(ctx, base);
 		r20 = ctx.r20;
 		ctx.r20 = s_r20;
@@ -26350,8 +25893,6 @@ loc_826DF6A4:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// extsb r11,r3
 	ctx.r11.s64 = ctx.r3.s8;
@@ -26523,9 +26064,6 @@ loc_826DF7E0:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82701F88(ctx, base);
 		r20 = ctx.r20;
 		ctx.r20 = s_r20;
@@ -26551,9 +26089,6 @@ loc_826DF7E0:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// extsb r11,r3
 	ctx.r11.s64 = ctx.r3.s8;
@@ -26578,9 +26113,6 @@ loc_826DF7E0:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82701F88(ctx, base);
 		r20 = ctx.r20;
 		ctx.r20 = s_r20;
@@ -26606,9 +26138,6 @@ loc_826DF7E0:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// extsb r11,r3
 	ctx.r11.s64 = ctx.r3.s8;
@@ -26638,9 +26167,6 @@ loc_826DF7E0:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82701F88(ctx, base);
 		r20 = ctx.r20;
 		ctx.r20 = s_r20;
@@ -26666,9 +26192,6 @@ loc_826DF7E0:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// extsb r11,r3
 	ctx.r11.s64 = ctx.r3.s8;
@@ -26703,9 +26226,6 @@ loc_826DF844:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82701F88(ctx, base);
 		r20 = ctx.r20;
 		ctx.r20 = s_r20;
@@ -26731,9 +26251,6 @@ loc_826DF844:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// extsb r11,r3
 	ctx.r11.s64 = ctx.r3.s8;
@@ -26915,9 +26432,6 @@ loc_826DF8D8:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82701F88(ctx, base);
 		r22 = ctx.r22;
 		ctx.r22 = s_r22;
@@ -26939,9 +26453,6 @@ loc_826DF8D8:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// mr r4,r3
 	ctx.r4.u64 = ctx.r3.u64;
@@ -27050,9 +26561,6 @@ loc_826DF9F0:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82701F88(ctx, base);
 		r22 = ctx.r22;
 		ctx.r22 = s_r22;
@@ -27074,9 +26582,6 @@ loc_826DF9F0:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// extsb r11,r3
 	ctx.r11.s64 = ctx.r3.s8;
@@ -27541,9 +27046,6 @@ loc_826DFD14:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826FE880(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -27563,9 +27065,6 @@ loc_826DFD14:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// mr r30,r3
 	r30.u64 = ctx.r3.u64;
@@ -27649,9 +27148,6 @@ loc_826DFD14:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82708A18(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -27671,9 +27167,6 @@ loc_826DFD14:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// mr r6,r3
 	ctx.r6.u64 = ctx.r3.u64;
@@ -29565,8 +29058,6 @@ DEFINE_REX_FUNC(sub_826E0A18) {
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826DFA28(ctx, base);
 		r28 = ctx.r28;
 		ctx.r28 = s_r28;
@@ -29576,8 +29067,6 @@ DEFINE_REX_FUNC(sub_826E0A18) {
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// addi r1,r1,128
 	ctx.r1.s64 = ctx.r1.s64 + 128;
@@ -29595,8 +29084,6 @@ loc_826E0A78:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826DFA28(ctx, base);
 		r28 = ctx.r28;
 		ctx.r28 = s_r28;
@@ -29606,8 +29093,6 @@ loc_826E0A78:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// addi r1,r1,128
 	ctx.r1.s64 = ctx.r1.s64 + 128;
@@ -29896,9 +29381,6 @@ loc_826E0C04:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826DFA28(ctx, base);
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -29916,9 +29398,6 @@ loc_826E0C04:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 loc_826E0C24:
 	// addi r1,r1,160
@@ -29990,8 +29469,6 @@ DEFINE_REX_FUNC(sub_826E0C30) {
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826DFA28(ctx, base);
 		r28 = ctx.r28;
 		ctx.r28 = s_r28;
@@ -30001,8 +29478,6 @@ DEFINE_REX_FUNC(sub_826E0C30) {
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// addi r1,r1,128
 	ctx.r1.s64 = ctx.r1.s64 + 128;
@@ -30020,8 +29495,6 @@ loc_826E0C90:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826DFA28(ctx, base);
 		r28 = ctx.r28;
 		ctx.r28 = s_r28;
@@ -30031,8 +29504,6 @@ loc_826E0C90:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// addi r1,r1,128
 	ctx.r1.s64 = ctx.r1.s64 + 128;
@@ -30283,8 +29754,6 @@ loc_826E0E14:
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
 		const auto s_v127 = ctx.v127; ctx.v127 = v127;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; ctx.v12 = v12; ctx.v13 = v13; sub_826DFA28(ctx, base); v0 = ctx.v0; v12 = ctx.v12; v13 = ctx.v13; }
 		r25 = ctx.r25;
 		ctx.r25 = s_r25;
@@ -30304,8 +29773,6 @@ loc_826E0E14:
 		ctx.f31 = s_f31;
 		v127 = ctx.v127;
 		ctx.v127 = s_v127;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 loc_826E0E1C:
 	// addi r1,r1,240
@@ -30396,8 +29863,6 @@ DEFINE_REX_FUNC(sub_826E0E30) {
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826DFA28(ctx, base);
 		r28 = ctx.r28;
 		ctx.r28 = s_r28;
@@ -30407,8 +29872,6 @@ DEFINE_REX_FUNC(sub_826E0E30) {
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// addi r1,r1,128
 	ctx.r1.s64 = ctx.r1.s64 + 128;
@@ -30426,8 +29889,6 @@ loc_826E0EA4:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826DFA28(ctx, base);
 		r28 = ctx.r28;
 		ctx.r28 = s_r28;
@@ -30437,8 +29898,6 @@ loc_826E0EA4:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 loc_826E0EB0:
 	// addi r1,r1,128
@@ -30608,17 +30067,11 @@ loc_826E0FBC:
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826DFA28(ctx, base);
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// lis r11,0
 	ctx.r11.s64 = 0;
@@ -30723,8 +30176,6 @@ DEFINE_REX_FUNC(sub_826E0FF8) {
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826DFA28(ctx, base);
 		r29 = ctx.r29;
 		ctx.r29 = s_r29;
@@ -30734,8 +30185,6 @@ DEFINE_REX_FUNC(sub_826E0FF8) {
 		ctx.r31 = s_r31;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// addi r1,r1,128
 	ctx.r1.s64 = ctx.r1.s64 + 128;
@@ -30756,8 +30205,6 @@ loc_826E1074:
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826DFA28(ctx, base);
 		r29 = ctx.r29;
 		ctx.r29 = s_r29;
@@ -30767,8 +30214,6 @@ loc_826E1074:
 		ctx.r31 = s_r31;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 loc_826E1080:
 	// addi r1,r1,128
@@ -30855,8 +30300,6 @@ DEFINE_REX_FUNC(sub_826E1090) {
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; sub_826DFA28(ctx, base); v0 = ctx.v0; }
 		r29 = ctx.r29;
 		ctx.r29 = s_r29;
@@ -30864,8 +30307,6 @@ DEFINE_REX_FUNC(sub_826E1090) {
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// addi r1,r1,128
 	ctx.r1.s64 = ctx.r1.s64 + 128;
@@ -30882,8 +30323,6 @@ loc_826E1104:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; sub_826DFA28(ctx, base); v0 = ctx.v0; }
 		r29 = ctx.r29;
 		ctx.r29 = s_r29;
@@ -30891,8 +30330,6 @@ loc_826E1104:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// addi r1,r1,128
 	ctx.r1.s64 = ctx.r1.s64 + 128;
@@ -30969,8 +30406,6 @@ DEFINE_REX_FUNC(sub_826E1118) {
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826DFA28(ctx, base);
 		r27 = ctx.r27;
 		ctx.r27 = s_r27;
@@ -30982,8 +30417,6 @@ DEFINE_REX_FUNC(sub_826E1118) {
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// addi r1,r1,128
 	ctx.r1.s64 = ctx.r1.s64 + 128;
@@ -31002,8 +30435,6 @@ loc_826E1180:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826DFA28(ctx, base);
 		r27 = ctx.r27;
 		ctx.r27 = s_r27;
@@ -31015,8 +30446,6 @@ loc_826E1180:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// addi r1,r1,128
 	ctx.r1.s64 = ctx.r1.s64 + 128;
@@ -31081,8 +30510,6 @@ DEFINE_REX_FUNC(sub_826E1198) {
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826DFA28(ctx, base);
 		r29 = ctx.r29;
 		ctx.r29 = s_r29;
@@ -31090,8 +30517,6 @@ DEFINE_REX_FUNC(sub_826E1198) {
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// addi r1,r1,112
 	ctx.r1.s64 = ctx.r1.s64 + 112;
@@ -31108,8 +30533,6 @@ loc_826E11F0:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826DFA28(ctx, base);
 		r29 = ctx.r29;
 		ctx.r29 = s_r29;
@@ -31117,8 +30540,6 @@ loc_826E11F0:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// addi r1,r1,112
 	ctx.r1.s64 = ctx.r1.s64 + 112;
@@ -31187,15 +30608,11 @@ loc_826E1258:
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826DFA28(ctx, base);
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// addi r1,r1,112
 	ctx.r1.s64 = ctx.r1.s64 + 112;
@@ -31292,8 +30709,6 @@ DEFINE_REX_FUNC(sub_826E1278) {
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826DFA28(ctx, base);
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -31307,8 +30722,6 @@ DEFINE_REX_FUNC(sub_826E1278) {
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// addi r1,r1,144
 	ctx.r1.s64 = ctx.r1.s64 + 144;
@@ -31328,8 +30741,6 @@ loc_826E12F4:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826DFA28(ctx, base);
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -31343,8 +30754,6 @@ loc_826E12F4:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 loc_826E1300:
 	// addi r1,r1,144
@@ -31555,8 +30964,6 @@ loc_826E1428:
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
 		const auto s_f30 = ctx.f30; ctx.f30 = f30;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; sub_826DFA28(ctx, base); v0 = ctx.v0; }
 		r25 = ctx.r25;
 		ctx.r25 = s_r25;
@@ -31576,8 +30983,6 @@ loc_826E1428:
 		ctx.f30 = s_f30;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 loc_826E1440:
 	// addi r1,r1,208
@@ -31793,8 +31198,6 @@ loc_826E1574:
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
 		const auto s_f30 = ctx.f30; ctx.f30 = f30;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; sub_826DFA28(ctx, base); v0 = ctx.v0; }
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -31812,8 +31215,6 @@ loc_826E1574:
 		ctx.f30 = s_f30;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 loc_826E158C:
 	// addi r1,r1,208
@@ -32029,8 +31430,6 @@ loc_826E16C0:
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
 		const auto s_f30 = ctx.f30; ctx.f30 = f30;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; sub_826DFA28(ctx, base); v0 = ctx.v0; }
 		r25 = ctx.r25;
 		ctx.r25 = s_r25;
@@ -32050,8 +31449,6 @@ loc_826E16C0:
 		ctx.f30 = s_f30;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 loc_826E16D8:
 	// addi r1,r1,208
@@ -32267,8 +31664,6 @@ loc_826E180C:
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
 		const auto s_f30 = ctx.f30; ctx.f30 = f30;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; sub_826DFA28(ctx, base); v0 = ctx.v0; }
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -32286,8 +31681,6 @@ loc_826E180C:
 		ctx.f30 = s_f30;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 loc_826E1824:
 	// addi r1,r1,208
@@ -32463,8 +31856,6 @@ loc_826E1920:
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
 		const auto s_f30 = ctx.f30; ctx.f30 = f30;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826DFA28(ctx, base);
 		r25 = ctx.r25;
 		ctx.r25 = s_r25;
@@ -32484,8 +31875,6 @@ loc_826E1920:
 		ctx.f30 = s_f30;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// addi r1,r1,240
 	ctx.r1.s64 = ctx.r1.s64 + 240;
@@ -32660,8 +32049,6 @@ loc_826E1A20:
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
 		const auto s_f30 = ctx.f30; ctx.f30 = f30;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826DFA28(ctx, base);
 		r25 = ctx.r25;
 		ctx.r25 = s_r25;
@@ -32681,8 +32068,6 @@ loc_826E1A20:
 		ctx.f30 = s_f30;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// addi r1,r1,240
 	ctx.r1.s64 = ctx.r1.s64 + 240;
@@ -32800,8 +32185,6 @@ loc_826E1A88:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826DFA28(ctx, base);
 		r25 = ctx.r25;
 		ctx.r25 = s_r25;
@@ -32817,8 +32200,6 @@ loc_826E1A88:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// addi r1,r1,144
 	ctx.r1.s64 = ctx.r1.s64 + 144;
@@ -32839,8 +32220,6 @@ loc_826E1ADC:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826DFA28(ctx, base);
 		r25 = ctx.r25;
 		ctx.r25 = s_r25;
@@ -32856,8 +32235,6 @@ loc_826E1ADC:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// addi r1,r1,144
 	ctx.r1.s64 = ctx.r1.s64 + 144;
@@ -33159,9 +32536,6 @@ loc_826E1C9C:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826DFA28(ctx, base);
 		r18 = ctx.r18;
 		ctx.r18 = s_r18;
@@ -33191,9 +32565,6 @@ loc_826E1C9C:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// addi r1,r1,208
 	ctx.r1.s64 = ctx.r1.s64 + 208;
@@ -33221,9 +32592,6 @@ loc_826E1CD4:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826DFA28(ctx, base);
 		r18 = ctx.r18;
 		ctx.r18 = s_r18;
@@ -33253,9 +32621,6 @@ loc_826E1CD4:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 loc_826E1CE0:
 	// addi r1,r1,208
@@ -33566,9 +32931,6 @@ loc_826E1E9C:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826DFA28(ctx, base);
 		r17 = ctx.r17;
 		ctx.r17 = s_r17;
@@ -33600,9 +32962,6 @@ loc_826E1E9C:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// addi r1,r1,208
 	ctx.r1.s64 = ctx.r1.s64 + 208;
@@ -33631,9 +32990,6 @@ loc_826E1ED8:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826DFA28(ctx, base);
 		r17 = ctx.r17;
 		ctx.r17 = s_r17;
@@ -33665,9 +33021,6 @@ loc_826E1ED8:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 loc_826E1EE4:
 	// addi r1,r1,208
@@ -33763,8 +33116,6 @@ DEFINE_REX_FUNC(sub_826E1EF0) {
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826DFA28(ctx, base);
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -33782,8 +33133,6 @@ DEFINE_REX_FUNC(sub_826E1EF0) {
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// addi r1,r1,160
 	ctx.r1.s64 = ctx.r1.s64 + 160;
@@ -33805,8 +33154,6 @@ loc_826E1F70:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826DFA28(ctx, base);
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -33824,8 +33171,6 @@ loc_826E1F70:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// addi r1,r1,160
 	ctx.r1.s64 = ctx.r1.s64 + 160;
@@ -34092,9 +33437,6 @@ loc_826E2110:
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
 		const auto s_f30 = ctx.f30; ctx.f30 = f30;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826DFA28(ctx, base);
 		r29 = ctx.r29;
 		ctx.r29 = s_r29;
@@ -34106,9 +33448,6 @@ loc_826E2110:
 		ctx.f30 = s_f30;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 loc_826E211C:
 	// addi r1,r1,128
@@ -34183,15 +33522,11 @@ loc_826E2180:
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826DFA28(ctx, base);
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// addi r1,r1,112
 	ctx.r1.s64 = ctx.r1.s64 + 112;
@@ -34325,8 +33660,6 @@ loc_826E2240:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826DFA28(ctx, base);
 		r28 = ctx.r28;
 		ctx.r28 = s_r28;
@@ -34336,8 +33669,6 @@ loc_826E2240:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 loc_826E2258:
 	// addi r1,r1,128
@@ -34403,8 +33734,6 @@ DEFINE_REX_FUNC(sub_826E2260) {
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826DFA28(ctx, base);
 		r29 = ctx.r29;
 		ctx.r29 = s_r29;
@@ -34412,8 +33741,6 @@ DEFINE_REX_FUNC(sub_826E2260) {
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// addi r1,r1,112
 	ctx.r1.s64 = ctx.r1.s64 + 112;
@@ -34430,8 +33757,6 @@ loc_826E22B8:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826DFA28(ctx, base);
 		r29 = ctx.r29;
 		ctx.r29 = s_r29;
@@ -34439,8 +33764,6 @@ loc_826E22B8:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// addi r1,r1,112
 	ctx.r1.s64 = ctx.r1.s64 + 112;
@@ -34575,8 +33898,6 @@ loc_826E2348:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826DFA28(ctx, base);
 		r28 = ctx.r28;
 		ctx.r28 = s_r28;
@@ -34586,8 +33907,6 @@ loc_826E2348:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// addi r1,r1,128
 	ctx.r1.s64 = ctx.r1.s64 + 128;
@@ -34605,8 +33924,6 @@ loc_826E23A4:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826DFA28(ctx, base);
 		r28 = ctx.r28;
 		ctx.r28 = s_r28;
@@ -34616,8 +33933,6 @@ loc_826E23A4:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 loc_826E23B0:
 	// addi r1,r1,128
@@ -34683,8 +33998,6 @@ DEFINE_REX_FUNC(sub_826E23B8) {
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826DFA28(ctx, base);
 		r29 = ctx.r29;
 		ctx.r29 = s_r29;
@@ -34692,8 +34005,6 @@ DEFINE_REX_FUNC(sub_826E23B8) {
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// addi r1,r1,112
 	ctx.r1.s64 = ctx.r1.s64 + 112;
@@ -34710,8 +34021,6 @@ loc_826E2410:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826DFA28(ctx, base);
 		r29 = ctx.r29;
 		ctx.r29 = s_r29;
@@ -34719,8 +34028,6 @@ loc_826E2410:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// addi r1,r1,112
 	ctx.r1.s64 = ctx.r1.s64 + 112;
@@ -35241,8 +34548,6 @@ DEFINE_REX_FUNC(sub_826E2738) {
 		const auto s_r25 = ctx.r25; ctx.r25 = r25;
 		const auto s_r28 = ctx.r28; ctx.r28 = r28;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826FE880(ctx, base);
 		r25 = ctx.r25;
 		ctx.r25 = s_r25;
@@ -35250,8 +34555,6 @@ DEFINE_REX_FUNC(sub_826E2738) {
 		ctx.r28 = s_r28;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r29,r3
 	r29.u64 = ctx.r3.u64;
@@ -35324,8 +34627,6 @@ DEFINE_REX_FUNC(sub_826E2738) {
 		const auto s_r28 = ctx.r28; ctx.r28 = r28;
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_8278CCE8(ctx, base);
 		r25 = ctx.r25;
 		ctx.r25 = s_r25;
@@ -35335,8 +34636,6 @@ DEFINE_REX_FUNC(sub_826E2738) {
 		ctx.r29 = s_r29;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// li r11,0
 	ctx.r11.s64 = 0;
@@ -35552,8 +34851,6 @@ DEFINE_REX_FUNC(sub_826E2918) {
 		const auto s_r28 = ctx.r28; ctx.r28 = r28;
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826FE880(ctx, base);
 		r28 = ctx.r28;
 		ctx.r28 = s_r28;
@@ -35561,8 +34858,6 @@ DEFINE_REX_FUNC(sub_826E2918) {
 		ctx.r29 = s_r29;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r30,r3
 	r30.u64 = ctx.r3.u64;
@@ -35636,8 +34931,6 @@ DEFINE_REX_FUNC(sub_826E2918) {
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_8278CCE8(ctx, base);
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -35649,8 +34942,6 @@ DEFINE_REX_FUNC(sub_826E2918) {
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// li r11,0
 	ctx.r11.s64 = 0;
@@ -36267,8 +35558,6 @@ DEFINE_REX_FUNC(sub_826E2D60) {
 		const auto s_r26 = ctx.r26; ctx.r26 = r26;
 		const auto s_r28 = ctx.r28; ctx.r28 = r28;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826FE808(ctx, base);
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -36278,8 +35567,6 @@ DEFINE_REX_FUNC(sub_826E2D60) {
 		ctx.r28 = s_r28;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r25,r3
 	r25.u64 = ctx.r3.u64;
@@ -36481,8 +35768,6 @@ DEFINE_REX_FUNC(sub_826E2D60) {
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82701F88(ctx, base);
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -36500,8 +35785,6 @@ DEFINE_REX_FUNC(sub_826E2D60) {
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r5,r3
 	ctx.r5.u64 = ctx.r3.u64;
@@ -36525,8 +35808,6 @@ DEFINE_REX_FUNC(sub_826E2D60) {
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82701F88(ctx, base);
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -36544,8 +35825,6 @@ DEFINE_REX_FUNC(sub_826E2D60) {
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r5,r3
 	ctx.r5.u64 = ctx.r3.u64;
@@ -36656,8 +35935,6 @@ DEFINE_REX_FUNC(sub_826E2F50) {
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826E2738(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -36677,8 +35954,6 @@ DEFINE_REX_FUNC(sub_826E2F50) {
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r9,r30
 	ctx.r9.u64 = r30.u64;
@@ -36725,8 +36000,6 @@ loc_826E2FFC:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_8278CCE8(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -36746,8 +36019,6 @@ loc_826E2FFC:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 loc_826E3014:
 	// addi r1,r1,160
@@ -36819,8 +36090,6 @@ DEFINE_REX_FUNC(sub_826E3020) {
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826E2918(ctx, base);
 		r28 = ctx.r28;
 		ctx.r28 = s_r28;
@@ -36830,8 +36099,6 @@ DEFINE_REX_FUNC(sub_826E3020) {
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r4,r29
 	ctx.r4.u64 = r29.u64;
@@ -36859,8 +36126,6 @@ loc_826E3090:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_8278CCE8(ctx, base);
 		r28 = ctx.r28;
 		ctx.r28 = s_r28;
@@ -36870,8 +36135,6 @@ loc_826E3090:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 loc_826E30A0:
 	// addi r1,r1,128
@@ -36955,8 +36218,6 @@ DEFINE_REX_FUNC(sub_826E30A8) {
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826E2918(ctx, base);
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -36970,8 +36231,6 @@ DEFINE_REX_FUNC(sub_826E30A8) {
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r6,r30
 	ctx.r6.u64 = r30.u64;
@@ -37007,8 +36266,6 @@ loc_826E3130:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_8278CCE8(ctx, base);
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -37022,8 +36279,6 @@ loc_826E3130:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 loc_826E3144:
 	// addi r1,r1,144
@@ -37232,9 +36487,6 @@ loc_826E3270:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826FE880(ctx, base);
 		r16 = ctx.r16;
 		ctx.r16 = s_r16;
@@ -37264,9 +36516,6 @@ loc_826E3270:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// bl 0x82191f00
 	ctx.lr = 0x826E3280;
@@ -37366,9 +36615,6 @@ loc_826E32BC:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826E2F50(ctx, base);
 		r15 = ctx.r15;
 		ctx.r15 = s_r15;
@@ -37404,9 +36650,6 @@ loc_826E32BC:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// add r30,r28,r24
 	r30.u64 = r28.u64 + r24.u64;
@@ -37883,7 +37126,6 @@ DEFINE_REX_FUNC(sub_826E3570) {
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
 		sub_826E30A8(ctx, base);
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -37901,7 +37143,6 @@ DEFINE_REX_FUNC(sub_826E3570) {
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.ctr = s_ctr;
 	}
 	// addis r30,r30,1
 	r30.s64 = r30.s64 + 65536;
@@ -38162,9 +37403,6 @@ loc_826E3788:
 		const auto s_r28 = ctx.r28; ctx.r28 = r28;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826E3150(ctx, base);
 		r20 = ctx.r20;
 		ctx.r20 = s_r20;
@@ -38188,9 +37426,6 @@ loc_826E3788:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 loc_826E37C0:
 	// lwz r11,12(r31)
@@ -38374,9 +37609,6 @@ loc_826E38E8:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826FE880(ctx, base);
 		r20 = ctx.r20;
 		ctx.r20 = s_r20;
@@ -38402,9 +37634,6 @@ loc_826E38E8:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// mr r31,r3
 	r31.u64 = ctx.r3.u64;
@@ -38479,9 +37708,6 @@ loc_826E38E8:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826E2738(ctx, base);
 		r20 = ctx.r20;
 		ctx.r20 = s_r20;
@@ -38507,9 +37733,6 @@ loc_826E38E8:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// mr r4,r30
 	ctx.r4.u64 = r30.u64;
@@ -38530,9 +37753,6 @@ loc_826E38E8:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826E2918(ctx, base);
 		r20 = ctx.r20;
 		ctx.r20 = s_r20;
@@ -38558,9 +37778,6 @@ loc_826E38E8:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 loc_826E396C:
 	// addi r11,r29,1
@@ -40709,8 +39926,6 @@ DEFINE_REX_FUNC(sub_826E47B0) {
 		const auto s_r26 = ctx.r26; ctx.r26 = r26;
 		const auto s_r27 = ctx.r27; ctx.r27 = r27;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826FE808(ctx, base);
 		r25 = ctx.r25;
 		ctx.r25 = s_r25;
@@ -40720,8 +39935,6 @@ DEFINE_REX_FUNC(sub_826E47B0) {
 		ctx.r27 = s_r27;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r24,r3
 	r24.u64 = ctx.r3.u64;
@@ -40875,8 +40088,6 @@ DEFINE_REX_FUNC(sub_826E47B0) {
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82701F88(ctx, base);
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -40894,8 +40105,6 @@ DEFINE_REX_FUNC(sub_826E47B0) {
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r5,r3
 	ctx.r5.u64 = ctx.r3.u64;
@@ -40982,17 +40191,11 @@ DEFINE_REX_FUNC(sub_826E4930) {
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826FE808(ctx, base);
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -41191,8 +40394,6 @@ loc_826E4ABC:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3510(ctx, base);
 		r25 = ctx.r25;
 		ctx.r25 = s_r25;
@@ -41208,8 +40409,6 @@ loc_826E4ABC:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// stw r3,-6(r31)
 	REX_STORE_U32(r31.u32 + -6, ctx.r3.u32);
@@ -41445,17 +40644,11 @@ loc_826E4C74:
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_827047B8(ctx, base);
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 loc_826E4C7C:
 	// addi r1,r1,112
@@ -41549,7 +40742,6 @@ DEFINE_REX_FUNC(sub_826E4C98) {
 		const auto s_r28 = ctx.r28; ctx.r28 = r28;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
 		sub_82703008(ctx, base);
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -41561,7 +40753,6 @@ DEFINE_REX_FUNC(sub_826E4C98) {
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.ctr = s_ctr;
 	}
 	// lwz r11,0(r27)
 	ctx.r11.u64 = REX_LOAD_U32(r27.u32 + 0);
@@ -41899,9 +41090,6 @@ DEFINE_REX_FUNC(sub_826E4EE8) {
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; ctx.v13 = v13; sub_827087D8(ctx, base); v0 = ctx.v0; v13 = ctx.v13; }
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
@@ -41909,9 +41097,6 @@ DEFINE_REX_FUNC(sub_826E4EE8) {
 		ctx.r31 = s_r31;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// lwz r11,32(r31)
 	ctx.r11.u64 = REX_LOAD_U32(r31.u32 + 32);
@@ -41963,9 +41148,9 @@ loc_826E4F44:
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 104);
 	ctx.f13.f64 = double(temp.f32);
 	// fmadds f0,f0,f0,f12
-	ctx.f0.f64 = double(float(std::fma(ctx.f0.f64, ctx.f0.f64, ctx.f12.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f0.f64, ctx.f12.f64)));
 	// fmadds f0,f13,f13,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f13.f64, ctx.f13.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f13.f64, ctx.f0.f64)));
 	// fsqrts f31,f0
 	f31.f64 = double(float(sqrt(ctx.f0.f64)));
 	// mtctr r11
@@ -42190,9 +41375,6 @@ loc_826E50DC:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82704390(ctx, base);
 		r25 = ctx.r25;
 		ctx.r25 = s_r25;
@@ -42208,9 +41390,6 @@ loc_826E50DC:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// addi r1,r1,144
 	ctx.r1.s64 = ctx.r1.s64 + 144;
@@ -42266,7 +41445,6 @@ DEFINE_REX_FUNC(sub_826E50F8) {
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
 		sub_82703590(ctx, base);
 		r28 = ctx.r28;
 		ctx.r28 = s_r28;
@@ -42276,7 +41454,6 @@ DEFINE_REX_FUNC(sub_826E50F8) {
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.ctr = s_ctr;
 	}
 	// lbz r11,14(r31)
 	ctx.r11.u64 = REX_LOAD_U8(r31.u32 + 14);
@@ -42894,7 +42071,6 @@ DEFINE_REX_FUNC(sub_826E54F8) {
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
 		{ ctx.v0 = v0; ctx.v13 = v13; sub_827087D8(ctx, base); v0 = ctx.v0; v13 = ctx.v13; }
 		r29 = ctx.r29;
 		ctx.r29 = s_r29;
@@ -42902,7 +42078,6 @@ DEFINE_REX_FUNC(sub_826E54F8) {
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.ctr = s_ctr;
 	}
 	// lwz r10,1400(r3)
 	ctx.r10.u64 = REX_LOAD_U32(ctx.r3.u32 + 1400);
@@ -42956,9 +42131,9 @@ loc_826E5560:
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 80);
 	ctx.f12.f64 = double(temp.f32);
 	// fmadds f13,f13,f13,f11
-	ctx.f13.f64 = double(float(std::fma(ctx.f13.f64, ctx.f13.f64, ctx.f11.f64)));
+	ctx.f13.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f13.f64, ctx.f11.f64)));
 	// fmadds f13,f12,f12,f13
-	ctx.f13.f64 = double(float(std::fma(ctx.f12.f64, ctx.f12.f64, ctx.f13.f64)));
+	ctx.f13.f64 = double(float(REX_FMA(ctx.f12.f64, ctx.f12.f64, ctx.f13.f64)));
 	// fsqrts f12,f13
 	ctx.f12.f64 = double(float(sqrt(ctx.f13.f64)));
 	// fcmpu cr6,f12,f0
@@ -43052,9 +42227,9 @@ loc_826E5610:
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 80);
 	ctx.f12.f64 = double(temp.f32);
 	// fmadds f13,f13,f13,f11
-	ctx.f13.f64 = double(float(std::fma(ctx.f13.f64, ctx.f13.f64, ctx.f11.f64)));
+	ctx.f13.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f13.f64, ctx.f11.f64)));
 	// fmadds f13,f12,f12,f13
-	ctx.f13.f64 = double(float(std::fma(ctx.f12.f64, ctx.f12.f64, ctx.f13.f64)));
+	ctx.f13.f64 = double(float(REX_FMA(ctx.f12.f64, ctx.f12.f64, ctx.f13.f64)));
 	// fsqrts f13,f13
 	ctx.f13.f64 = double(float(sqrt(ctx.f13.f64)));
 	// fcmpu cr6,f13,f0
@@ -44132,9 +43307,6 @@ loc_826E5D00:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; ctx.v12 = v12; ctx.v13 = v13; sub_828BD310(ctx, base); v0 = ctx.v0; v12 = ctx.v12; v13 = ctx.v13; }
 		r29 = ctx.r29;
 		ctx.r29 = s_r29;
@@ -44142,9 +43314,6 @@ loc_826E5D00:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// cntlzw r11,r3
 	ctx.r11.u64 = ctx.r3.u32 == 0 ? 32 : __builtin_clz(ctx.r3.u32);
@@ -44218,9 +43387,6 @@ loc_826E5D8C:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; ctx.v13 = v13; sub_8225CF68(ctx, base); v0 = ctx.v0; v13 = ctx.v13; }
 		r28 = ctx.r28;
 		ctx.r28 = s_r28;
@@ -44230,9 +43396,6 @@ loc_826E5D8C:
 		ctx.r30 = s_r30;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -44284,9 +43447,9 @@ loc_826E5D8C:
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 88);
 	ctx.f13.f64 = double(temp.f32);
 	// fmadds f0,f0,f0,f12
-	ctx.f0.f64 = double(float(std::fma(ctx.f0.f64, ctx.f0.f64, ctx.f12.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f0.f64, ctx.f12.f64)));
 	// fmadds f0,f13,f13,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f13.f64, ctx.f13.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f13.f64, ctx.f0.f64)));
 	// fcmpu cr6,f0,f31
 	cr6.compare(ctx.f0.f64, f31.f64);
 	// bge cr6,0x826e5df8
@@ -44372,9 +43535,6 @@ loc_826E5E54:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; ctx.v13 = v13; sub_8225CF68(ctx, base); v0 = ctx.v0; v13 = ctx.v13; }
 		r28 = ctx.r28;
 		ctx.r28 = s_r28;
@@ -44384,9 +43544,6 @@ loc_826E5E54:
 		ctx.r30 = s_r30;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -44435,7 +43592,7 @@ loc_826E5E54:
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 80);
 	ctx.f0.f64 = double(temp.f32);
 	// fmadds f0,f0,f0,f13
-	ctx.f0.f64 = double(float(std::fma(ctx.f0.f64, ctx.f0.f64, ctx.f13.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f0.f64, ctx.f13.f64)));
 	// fcmpu cr6,f0,f31
 	cr6.compare(ctx.f0.f64, f31.f64);
 	// bge cr6,0x826e5eb8
@@ -46263,9 +45420,6 @@ loc_826E6A44:
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; ctx.v13 = v13; sub_826FE880(ctx, base); v0 = ctx.v0; v13 = ctx.v13; }
 		r27 = ctx.r27;
 		ctx.r27 = s_r27;
@@ -46279,9 +45433,6 @@ loc_826E6A44:
 		ctx.r31 = s_r31;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// li r30,4
 	r30.s64 = 4;
@@ -46298,9 +45449,6 @@ loc_826E6A44:
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; ctx.v13 = v13; sub_827087D8(ctx, base); v0 = ctx.v0; v13 = ctx.v13; }
 		r27 = ctx.r27;
 		ctx.r27 = s_r27;
@@ -46314,9 +45462,6 @@ loc_826E6A44:
 		ctx.r31 = s_r31;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// mr r4,r3
 	ctx.r4.u64 = ctx.r3.u64;
@@ -46384,9 +45529,9 @@ loc_826E6AAC:
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 88);
 	ctx.f13.f64 = double(temp.f32);
 	// fmadds f0,f0,f0,f12
-	ctx.f0.f64 = double(float(std::fma(ctx.f0.f64, ctx.f0.f64, ctx.f12.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f0.f64, ctx.f12.f64)));
 	// fmadds f0,f13,f13,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f13.f64, ctx.f13.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f13.f64, ctx.f0.f64)));
 	// fsqrts f31,f0
 	f31.f64 = double(float(sqrt(ctx.f0.f64)));
 	// lfs f0,4(r29)
@@ -46726,16 +45871,16 @@ loc_826E6D1C:
 	// lis r11,-32256
 	ctx.r11.s64 = -2113929216;
 	// fnmsubs f12,f12,f0,f5
-	ctx.f12.f64 = double(float(-std::fma(ctx.f12.f64, ctx.f0.f64, -ctx.f5.f64)));
+	ctx.f12.f64 = double(float(-REX_FMA(ctx.f12.f64, ctx.f0.f64, -ctx.f5.f64)));
 	// fnmsubs f11,f11,f0,f6
-	ctx.f11.f64 = double(float(-std::fma(ctx.f11.f64, ctx.f0.f64, -ctx.f6.f64)));
+	ctx.f11.f64 = double(float(-REX_FMA(ctx.f11.f64, ctx.f0.f64, -ctx.f6.f64)));
 	// lfs f13,2604(r11)
 	temp.u32 = REX_LOAD_U32(ctx.r11.u32 + 2604);
 	ctx.f13.f64 = double(temp.f32);
 	// lis r11,-32256
 	ctx.r11.s64 = -2113929216;
 	// fnmsubs f10,f10,f13,f4
-	ctx.f10.f64 = double(float(-std::fma(ctx.f10.f64, ctx.f13.f64, -ctx.f4.f64)));
+	ctx.f10.f64 = double(float(-REX_FMA(ctx.f10.f64, ctx.f13.f64, -ctx.f4.f64)));
 	// fsubs f9,f12,f0
 	ctx.f9.f64 = double(float(ctx.f12.f64 - ctx.f0.f64));
 	// fsubs f8,f11,f0
@@ -46849,16 +45994,16 @@ DEFINE_REX_FUNC(sub_826E6D98) {
 	// fsubs f7,f7,f0
 	ctx.f7.f64 = double(float(ctx.f7.f64 - ctx.f0.f64));
 	// fmadds f0,f6,f13,f11
-	ctx.f0.f64 = double(float(std::fma(ctx.f6.f64, ctx.f13.f64, ctx.f11.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f6.f64, ctx.f13.f64, ctx.f11.f64)));
 	// lfs f11,19808(r11)
 	temp.u32 = REX_LOAD_U32(ctx.r11.u32 + 19808);
 	ctx.f11.f64 = double(temp.f32);
 	// lis r11,-32251
 	ctx.r11.s64 = -2113601536;
 	// fmadds f13,f8,f13,f10
-	ctx.f13.f64 = double(float(std::fma(ctx.f8.f64, ctx.f13.f64, ctx.f10.f64)));
+	ctx.f13.f64 = double(float(REX_FMA(ctx.f8.f64, ctx.f13.f64, ctx.f10.f64)));
 	// fmadds f12,f7,f12,f9
-	ctx.f12.f64 = double(float(std::fma(ctx.f7.f64, ctx.f12.f64, ctx.f9.f64)));
+	ctx.f12.f64 = double(float(REX_FMA(ctx.f7.f64, ctx.f12.f64, ctx.f9.f64)));
 	// stfs f13,4(r8)
 	temp.f32 = float(ctx.f13.f64);
 	REX_STORE_U32(ctx.r8.u32 + 4, temp.u32);
@@ -46999,9 +46144,6 @@ DEFINE_REX_FUNC(sub_826E6E48) {
 		const auto s_r28 = ctx.r28; ctx.r28 = r28;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; ctx.v13 = v13; sub_827087D8(ctx, base); v0 = ctx.v0; v13 = ctx.v13; }
 		r22 = ctx.r22;
 		ctx.r22 = s_r22;
@@ -47017,9 +46159,6 @@ DEFINE_REX_FUNC(sub_826E6E48) {
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// mr r30,r3
 	r30.u64 = ctx.r3.u64;
@@ -47097,9 +46236,9 @@ loc_826E6F38:
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 80);
 	ctx.f13.f64 = double(temp.f32);
 	// fmadds f0,f0,f0,f12
-	ctx.f0.f64 = double(float(std::fma(ctx.f0.f64, ctx.f0.f64, ctx.f12.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f0.f64, ctx.f12.f64)));
 	// fmadds f28,f13,f13,f0
-	f28.f64 = double(float(std::fma(ctx.f13.f64, ctx.f13.f64, ctx.f0.f64)));
+	f28.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f13.f64, ctx.f0.f64)));
 	// lfs f0,-23488(r11)
 	temp.u32 = REX_LOAD_U32(ctx.r11.u32 + -23488);
 	ctx.f0.f64 = double(temp.f32);
@@ -47154,9 +46293,6 @@ loc_826E6FA4:
 		const auto s_f28 = ctx.f28; ctx.f28 = f28;
 		const auto s_f29 = ctx.f29; ctx.f29 = f29;
 		const auto s_f30 = ctx.f30; ctx.f30 = f30;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; ctx.v13 = v13; sub_8225CF68(ctx, base); v0 = ctx.v0; v13 = ctx.v13; }
 		r22 = ctx.r22;
 		ctx.r22 = s_r22;
@@ -47188,9 +46324,6 @@ loc_826E6FA4:
 		ctx.f29 = s_f29;
 		f30 = ctx.f30;
 		ctx.f30 = s_f30;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// mr r30,r3
 	r30.u64 = ctx.r3.u64;
@@ -47280,9 +46413,6 @@ loc_826E6FA4:
 		const auto s_f28 = ctx.f28; ctx.f28 = f28;
 		const auto s_f29 = ctx.f29; ctx.f29 = f29;
 		const auto s_f30 = ctx.f30; ctx.f30 = f30;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; ctx.v13 = v13; sub_82701F58(ctx, base); v0 = ctx.v0; v13 = ctx.v13; }
 		r22 = ctx.r22;
 		ctx.r22 = s_r22;
@@ -47316,9 +46446,6 @@ loc_826E6FA4:
 		ctx.f29 = s_f29;
 		f30 = ctx.f30;
 		ctx.f30 = s_f30;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// clrlwi r11,r28,24
 	ctx.r11.u64 = r28.u32 & 0xFF;
@@ -47353,9 +46480,6 @@ loc_826E6FA4:
 		const auto s_f28 = ctx.f28; ctx.f28 = f28;
 		const auto s_f29 = ctx.f29; ctx.f29 = f29;
 		const auto s_f30 = ctx.f30; ctx.f30 = f30;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; ctx.v13 = v13; sub_826E8308(ctx, base); v0 = ctx.v0; v13 = ctx.v13; }
 		r22 = ctx.r22;
 		ctx.r22 = s_r22;
@@ -47389,9 +46513,6 @@ loc_826E6FA4:
 		ctx.f29 = s_f29;
 		f30 = ctx.f30;
 		ctx.f30 = s_f30;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// clrlwi r11,r3,24
 	ctx.r11.u64 = ctx.r3.u32 & 0xFF;
@@ -47444,9 +46565,9 @@ loc_826E7060:
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 80);
 	ctx.f13.f64 = double(temp.f32);
 	// fmadds f0,f0,f0,f12
-	ctx.f0.f64 = double(float(std::fma(ctx.f0.f64, ctx.f0.f64, ctx.f12.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f0.f64, ctx.f12.f64)));
 	// fmadds f31,f13,f13,f0
-	f31.f64 = double(float(std::fma(ctx.f13.f64, ctx.f13.f64, ctx.f0.f64)));
+	f31.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f13.f64, ctx.f0.f64)));
 	// mtctr r9
 	ctr.u64 = ctx.r9.u64;
 	// bctrl 
@@ -47531,9 +46652,6 @@ loc_826E7110:
 		const auto s_f29 = ctx.f29; ctx.f29 = f29;
 		const auto s_f30 = ctx.f30; ctx.f30 = f30;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; ctx.v13 = v13; sub_826FE880(ctx, base); v0 = ctx.v0; v13 = ctx.v13; }
 		r22 = ctx.r22;
 		ctx.r22 = s_r22;
@@ -47569,9 +46687,6 @@ loc_826E7110:
 		ctx.f30 = s_f30;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// mr r23,r3
 	r23.u64 = ctx.r3.u64;
@@ -47625,9 +46740,6 @@ loc_826E7124:
 		const auto s_f29 = ctx.f29; ctx.f29 = f29;
 		const auto s_f30 = ctx.f30; ctx.f30 = f30;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; ctx.v13 = v13; sub_826E0A90(ctx, base); v0 = ctx.v0; v13 = ctx.v13; }
 		r22 = ctx.r22;
 		ctx.r22 = s_r22;
@@ -47663,9 +46775,6 @@ loc_826E7124:
 		ctx.f30 = s_f30;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 loc_826E715C:
 	// addi r1,r1,240
@@ -48049,7 +47158,6 @@ DEFINE_REX_FUNC(sub_826E7388) {
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
 		sub_82703200(ctx, base);
 		r28 = ctx.r28;
 		ctx.r28 = s_r28;
@@ -48059,7 +47167,6 @@ DEFINE_REX_FUNC(sub_826E7388) {
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.ctr = s_ctr;
 	}
 	// lwz r11,0(r30)
 	ctx.r11.u64 = REX_LOAD_U32(r30.u32 + 0);
@@ -48137,9 +47244,6 @@ loc_826E7434:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82702EF0(ctx, base);
 		r28 = ctx.r28;
 		ctx.r28 = s_r28;
@@ -48149,9 +47253,6 @@ loc_826E7434:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// mr r6,r3
 	ctx.r6.u64 = ctx.r3.u64;
@@ -48168,9 +47269,6 @@ loc_826E7434:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82702F18(ctx, base);
 		r28 = ctx.r28;
 		ctx.r28 = s_r28;
@@ -48180,9 +47278,6 @@ loc_826E7434:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 loc_826E7464:
 	// lwz r11,0(r30)
@@ -48210,9 +47305,6 @@ loc_826E7464:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82702EF0(ctx, base);
 		r28 = ctx.r28;
 		ctx.r28 = s_r28;
@@ -48222,9 +47314,6 @@ loc_826E7464:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// mr r6,r3
 	ctx.r6.u64 = ctx.r3.u64;
@@ -48241,9 +47330,6 @@ loc_826E7464:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82702F18(ctx, base);
 		r28 = ctx.r28;
 		ctx.r28 = s_r28;
@@ -48253,9 +47339,6 @@ loc_826E7464:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 loc_826E74A0:
 	// mr r3,r30
@@ -49239,8 +48322,6 @@ loc_826E7AF0:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82708A18(ctx, base);
 		r29 = ctx.r29;
 		ctx.r29 = s_r29;
@@ -49248,8 +48329,6 @@ loc_826E7AF0:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// lis r11,-32251
 	ctx.r11.s64 = -2113601536;
@@ -49385,8 +48464,6 @@ loc_826E7BAC:
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_f30 = ctx.f30; ctx.f30 = f30;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; ctx.v13 = v13; sub_826FE880(ctx, base); v0 = ctx.v0; v13 = ctx.v13; }
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -49402,8 +48479,6 @@ loc_826E7BAC:
 		ctx.f30 = s_f30;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r31,r3
 	r31.u64 = ctx.r3.u64;
@@ -49458,8 +48533,6 @@ loc_826E7BAC:
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
 		const auto s_f30 = ctx.f30; ctx.f30 = f30;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; ctx.v13 = v13; sub_827087D8(ctx, base); v0 = ctx.v0; v13 = ctx.v13; }
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -49477,8 +48550,6 @@ loc_826E7BAC:
 		ctx.f30 = s_f30;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// lwz r11,1400(r3)
 	ctx.r11.u64 = REX_LOAD_U32(ctx.r3.u32 + 1400);
@@ -49521,9 +48592,9 @@ loc_826E7BAC:
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 88);
 	ctx.f13.f64 = double(temp.f32);
 	// fmadds f0,f0,f0,f12
-	ctx.f0.f64 = double(float(std::fma(ctx.f0.f64, ctx.f0.f64, ctx.f12.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f0.f64, ctx.f12.f64)));
 	// fmadds f0,f13,f13,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f13.f64, ctx.f13.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f13.f64, ctx.f0.f64)));
 	// fsqrts f0,f0
 	ctx.f0.f64 = double(float(sqrt(ctx.f0.f64)));
 	// fcmpu cr6,f0,f31
@@ -49558,8 +48629,6 @@ loc_826E7BAC:
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
 		const auto s_f30 = ctx.f30; ctx.f30 = f30;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; ctx.v13 = v13; sub_828BD310(ctx, base); v0 = ctx.v0; v13 = ctx.v13; }
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -49577,8 +48646,6 @@ loc_826E7BAC:
 		ctx.f30 = s_f30;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmpwi cr6,r3,0
 	cr6.compare<int32_t>(ctx.r3.s32, 0, xer);
@@ -49710,8 +48777,6 @@ loc_826E7D2C:
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_f30 = ctx.f30; ctx.f30 = f30;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; ctx.v13 = v13; sub_826FE880(ctx, base); v0 = ctx.v0; v13 = ctx.v13; }
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -49727,8 +48792,6 @@ loc_826E7D2C:
 		ctx.f30 = s_f30;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r31,r3
 	r31.u64 = ctx.r3.u64;
@@ -49783,8 +48846,6 @@ loc_826E7D2C:
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
 		const auto s_f30 = ctx.f30; ctx.f30 = f30;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; ctx.v13 = v13; sub_827087D8(ctx, base); v0 = ctx.v0; v13 = ctx.v13; }
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -49802,8 +48863,6 @@ loc_826E7D2C:
 		ctx.f30 = s_f30;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// lwz r11,1400(r3)
 	ctx.r11.u64 = REX_LOAD_U32(ctx.r3.u32 + 1400);
@@ -49840,9 +48899,9 @@ loc_826E7D2C:
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 88);
 	ctx.f13.f64 = double(temp.f32);
 	// fmadds f0,f0,f0,f12
-	ctx.f0.f64 = double(float(std::fma(ctx.f0.f64, ctx.f0.f64, ctx.f12.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f0.f64, ctx.f12.f64)));
 	// fmadds f0,f13,f13,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f13.f64, ctx.f13.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f13.f64, ctx.f0.f64)));
 	// fsqrts f0,f0
 	ctx.f0.f64 = double(float(sqrt(ctx.f0.f64)));
 	// fcmpu cr6,f0,f31
@@ -49937,15 +48996,11 @@ DEFINE_REX_FUNC(sub_826E7E20) {
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; ctx.v12 = v12; ctx.v13 = v13; sub_827087D8(ctx, base); v0 = ctx.v0; v12 = ctx.v12; v13 = ctx.v13; }
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -49958,15 +49013,11 @@ DEFINE_REX_FUNC(sub_826E7E20) {
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; ctx.v12 = v12; ctx.v13 = v13; sub_827087D8(ctx, base); v0 = ctx.v0; v12 = ctx.v12; v13 = ctx.v13; }
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// lwz r31,1400(r3)
 	r31.u64 = REX_LOAD_U32(ctx.r3.u32 + 1400);
@@ -49983,15 +49034,11 @@ loc_826E7E70:
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; ctx.v12 = v12; ctx.v13 = v13; sub_827087D8(ctx, base); v0 = ctx.v0; v12 = ctx.v12; v13 = ctx.v13; }
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -50004,15 +49051,11 @@ loc_826E7E70:
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; ctx.v12 = v12; ctx.v13 = v13; sub_827087D8(ctx, base); v0 = ctx.v0; v12 = ctx.v12; v13 = ctx.v13; }
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// lwz r11,1400(r3)
 	ctx.r11.u64 = REX_LOAD_U32(ctx.r3.u32 + 1400);
@@ -50088,13 +49131,13 @@ loc_826E7E94:
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 96);
 	ctx.f11.f64 = double(temp.f32);
 	// fmadds f0,f0,f0,f10
-	ctx.f0.f64 = double(float(std::fma(ctx.f0.f64, ctx.f0.f64, ctx.f10.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f0.f64, ctx.f10.f64)));
 	// fmadds f13,f13,f13,f9
-	ctx.f13.f64 = double(float(std::fma(ctx.f13.f64, ctx.f13.f64, ctx.f9.f64)));
+	ctx.f13.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f13.f64, ctx.f9.f64)));
 	// fmadds f0,f12,f12,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f12.f64, ctx.f12.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f12.f64, ctx.f12.f64, ctx.f0.f64)));
 	// fmadds f13,f11,f11,f13
-	ctx.f13.f64 = double(float(std::fma(ctx.f11.f64, ctx.f11.f64, ctx.f13.f64)));
+	ctx.f13.f64 = double(float(REX_FMA(ctx.f11.f64, ctx.f11.f64, ctx.f13.f64)));
 	// fcmpu cr6,f0,f13
 	cr6.compare(ctx.f0.f64, ctx.f13.f64);
 	// bge cr6,0x826e7f1c
@@ -50261,8 +49304,6 @@ loc_826E7F7C:
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; ctx.v13 = v13; sub_827087D8(ctx, base); v0 = ctx.v0; v13 = ctx.v13; }
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -50282,8 +49323,6 @@ loc_826E7F7C:
 		ctx.r31 = s_r31;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// lwz r11,1400(r3)
 	ctx.r11.u64 = REX_LOAD_U32(ctx.r3.u32 + 1400);
@@ -50320,9 +49359,9 @@ loc_826E7F7C:
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 84);
 	ctx.f13.f64 = double(temp.f32);
 	// fmadds f0,f0,f0,f12
-	ctx.f0.f64 = double(float(std::fma(ctx.f0.f64, ctx.f0.f64, ctx.f12.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f0.f64, ctx.f12.f64)));
 	// fmadds f0,f13,f13,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f13.f64, ctx.f13.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f13.f64, ctx.f0.f64)));
 	// fsqrts f0,f0
 	ctx.f0.f64 = double(float(sqrt(ctx.f0.f64)));
 	// fcmpu cr6,f0,f31
@@ -51283,8 +50322,6 @@ loc_826E85CC:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_827087D8(ctx, base);
 		r27 = ctx.r27;
 		ctx.r27 = s_r27;
@@ -51296,8 +50333,6 @@ loc_826E85CC:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// lwz r11,1400(r3)
 	ctx.r11.u64 = REX_LOAD_U32(ctx.r3.u32 + 1400);
@@ -51601,8 +50636,6 @@ loc_826E87DC:
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
 		const auto s_f30 = ctx.f30; ctx.f30 = f30;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82238C28(ctx, base);
 		r28 = ctx.r28;
 		ctx.r28 = s_r28;
@@ -51616,8 +50649,6 @@ loc_826E87DC:
 		ctx.f30 = s_f30;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// lwz r11,32(r31)
 	ctx.r11.u64 = REX_LOAD_U32(r31.u32 + 32);
@@ -52012,15 +51043,11 @@ DEFINE_REX_FUNC(sub_826E8A20) {
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3560(ctx, base);
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r3,r31
 	ctx.r3.u64 = r31.u64;
@@ -52084,15 +51111,11 @@ DEFINE_REX_FUNC(sub_826E8A80) {
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3560(ctx, base);
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r3,r31
 	ctx.r3.u64 = r31.u64;
@@ -52817,8 +51840,6 @@ DEFINE_REX_FUNC(sub_826E8F10) {
 		const auto s_r28 = ctx.r28; ctx.r28 = r28;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82708A18(ctx, base);
 		r28 = ctx.r28;
 		ctx.r28 = s_r28;
@@ -52826,8 +51847,6 @@ DEFINE_REX_FUNC(sub_826E8F10) {
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// lis r11,-32251
 	ctx.r11.s64 = -2113601536;
@@ -52863,8 +51882,6 @@ loc_826E8F78:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82701F88(ctx, base);
 		r28 = ctx.r28;
 		ctx.r28 = s_r28;
@@ -52874,8 +51891,6 @@ loc_826E8F78:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// extsb r11,r3
 	ctx.r11.s64 = ctx.r3.s8;
@@ -52935,9 +51950,6 @@ loc_826E8FC4:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82783140(ctx, base);
 		r28 = ctx.r28;
 		ctx.r28 = s_r28;
@@ -52947,9 +51959,6 @@ loc_826E8FC4:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 loc_826E8FE4:
 	// addi r1,r1,128
@@ -52998,15 +52007,11 @@ loc_826E9018:
 	{
 		const auto s_r28 = ctx.r28; ctx.r28 = r28;
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826FE880(ctx, base);
 		r28 = ctx.r28;
 		ctx.r28 = s_r28;
 		r29 = ctx.r29;
 		ctx.r29 = s_r29;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r31,r3
 	r31.u64 = ctx.r3.u64;
@@ -53203,8 +52208,6 @@ loc_826E9134:
 		const auto s_f29 = ctx.f29; ctx.f29 = f29;
 		const auto s_f30 = ctx.f30; ctx.f30 = f30;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; ctx.v11 = v11; ctx.v12 = v12; ctx.v13 = v13; sub_826FE880(ctx, base); v0 = ctx.v0; v11 = ctx.v11; v12 = ctx.v12; v13 = ctx.v13; }
 		r22 = ctx.r22;
 		ctx.r22 = s_r22;
@@ -53226,8 +52229,6 @@ loc_826E9134:
 		ctx.f30 = s_f30;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r28,r3
 	r28.u64 = ctx.r3.u64;
@@ -53285,8 +52286,6 @@ loc_826E9134:
 		const auto s_f29 = ctx.f29; ctx.f29 = f29;
 		const auto s_f30 = ctx.f30; ctx.f30 = f30;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; ctx.v11 = v11; ctx.v12 = v12; ctx.v13 = v13; sub_827087D8(ctx, base); v0 = ctx.v0; v11 = ctx.v11; v12 = ctx.v12; v13 = ctx.v13; }
 		r22 = ctx.r22;
 		ctx.r22 = s_r22;
@@ -53310,8 +52309,6 @@ loc_826E9134:
 		ctx.f30 = s_f30;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -53446,9 +52443,9 @@ loc_826E9258:
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 80);
 	ctx.f13.f64 = double(temp.f32);
 	// fmadds f0,f0,f0,f12
-	ctx.f0.f64 = double(float(std::fma(ctx.f0.f64, ctx.f0.f64, ctx.f12.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f0.f64, ctx.f12.f64)));
 	// fmadds f0,f13,f13,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f13.f64, ctx.f13.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f13.f64, ctx.f0.f64)));
 	// fcmpu cr6,f0,f11
 	cr6.compare(ctx.f0.f64, ctx.f11.f64);
 	// blt cr6,0x826e92dc
@@ -53494,9 +52491,6 @@ loc_826E9258:
 		const auto s_f29 = ctx.f29; ctx.f29 = f29;
 		const auto s_f30 = ctx.f30; ctx.f30 = f30;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; ctx.v11 = v11; ctx.v12 = v12; ctx.v13 = v13; sub_828BD310(ctx, base); v0 = ctx.v0; v11 = ctx.v11; v12 = ctx.v12; v13 = ctx.v13; }
 		r22 = ctx.r22;
 		ctx.r22 = s_r22;
@@ -53524,9 +52518,6 @@ loc_826E9258:
 		ctx.f30 = s_f30;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// cmpwi cr6,r3,0
 	cr6.compare<int32_t>(ctx.r3.s32, 0, xer);
@@ -53857,9 +52848,6 @@ DEFINE_REX_FUNC(sub_826E9440) {
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; ctx.v13 = v13; sub_826E81E0(ctx, base); v0 = ctx.v0; v13 = ctx.v13; }
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -53873,9 +52861,6 @@ DEFINE_REX_FUNC(sub_826E9440) {
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// mr r29,r3
 	r29.u64 = ctx.r3.u64;
@@ -53894,9 +52879,6 @@ DEFINE_REX_FUNC(sub_826E9440) {
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; ctx.v13 = v13; sub_826E81E0(ctx, base); v0 = ctx.v0; v13 = ctx.v13; }
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -53910,9 +52892,6 @@ DEFINE_REX_FUNC(sub_826E9440) {
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// lwz r11,32(r27)
 	ctx.r11.u64 = REX_LOAD_U32(r27.u32 + 32);
@@ -53962,9 +52941,9 @@ loc_826E94E8:
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 80);
 	ctx.f13.f64 = double(temp.f32);
 	// fmadds f0,f0,f0,f12
-	ctx.f0.f64 = double(float(std::fma(ctx.f0.f64, ctx.f0.f64, ctx.f12.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f0.f64, ctx.f12.f64)));
 	// fmadds f12,f13,f13,f0
-	ctx.f12.f64 = double(float(std::fma(ctx.f13.f64, ctx.f13.f64, ctx.f0.f64)));
+	ctx.f12.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f13.f64, ctx.f0.f64)));
 	// bne cr6,0x826e9530
 	if (!cr6.eq) goto loc_826E9530;
 	// addi r11,r26,16
@@ -54000,9 +52979,9 @@ loc_826E9530:
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 80);
 	ctx.f13.f64 = double(temp.f32);
 	// fmadds f0,f0,f0,f11
-	ctx.f0.f64 = double(float(std::fma(ctx.f0.f64, ctx.f0.f64, ctx.f11.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f0.f64, ctx.f11.f64)));
 	// fmadds f0,f13,f13,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f13.f64, ctx.f13.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f13.f64, ctx.f0.f64)));
 	// bne cr6,0x826e9590
 	if (!cr6.eq) goto loc_826E9590;
 	// fcmpu cr6,f12,f0
@@ -54353,8 +53332,6 @@ DEFINE_REX_FUNC(sub_826E9738) {
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826FE880(ctx, base);
 		r20 = ctx.r20;
 		ctx.r20 = s_r20;
@@ -54366,8 +53343,6 @@ DEFINE_REX_FUNC(sub_826E9738) {
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -54381,8 +53356,6 @@ DEFINE_REX_FUNC(sub_826E9738) {
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82708A18(ctx, base);
 		r20 = ctx.r20;
 		ctx.r20 = s_r20;
@@ -54394,8 +53367,6 @@ DEFINE_REX_FUNC(sub_826E9738) {
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r6,r3
 	ctx.r6.u64 = ctx.r3.u64;
@@ -54460,8 +53431,6 @@ loc_826E9794:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826FDDC0(ctx, base);
 		r20 = ctx.r20;
 		ctx.r20 = s_r20;
@@ -54481,8 +53450,6 @@ loc_826E9794:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// extsb r11,r3
 	ctx.r11.s64 = ctx.r3.s8;
@@ -54801,8 +53768,6 @@ DEFINE_REX_FUNC(sub_826E99A8) {
 		const auto s_r28 = ctx.r28; ctx.r28 = r28;
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; sub_827087D8(ctx, base); v0 = ctx.v0; }
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -54820,8 +53785,6 @@ DEFINE_REX_FUNC(sub_826E99A8) {
 		ctx.r29 = s_r29;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r22,r3
 	r22.u64 = ctx.r3.u64;
@@ -54852,8 +53815,6 @@ DEFINE_REX_FUNC(sub_826E99A8) {
 		const auto s_r28 = ctx.r28; ctx.r28 = r28;
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; sub_82238C28(ctx, base); v0 = ctx.v0; }
 		r22 = ctx.r22;
 		ctx.r22 = s_r22;
@@ -54873,8 +53834,6 @@ DEFINE_REX_FUNC(sub_826E99A8) {
 		ctx.r29 = s_r29;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -54961,8 +53920,6 @@ loc_826E9A78:
 		const auto s_r28 = ctx.r28; ctx.r28 = r28;
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; sub_826FDDC0(ctx, base); v0 = ctx.v0; }
 		r22 = ctx.r22;
 		ctx.r22 = s_r22;
@@ -54982,8 +53939,6 @@ loc_826E9A78:
 		ctx.r29 = s_r29;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// extsb r11,r3
 	ctx.r11.s64 = ctx.r3.s8;
@@ -55103,8 +54058,6 @@ loc_826E9B34:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; sub_82701F88(ctx, base); v0 = ctx.v0; }
 		r22 = ctx.r22;
 		ctx.r22 = s_r22;
@@ -55126,8 +54079,6 @@ loc_826E9B34:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// lis r10,-31975
 	ctx.r10.s64 = -2095513600;
@@ -55226,8 +54177,6 @@ DEFINE_REX_FUNC(sub_826E9BA8) {
 		const auto s_r28 = ctx.r28; ctx.r28 = r28;
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82701F88(ctx, base);
 		r27 = ctx.r27;
 		ctx.r27 = s_r27;
@@ -55237,8 +54186,6 @@ DEFINE_REX_FUNC(sub_826E9BA8) {
 		ctx.r29 = s_r29;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// extsb r11,r3
 	ctx.r11.s64 = ctx.r3.s8;
@@ -55265,8 +54212,6 @@ loc_826E9C04:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821778A0(ctx, base);
 		r27 = ctx.r27;
 		ctx.r27 = s_r27;
@@ -55278,8 +54223,6 @@ loc_826E9C04:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmpw cr6,r3,r29
 	cr6.compare<int32_t>(ctx.r3.s32, r29.s32, xer);
@@ -55301,8 +54244,6 @@ loc_826E9C04:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82702CA0(ctx, base);
 		r27 = ctx.r27;
 		ctx.r27 = s_r27;
@@ -55314,8 +54255,6 @@ loc_826E9C04:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// b 0x826e9c44
 	goto loc_826E9C44;
@@ -55427,8 +54366,6 @@ loc_826E9CC0:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821778A0(ctx, base);
 		r27 = ctx.r27;
 		ctx.r27 = s_r27;
@@ -55440,8 +54377,6 @@ loc_826E9CC0:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmpw cr6,r3,r28
 	cr6.compare<int32_t>(ctx.r3.s32, r28.s32, xer);
@@ -55479,8 +54414,6 @@ loc_826E9CE0:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82783248(ctx, base);
 		r27 = ctx.r27;
 		ctx.r27 = s_r27;
@@ -55492,8 +54425,6 @@ loc_826E9CE0:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// add r3,r3,r27
 	ctx.r3.u64 = ctx.r3.u64 + r27.u64;
@@ -55592,8 +54523,6 @@ loc_826E9D78:
 		const auto s_r28 = ctx.r28; ctx.r28 = r28;
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826FE880(ctx, base);
 		r27 = ctx.r27;
 		ctx.r27 = s_r27;
@@ -55603,8 +54532,6 @@ loc_826E9D78:
 		ctx.r29 = s_r29;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r30,r3
 	r30.u64 = ctx.r3.u64;
@@ -55657,8 +54584,6 @@ loc_826E9D78:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82702CD8(ctx, base);
 		r27 = ctx.r27;
 		ctx.r27 = s_r27;
@@ -55670,8 +54595,6 @@ loc_826E9D78:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// clrlwi r11,r3,24
 	ctx.r11.u64 = ctx.r3.u32 & 0xFF;
@@ -55691,8 +54614,6 @@ loc_826E9D78:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82702DB8(ctx, base);
 		r27 = ctx.r27;
 		ctx.r27 = s_r27;
@@ -55704,8 +54625,6 @@ loc_826E9D78:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// b 0x826e9e1c
 	goto loc_826E9E1C;
@@ -55718,8 +54637,6 @@ loc_826E9DF4:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82702CD8(ctx, base);
 		r27 = ctx.r27;
 		ctx.r27 = s_r27;
@@ -55731,8 +54648,6 @@ loc_826E9DF4:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// clrlwi r11,r3,24
 	ctx.r11.u64 = ctx.r3.u32 & 0xFF;
@@ -56107,8 +55022,6 @@ loc_826E9FD0:
 		const auto s_r28 = ctx.r28; ctx.r28 = r28;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; ctx.v13 = v13; sub_826E9300(ctx, base); v0 = ctx.v0; v13 = ctx.v13; }
 		r15 = ctx.r15;
 		ctx.r15 = s_r15;
@@ -56142,8 +55055,6 @@ loc_826E9FD0:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// clrlwi r11,r3,24
 	ctx.r11.u64 = ctx.r3.u32 & 0xFF;
@@ -56233,7 +55144,7 @@ loc_826EA00C:
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 132);
 	ctx.f0.f64 = double(temp.f32);
 	// fmadds f31,f0,f0,f13
-	f31.f64 = double(float(std::fma(ctx.f0.f64, ctx.f0.f64, ctx.f13.f64)));
+	f31.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f0.f64, ctx.f13.f64)));
 	// fmr f13,f31
 	ctx.f13.f64 = f31.f64;
 	// beq cr6,0x826ea0b4
@@ -56611,8 +55522,6 @@ loc_826EA2DC:
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
 		const auto s_f25 = ctx.f25; ctx.f25 = f25;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; ctx.v13 = v13; sub_826C4CA8(ctx, base); v0 = ctx.v0; v13 = ctx.v13; }
 		r15 = ctx.r15;
 		ctx.r15 = s_r15;
@@ -56652,8 +55561,6 @@ loc_826EA2DC:
 		ctx.f25 = s_f25;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// clrlwi r11,r3,24
 	ctx.r11.u64 = ctx.r3.u32 & 0xFF;
@@ -57123,8 +56030,6 @@ loc_826EA5BC:
 		const auto s_f25 = ctx.f25; ctx.f25 = f25;
 		const auto s_f27 = ctx.f27; ctx.f27 = f27;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; ctx.v13 = v13; sub_821C31A8(ctx, base); v0 = ctx.v0; v13 = ctx.v13; }
 		r15 = ctx.r15;
 		ctx.r15 = s_r15;
@@ -57166,8 +56071,6 @@ loc_826EA5BC:
 		ctx.f27 = s_f27;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// lwz r11,572(r25)
 	ctx.r11.u64 = REX_LOAD_U32(r25.u32 + 572);
@@ -57276,8 +56179,6 @@ loc_826EA640:
 		const auto s_f29 = ctx.f29; ctx.f29 = f29;
 		const auto s_f30 = ctx.f30; ctx.f30 = f30;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; ctx.v13 = v13; sub_821F6E38(ctx, base); v0 = ctx.v0; v13 = ctx.v13; }
 		r15 = ctx.r15;
 		ctx.r15 = s_r15;
@@ -57325,8 +56226,6 @@ loc_826EA640:
 		ctx.f30 = s_f30;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// li r3,0
 	ctx.r3.s64 = 0;
@@ -57469,9 +56368,6 @@ loc_826EA744:
 		const auto s_f29 = ctx.f29; ctx.f29 = f29;
 		const auto s_f30 = ctx.f30; ctx.f30 = f30;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; ctx.v13 = v13; sub_821F2ED0(ctx, base); v0 = ctx.v0; v13 = ctx.v13; }
 		r15 = ctx.r15;
 		ctx.r15 = s_r15;
@@ -57521,9 +56417,6 @@ loc_826EA744:
 		ctx.f30 = s_f30;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// lfs f0,148(r1)
 	ctx.fpscr.disableFlushMode();
@@ -57535,7 +56428,7 @@ loc_826EA744:
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 144);
 	ctx.f12.f64 = double(temp.f32);
 	// fmadds f12,f26,f27,f12
-	ctx.f12.f64 = double(float(std::fma(f26.f64, f27.f64, ctx.f12.f64)));
+	ctx.f12.f64 = double(float(REX_FMA(f26.f64, f27.f64, ctx.f12.f64)));
 	// lis r11,-32255
 	ctx.r11.s64 = -2113863680;
 	// li r7,-1
@@ -57554,7 +56447,7 @@ loc_826EA744:
 	// fsubs f13,f13,f31
 	ctx.f13.f64 = double(float(ctx.f13.f64 - f31.f64));
 	// fnmsubs f2,f31,f0,f13
-	ctx.f2.f64 = double(float(-std::fma(f31.f64, ctx.f0.f64, -ctx.f13.f64)));
+	ctx.f2.f64 = double(float(-REX_FMA(f31.f64, ctx.f0.f64, -ctx.f13.f64)));
 	// bl 0x821f6e38
 	ctx.lr = 0x826EA794;
 	{
@@ -57582,9 +56475,6 @@ loc_826EA744:
 		const auto s_f29 = ctx.f29; ctx.f29 = f29;
 		const auto s_f30 = ctx.f30; ctx.f30 = f30;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; ctx.v13 = v13; sub_821F6E38(ctx, base); v0 = ctx.v0; v13 = ctx.v13; }
 		r15 = ctx.r15;
 		ctx.r15 = s_r15;
@@ -57634,9 +56524,6 @@ loc_826EA744:
 		ctx.f30 = s_f30;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 loc_826EA794:
 	// addi r11,r22,5
@@ -57813,9 +56700,6 @@ loc_826EA848:
 		const auto s_f29 = ctx.f29; ctx.f29 = f29;
 		const auto s_f30 = ctx.f30; ctx.f30 = f30;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; ctx.v13 = v13; sub_821C31A8(ctx, base); v0 = ctx.v0; v13 = ctx.v13; }
 		r15 = ctx.r15;
 		ctx.r15 = s_r15;
@@ -57865,9 +56749,6 @@ loc_826EA848:
 		ctx.f30 = s_f30;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// lfs f12,112(r1)
 	ctx.fpscr.disableFlushMode();
@@ -58000,9 +56881,6 @@ loc_826EA848:
 		const auto s_f29 = ctx.f29; ctx.f29 = f29;
 		const auto s_f30 = ctx.f30; ctx.f30 = f30;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; ctx.v13 = v13; sub_821BB3D8(ctx, base); v0 = ctx.v0; v13 = ctx.v13; }
 		r15 = ctx.r15;
 		ctx.r15 = s_r15;
@@ -58052,9 +56930,6 @@ loc_826EA848:
 		ctx.f30 = s_f30;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -58101,9 +56976,6 @@ loc_826EA848:
 		const auto s_f29 = ctx.f29; ctx.f29 = f29;
 		const auto s_f30 = ctx.f30; ctx.f30 = f30;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; ctx.v13 = v13; sub_821BF348(ctx, base); v0 = ctx.v0; v13 = ctx.v13; }
 		r15 = ctx.r15;
 		ctx.r15 = s_r15;
@@ -58153,9 +57025,6 @@ loc_826EA848:
 		ctx.f30 = s_f30;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// bl 0x82146790
 	ctx.lr = 0x826EA974;
@@ -58184,9 +57053,6 @@ loc_826EA848:
 		const auto s_f29 = ctx.f29; ctx.f29 = f29;
 		const auto s_f30 = ctx.f30; ctx.f30 = f30;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; ctx.v13 = v13; sub_82146790(ctx, base); v0 = ctx.v0; v13 = ctx.v13; }
 		r15 = ctx.r15;
 		ctx.r15 = s_r15;
@@ -58236,9 +57102,6 @@ loc_826EA848:
 		ctx.f30 = s_f30;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// addi r1,r1,416
 	ctx.r1.s64 = ctx.r1.s64 + 416;
@@ -58292,9 +57155,6 @@ loc_826EA984:
 		const auto s_f29 = ctx.f29; ctx.f29 = f29;
 		const auto s_f30 = ctx.f30; ctx.f30 = f30;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; ctx.v13 = v13; sub_821BB3D8(ctx, base); v0 = ctx.v0; v13 = ctx.v13; }
 		r15 = ctx.r15;
 		ctx.r15 = s_r15;
@@ -58344,9 +57204,6 @@ loc_826EA984:
 		ctx.f30 = s_f30;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -58391,9 +57248,6 @@ loc_826EA984:
 		const auto s_f29 = ctx.f29; ctx.f29 = f29;
 		const auto s_f30 = ctx.f30; ctx.f30 = f30;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; ctx.v13 = v13; sub_821BF348(ctx, base); v0 = ctx.v0; v13 = ctx.v13; }
 		r15 = ctx.r15;
 		ctx.r15 = s_r15;
@@ -58443,9 +57297,6 @@ loc_826EA984:
 		ctx.f30 = s_f30;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// bl 0x82146790
 	ctx.lr = 0x826EA9D0;
@@ -58474,9 +57325,6 @@ loc_826EA984:
 		const auto s_f29 = ctx.f29; ctx.f29 = f29;
 		const auto s_f30 = ctx.f30; ctx.f30 = f30;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; ctx.v13 = v13; sub_82146790(ctx, base); v0 = ctx.v0; v13 = ctx.v13; }
 		r15 = ctx.r15;
 		ctx.r15 = s_r15;
@@ -58526,9 +57374,6 @@ loc_826EA984:
 		ctx.f30 = s_f30;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// addi r1,r1,416
 	ctx.r1.s64 = ctx.r1.s64 + 416;
@@ -58568,9 +57413,6 @@ loc_826EA9E0:
 		const auto s_f29 = ctx.f29; ctx.f29 = f29;
 		const auto s_f30 = ctx.f30; ctx.f30 = f30;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; ctx.v13 = v13; sub_82146790(ctx, base); v0 = ctx.v0; v13 = ctx.v13; }
 		r15 = ctx.r15;
 		ctx.r15 = s_r15;
@@ -58620,9 +57462,6 @@ loc_826EA9E0:
 		ctx.f30 = s_f30;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// addi r1,r1,416
 	ctx.r1.s64 = ctx.r1.s64 + 416;
@@ -58711,9 +57550,6 @@ loc_826EAA40:
 		const auto s_f29 = ctx.f29; ctx.f29 = f29;
 		const auto s_f30 = ctx.f30; ctx.f30 = f30;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; ctx.v13 = v13; sub_8227E948(ctx, base); v0 = ctx.v0; v13 = ctx.v13; }
 		r15 = ctx.r15;
 		ctx.r15 = s_r15;
@@ -58763,9 +57599,6 @@ loc_826EAA40:
 		ctx.f30 = s_f30;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 loc_826EAA58:
 	// addi r1,r1,416
@@ -58814,15 +57647,11 @@ DEFINE_REX_FUNC(sub_826EAA68) {
 	{
 		const auto s_r28 = ctx.r28; ctx.r28 = r28;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826C4CA8(ctx, base);
 		r28 = ctx.r28;
 		ctx.r28 = s_r28;
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// clrlwi r11,r3,24
 	ctx.r11.u64 = ctx.r3.u32 & 0xFF;
@@ -58889,8 +57718,6 @@ loc_826EAAF8:
 		const auto s_r27 = ctx.r27; ctx.r27 = r27;
 		const auto s_r28 = ctx.r28; ctx.r28 = r28;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_8225CF68(ctx, base);
 		r27 = ctx.r27;
 		ctx.r27 = s_r27;
@@ -58898,8 +57725,6 @@ loc_826EAAF8:
 		ctx.r28 = s_r28;
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -58922,8 +57747,6 @@ loc_826EAB08:
 		const auto s_r27 = ctx.r27; ctx.r27 = r27;
 		const auto s_r28 = ctx.r28; ctx.r28 = r28;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_8225CF68(ctx, base);
 		r27 = ctx.r27;
 		ctx.r27 = s_r27;
@@ -58931,8 +57754,6 @@ loc_826EAB08:
 		ctx.r28 = s_r28;
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -58999,8 +57820,6 @@ loc_826EAB74:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826E9E60(ctx, base);
 		r27 = ctx.r27;
 		ctx.r27 = s_r27;
@@ -59012,8 +57831,6 @@ loc_826EAB74:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// addi r31,r31,1
 	r31.s64 = r31.s64 + 1;
@@ -59051,8 +57868,6 @@ loc_826EABA8:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826E9E60(ctx, base);
 		r27 = ctx.r27;
 		ctx.r27 = s_r27;
@@ -59064,8 +57879,6 @@ loc_826EABA8:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// addi r31,r31,1
 	r31.s64 = r31.s64 + 1;
@@ -59135,8 +57948,6 @@ DEFINE_REX_FUNC(sub_826EABD8) {
 		const auto s_r23 = ctx.r23; ctx.r23 = r23;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821778A0(ctx, base);
 		r22 = ctx.r22;
 		ctx.r22 = s_r22;
@@ -59146,8 +57957,6 @@ DEFINE_REX_FUNC(sub_826EABD8) {
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmpwi cr6,r3,1
 	cr6.compare<int32_t>(ctx.r3.s32, 1, xer);
@@ -59508,9 +58317,6 @@ loc_826EAE84:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821778A0(ctx, base);
 		r22 = ctx.r22;
 		ctx.r22 = s_r22;
@@ -59532,9 +58338,6 @@ loc_826EAE84:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// cmpwi cr6,r3,2
 	cr6.compare<int32_t>(ctx.r3.s32, 2, xer);
@@ -59712,9 +58515,6 @@ loc_826EAFB4:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821778A0(ctx, base);
 		r22 = ctx.r22;
 		ctx.r22 = s_r22;
@@ -59736,9 +58536,6 @@ loc_826EAFB4:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// cmpw cr6,r3,r31
 	cr6.compare<int32_t>(ctx.r3.s32, r31.s32, xer);
@@ -59907,8 +58704,6 @@ DEFINE_REX_FUNC(sub_826EB048) {
 		const auto s_r21 = ctx.r21; ctx.r21 = r21;
 		const auto s_r22 = ctx.r22; ctx.r22 = r22;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr0 = ctx.cr0; ctx.cr0 = cr0;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82701F88(ctx, base);
 		r15 = ctx.r15;
 		ctx.r15 = s_r15;
@@ -59926,8 +58721,6 @@ DEFINE_REX_FUNC(sub_826EB048) {
 		ctx.r22 = s_r22;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr0 = s_cr0;
-		ctx.xer = s_xer;
 	}
 	// mr r11,r3
 	ctx.r11.u64 = ctx.r3.u64;
@@ -59953,8 +58746,6 @@ DEFINE_REX_FUNC(sub_826EB048) {
 		const auto s_r22 = ctx.r22; ctx.r22 = r22;
 		const auto s_r25 = ctx.r25; ctx.r25 = r25;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr0 = ctx.cr0; ctx.cr0 = cr0;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82238C28(ctx, base);
 		r15 = ctx.r15;
 		ctx.r15 = s_r15;
@@ -59974,8 +58765,6 @@ DEFINE_REX_FUNC(sub_826EB048) {
 		ctx.r25 = s_r25;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr0 = s_cr0;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r25,0
 	cr6.compare<uint32_t>(r25.u32, 0, xer);
@@ -60783,8 +59572,6 @@ loc_826EB62C:
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821778A0(ctx, base);
 		r29 = ctx.r29;
 		ctx.r29 = s_r29;
@@ -60794,8 +59581,6 @@ loc_826EB62C:
 		ctx.r31 = s_r31;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmpw cr6,r3,r29
 	cr6.compare<int32_t>(ctx.r3.s32, r29.s32, xer);
@@ -61423,8 +60208,6 @@ loc_826EBA40:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82701F88(ctx, base);
 		r28 = ctx.r28;
 		ctx.r28 = s_r28;
@@ -61434,8 +60217,6 @@ loc_826EBA40:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r4,r3
 	ctx.r4.u64 = ctx.r3.u64;
@@ -61450,8 +60231,6 @@ loc_826EBA40:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826E8308(ctx, base);
 		r28 = ctx.r28;
 		ctx.r28 = s_r28;
@@ -61461,8 +60240,6 @@ loc_826EBA40:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// clrlwi r11,r3,24
 	ctx.r11.u64 = ctx.r3.u32 & 0xFF;
@@ -64504,8 +63281,6 @@ loc_826ECE18:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82702C58(ctx, base);
 		r28 = ctx.r28;
 		ctx.r28 = s_r28;
@@ -64515,8 +63290,6 @@ loc_826ECE18:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r3,r31
 	ctx.r3.u64 = r31.u64;
@@ -64596,8 +63369,6 @@ loc_826ECE88:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82702C58(ctx, base);
 		r28 = ctx.r28;
 		ctx.r28 = s_r28;
@@ -64607,8 +63378,6 @@ loc_826ECE88:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r3,r31
 	ctx.r3.u64 = r31.u64;
@@ -64688,8 +63457,6 @@ loc_826ECEF8:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82702C58(ctx, base);
 		r28 = ctx.r28;
 		ctx.r28 = s_r28;
@@ -64699,8 +63466,6 @@ loc_826ECEF8:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r3,r31
 	ctx.r3.u64 = r31.u64;
@@ -64752,15 +63517,11 @@ DEFINE_REX_FUNC(sub_826ECF10) {
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3560(ctx, base);
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// lwz r3,4(r31)
 	ctx.r3.u64 = REX_LOAD_U32(r31.u32 + 4);
@@ -64769,15 +63530,11 @@ DEFINE_REX_FUNC(sub_826ECF10) {
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3560(ctx, base);
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 loc_826ECF54:
 	// li r11,0
@@ -64808,15 +63565,11 @@ loc_826ECF70:
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3560(ctx, base);
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r3,r31
 	ctx.r3.u64 = r31.u64;
@@ -64905,8 +63658,6 @@ loc_826ECFF8:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82702C58(ctx, base);
 		r28 = ctx.r28;
 		ctx.r28 = s_r28;
@@ -64916,8 +63667,6 @@ loc_826ECFF8:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r3,r31
 	ctx.r3.u64 = r31.u64;
@@ -64997,8 +63746,6 @@ loc_826ED068:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82702C58(ctx, base);
 		r28 = ctx.r28;
 		ctx.r28 = s_r28;
@@ -65008,8 +63755,6 @@ loc_826ED068:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r3,r31
 	ctx.r3.u64 = r31.u64;
@@ -65089,8 +63834,6 @@ loc_826ED0D8:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82702C58(ctx, base);
 		r28 = ctx.r28;
 		ctx.r28 = s_r28;
@@ -65100,8 +63843,6 @@ loc_826ED0D8:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r3,r31
 	ctx.r3.u64 = r31.u64;
@@ -65246,8 +63987,6 @@ loc_826ED1B0:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82702C58(ctx, base);
 		r28 = ctx.r28;
 		ctx.r28 = s_r28;
@@ -65257,8 +63996,6 @@ loc_826ED1B0:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r3,r31
 	ctx.r3.u64 = r31.u64;
@@ -65338,8 +64075,6 @@ loc_826ED220:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82702C58(ctx, base);
 		r28 = ctx.r28;
 		ctx.r28 = s_r28;
@@ -65349,8 +64084,6 @@ loc_826ED220:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r3,r31
 	ctx.r3.u64 = r31.u64;
@@ -65430,8 +64163,6 @@ loc_826ED290:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82702C58(ctx, base);
 		r28 = ctx.r28;
 		ctx.r28 = s_r28;
@@ -65441,8 +64172,6 @@ loc_826ED290:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r3,r31
 	ctx.r3.u64 = r31.u64;
@@ -65522,8 +64251,6 @@ loc_826ED300:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82702C58(ctx, base);
 		r28 = ctx.r28;
 		ctx.r28 = s_r28;
@@ -65533,8 +64260,6 @@ loc_826ED300:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r3,r31
 	ctx.r3.u64 = r31.u64;
@@ -65981,8 +64706,6 @@ loc_826ED568:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_827869B0(ctx, base);
 		r27 = ctx.r27;
 		ctx.r27 = s_r27;
@@ -65994,8 +64717,6 @@ loc_826ED568:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// bl 0x826f47a8
 	ctx.lr = 0x826ED5F0;
@@ -66068,8 +64789,6 @@ loc_826ED63C:
 		const auto s_r28 = ctx.r28; ctx.r28 = r28;
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826E8EA8(ctx, base);
 		r27 = ctx.r27;
 		ctx.r27 = s_r27;
@@ -66079,8 +64798,6 @@ loc_826ED63C:
 		ctx.r29 = s_r29;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r30,r3
 	r30.u64 = ctx.r3.u64;
@@ -66335,8 +65052,6 @@ loc_826ED774:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826FE808(ctx, base);
 		r17 = ctx.r17;
 		ctx.r17 = s_r17;
@@ -66364,8 +65079,6 @@ loc_826ED774:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r27,r3
 	r27.u64 = ctx.r3.u64;
@@ -66822,8 +65535,6 @@ loc_826EDA9C:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826FDDC0(ctx, base);
 		r17 = ctx.r17;
 		ctx.r17 = s_r17;
@@ -66855,8 +65566,6 @@ loc_826EDA9C:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r8,r3
 	ctx.r8.u64 = ctx.r3.u64;
@@ -67233,15 +65942,11 @@ loc_826EDD44:
 	{
 		const auto s_r26 = ctx.r26; ctx.r26 = r26;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821778A0(ctx, base);
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// bl 0x826f6e58
 	ctx.lr = 0x826EDD50;
@@ -67271,8 +65976,6 @@ loc_826EDD44:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821778A0(ctx, base);
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -67286,8 +65989,6 @@ loc_826EDD44:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// addi r11,r3,-1
 	ctx.r11.s64 = ctx.r3.s64 + -1;
@@ -67391,9 +66092,6 @@ loc_826EDDD0:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826EBAA0(ctx, base);
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -67407,9 +66105,6 @@ loc_826EDDD0:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// lwz r11,132(r1)
 	ctx.r11.u64 = REX_LOAD_U32(ctx.r1.u32 + 132);
@@ -67659,8 +66354,6 @@ loc_826EDF60:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826ED600(ctx, base);
 		r28 = ctx.r28;
 		ctx.r28 = s_r28;
@@ -67670,8 +66363,6 @@ loc_826EDF60:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -67771,8 +66462,6 @@ DEFINE_REX_FUNC(sub_826EDFE0) {
 		const auto s_r27 = ctx.r27; ctx.r27 = r27;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826E9688(ctx, base);
 		r15 = ctx.r15;
 		ctx.r15 = s_r15;
@@ -67788,8 +66477,6 @@ DEFINE_REX_FUNC(sub_826EDFE0) {
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -67837,8 +66524,6 @@ loc_826EE070:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826EDF48(ctx, base);
 		r15 = ctx.r15;
 		ctx.r15 = s_r15;
@@ -67856,8 +66541,6 @@ loc_826EE070:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -67921,8 +66604,6 @@ loc_826EE098:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826EB9F8(ctx, base);
 		r15 = ctx.r15;
 		ctx.r15 = s_r15;
@@ -67942,8 +66623,6 @@ loc_826EE098:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplw cr6,r31,r3
 	cr6.compare<uint32_t>(r31.u32, ctx.r3.u32, xer);
@@ -67984,8 +66663,6 @@ loc_826EE100:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826FE880(ctx, base);
 		r15 = ctx.r15;
 		ctx.r15 = s_r15;
@@ -68013,8 +66690,6 @@ loc_826EE100:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r30,r3
 	r30.u64 = ctx.r3.u64;
@@ -68064,8 +66739,6 @@ loc_826EE100:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826E8308(ctx, base);
 		r15 = ctx.r15;
 		ctx.r15 = s_r15;
@@ -68093,8 +66766,6 @@ loc_826EE100:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// clrlwi r11,r3,24
 	ctx.r11.u64 = ctx.r3.u32 & 0xFF;
@@ -68173,8 +66844,6 @@ loc_826EE188:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826EC048(ctx, base);
 		r15 = ctx.r15;
 		ctx.r15 = s_r15;
@@ -68204,8 +66873,6 @@ loc_826EE188:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// lwz r24,128(r1)
 	r24.u64 = REX_LOAD_U32(ctx.r1.u32 + 128);
@@ -68289,9 +66956,6 @@ loc_826EE1E4:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826E0A90(ctx, base);
 		r15 = ctx.r15;
 		ctx.r15 = s_r15;
@@ -68323,9 +66987,6 @@ loc_826EE1E4:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// addi r23,r23,1
 	r23.s64 = r23.s64 + 1;
@@ -68401,9 +67062,6 @@ loc_826EE258:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826EBAA0(ctx, base);
 		r15 = ctx.r15;
 		ctx.r15 = s_r15;
@@ -68435,9 +67093,6 @@ loc_826EE258:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// lis r11,1
 	ctx.r11.s64 = 65536;
@@ -68910,9 +67565,6 @@ loc_826EE5BC:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826E9BA8(ctx, base);
 		r15 = ctx.r15;
 		ctx.r15 = s_r15;
@@ -68948,9 +67600,6 @@ loc_826EE5BC:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// mr r31,r3
 	r31.u64 = ctx.r3.u64;
@@ -68982,9 +67631,6 @@ loc_826EE5BC:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826E9BA8(ctx, base);
 		r15 = ctx.r15;
 		ctx.r15 = s_r15;
@@ -69020,9 +67666,6 @@ loc_826EE5BC:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// mr r28,r3
 	r28.u64 = ctx.r3.u64;
@@ -69054,9 +67697,6 @@ loc_826EE5BC:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826E9BA8(ctx, base);
 		r15 = ctx.r15;
 		ctx.r15 = s_r15;
@@ -69092,9 +67732,6 @@ loc_826EE5BC:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// mr r30,r3
 	r30.u64 = ctx.r3.u64;
@@ -69126,9 +67763,6 @@ loc_826EE5BC:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826E9BA8(ctx, base);
 		r15 = ctx.r15;
 		ctx.r15 = s_r15;
@@ -69164,9 +67798,6 @@ loc_826EE5BC:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// mr r29,r3
 	r29.u64 = ctx.r3.u64;
@@ -69198,9 +67829,6 @@ loc_826EE5BC:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826E9BA8(ctx, base);
 		r15 = ctx.r15;
 		ctx.r15 = s_r15;
@@ -69236,9 +67864,6 @@ loc_826EE5BC:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// mr r11,r3
 	ctx.r11.u64 = ctx.r3.u64;
@@ -69272,9 +67897,6 @@ loc_826EE5BC:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826E9BA8(ctx, base);
 		r15 = ctx.r15;
 		ctx.r15 = s_r15;
@@ -69310,9 +67932,6 @@ loc_826EE5BC:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// mr r11,r3
 	ctx.r11.u64 = ctx.r3.u64;
@@ -69346,9 +67965,6 @@ loc_826EE5BC:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826E9BA8(ctx, base);
 		r15 = ctx.r15;
 		ctx.r15 = s_r15;
@@ -69384,9 +68000,6 @@ loc_826EE5BC:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// mr r11,r3
 	ctx.r11.u64 = ctx.r3.u64;
@@ -69420,9 +68033,6 @@ loc_826EE5BC:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826E9BA8(ctx, base);
 		r15 = ctx.r15;
 		ctx.r15 = s_r15;
@@ -69458,9 +68068,6 @@ loc_826EE5BC:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// mr r11,r3
 	ctx.r11.u64 = ctx.r3.u64;
@@ -69494,9 +68101,6 @@ loc_826EE5BC:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826E9BA8(ctx, base);
 		r15 = ctx.r15;
 		ctx.r15 = s_r15;
@@ -69532,9 +68136,6 @@ loc_826EE5BC:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// clrldi r11,r30,32
 	ctx.r11.u64 = r30.u64 & 0xFFFFFFFF;
@@ -69761,8 +68362,6 @@ loc_826EE7AC:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82702CF0(ctx, base);
 		r27 = ctx.r27;
 		ctx.r27 = s_r27;
@@ -69774,8 +68373,6 @@ loc_826EE7AC:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// addi r1,r1,128
 	ctx.r1.s64 = ctx.r1.s64 + 128;
@@ -70072,8 +68669,6 @@ loc_826EE9F4:
 		const auto s_r28 = ctx.r28; ctx.r28 = r28;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82701F58(ctx, base);
 		r28 = ctx.r28;
 		ctx.r28 = s_r28;
@@ -70081,8 +68676,6 @@ loc_826EE9F4:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// extsb r11,r3
 	ctx.r11.s64 = ctx.r3.s8;
@@ -70166,9 +68759,6 @@ loc_826EEA44:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82701F58(ctx, base);
 		r27 = ctx.r27;
 		ctx.r27 = s_r27;
@@ -70180,9 +68770,6 @@ loc_826EEA44:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// extsb r5,r3
 	ctx.r5.s64 = ctx.r3.s8;
@@ -70554,8 +69141,6 @@ loc_826EECD4:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82701F58(ctx, base);
 		r28 = ctx.r28;
 		ctx.r28 = s_r28;
@@ -70565,8 +69150,6 @@ loc_826EECD4:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// extsb r11,r3
 	ctx.r11.s64 = ctx.r3.s8;
@@ -70947,15 +69530,11 @@ DEFINE_REX_FUNC(sub_826EEF30) {
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82702D08(ctx, base);
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// clrlwi r11,r3,24
 	ctx.r11.u64 = ctx.r3.u32 & 0xFF;
@@ -70970,15 +69549,11 @@ DEFINE_REX_FUNC(sub_826EEF30) {
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82702CA0(ctx, base);
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// clrlwi r11,r3,24
 	ctx.r11.u64 = ctx.r3.u32 & 0xFF;
@@ -70993,15 +69568,11 @@ DEFINE_REX_FUNC(sub_826EEF30) {
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82702D78(ctx, base);
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// clrlwi r11,r3,24
 	ctx.r11.u64 = ctx.r3.u32 & 0xFF;
@@ -71020,15 +69591,11 @@ DEFINE_REX_FUNC(sub_826EEF30) {
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826EEC10(ctx, base);
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 loc_826EEFB8:
 	// addi r1,r1,112
@@ -71188,8 +69755,6 @@ loc_826EF088:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826EEC10(ctx, base);
 		r25 = ctx.r25;
 		ctx.r25 = s_r25;
@@ -71205,8 +69770,6 @@ loc_826EF088:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// addi r31,r31,-1
 	r31.s64 = r31.s64 + -1;
@@ -71517,8 +70080,6 @@ loc_826EF274:
 		const auto s_r25 = ctx.r25; ctx.r25 = r25;
 		const auto s_r26 = ctx.r26; ctx.r26 = r26;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826ED600(ctx, base);
 		r16 = ctx.r16;
 		ctx.r16 = s_r16;
@@ -71544,8 +70105,6 @@ loc_826EF274:
 		ctx.r26 = s_r26;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r28,r3
 	r28.u64 = ctx.r3.u64;
@@ -71571,8 +70130,6 @@ loc_826EF274:
 		const auto s_r26 = ctx.r26; ctx.r26 = r26;
 		const auto s_r28 = ctx.r28; ctx.r28 = r28;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82702DE8(ctx, base);
 		r16 = ctx.r16;
 		ctx.r16 = s_r16;
@@ -71600,8 +70157,6 @@ loc_826EF274:
 		ctx.r28 = s_r28;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -71678,8 +70233,6 @@ loc_826EF2E8:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82703350(ctx, base);
 		r16 = ctx.r16;
 		ctx.r16 = s_r16;
@@ -71713,8 +70266,6 @@ loc_826EF2E8:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 loc_826EF308:
 	// lwz r11,0(r26)
@@ -72514,8 +71065,6 @@ loc_826EF814:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82701F58(ctx, base);
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -72533,8 +71082,6 @@ loc_826EF814:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// extsb r5,r3
 	ctx.r5.s64 = ctx.r3.s8;
@@ -72579,8 +71126,6 @@ loc_826EF814:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82701F58(ctx, base);
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -72598,8 +71143,6 @@ loc_826EF814:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// extsb r5,r3
 	ctx.r5.s64 = ctx.r3.s8;
@@ -72694,9 +71237,6 @@ loc_826EF8C8:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_827832E8(ctx, base);
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -72714,9 +71254,6 @@ loc_826EF8C8:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// li r27,0
 	r27.s64 = 0;
@@ -72751,9 +71288,6 @@ loc_826EF91C:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82702D08(ctx, base);
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -72771,9 +71305,6 @@ loc_826EF91C:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// clrlwi r11,r3,24
 	ctx.r11.u64 = ctx.r3.u32 & 0xFF;
@@ -72794,9 +71325,6 @@ loc_826EF91C:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82702CA0(ctx, base);
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -72814,9 +71342,6 @@ loc_826EF91C:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// clrlwi r11,r3,24
 	ctx.r11.u64 = ctx.r3.u32 & 0xFF;
@@ -72837,9 +71362,6 @@ loc_826EF91C:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82702D78(ctx, base);
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -72857,9 +71379,6 @@ loc_826EF91C:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// clrlwi r11,r3,24
 	ctx.r11.u64 = ctx.r3.u32 & 0xFF;
@@ -72946,9 +71465,6 @@ loc_826EF9D0:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826EEC10(ctx, base);
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -72966,9 +71482,6 @@ loc_826EF9D0:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 loc_826EF9EC:
 	// addi r1,r1,160
@@ -73033,8 +71546,6 @@ DEFINE_REX_FUNC(sub_826EF9F8) {
 		const auto s_r27 = ctx.r27; ctx.r27 = r27;
 		const auto s_r28 = ctx.r28; ctx.r28 = r28;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82708A18(ctx, base);
 		r27 = ctx.r27;
 		ctx.r27 = s_r27;
@@ -73042,8 +71553,6 @@ DEFINE_REX_FUNC(sub_826EF9F8) {
 		ctx.r28 = s_r28;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// lis r11,-32251
 	ctx.r11.s64 = -2113601536;
@@ -73058,8 +71567,6 @@ loc_826EFA4C:
 		const auto s_r27 = ctx.r27; ctx.r27 = r27;
 		const auto s_r28 = ctx.r28; ctx.r28 = r28;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82708A18(ctx, base);
 		r27 = ctx.r27;
 		ctx.r27 = s_r27;
@@ -73067,8 +71574,6 @@ loc_826EFA4C:
 		ctx.r28 = s_r28;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// lis r11,-32251
 	ctx.r11.s64 = -2113601536;
@@ -73137,9 +71642,6 @@ loc_826EFA94:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826FDDC0(ctx, base);
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -73153,9 +71655,6 @@ loc_826EFA94:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// extsb r11,r3
 	ctx.r11.s64 = ctx.r3.s8;
@@ -73187,9 +71686,6 @@ loc_826EFA94:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82702D08(ctx, base);
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -73203,9 +71699,6 @@ loc_826EFA94:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// clrlwi r11,r3,24
 	ctx.r11.u64 = ctx.r3.u32 & 0xFF;
@@ -73224,9 +71717,6 @@ loc_826EFA94:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82702CA0(ctx, base);
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -73240,9 +71730,6 @@ loc_826EFA94:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// clrlwi r11,r3,24
 	ctx.r11.u64 = ctx.r3.u32 & 0xFF;
@@ -73261,9 +71748,6 @@ loc_826EFA94:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82702D78(ctx, base);
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -73277,9 +71761,6 @@ loc_826EFA94:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// clrlwi r11,r3,24
 	ctx.r11.u64 = ctx.r3.u32 & 0xFF;
@@ -73302,9 +71783,6 @@ loc_826EFA94:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826EEC10(ctx, base);
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -73318,9 +71796,6 @@ loc_826EFA94:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 loc_826EFB2C:
 	// cmplwi cr6,r30,0
@@ -73347,9 +71822,6 @@ loc_826EFB34:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82701F88(ctx, base);
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -73363,9 +71835,6 @@ loc_826EFB34:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// extsb r11,r3
 	ctx.r11.s64 = ctx.r3.s8;
@@ -73384,9 +71853,6 @@ loc_826EFB34:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82701F88(ctx, base);
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -73400,9 +71866,6 @@ loc_826EFB34:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// extsb r11,r3
 	ctx.r11.s64 = ctx.r3.s8;
@@ -73434,9 +71897,6 @@ loc_826EFB84:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82701F88(ctx, base);
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -73450,9 +71910,6 @@ loc_826EFB84:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// extsb r11,r3
 	ctx.r11.s64 = ctx.r3.s8;
@@ -73481,9 +71938,6 @@ loc_826EFB84:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82701F88(ctx, base);
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -73497,9 +71951,6 @@ loc_826EFB84:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// extsb r11,r3
 	ctx.r11.s64 = ctx.r3.s8;
@@ -73522,9 +71973,6 @@ loc_826EFB84:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82701F88(ctx, base);
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -73538,9 +71986,6 @@ loc_826EFB84:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// extsb r11,r3
 	ctx.r11.s64 = ctx.r3.s8;
@@ -73561,9 +72006,6 @@ loc_826EFB84:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82701F88(ctx, base);
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -73577,9 +72019,6 @@ loc_826EFB84:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// lis r11,5
 	ctx.r11.s64 = 327680;
@@ -73604,9 +72043,6 @@ loc_826EFB84:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82701F88(ctx, base);
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -73620,9 +72056,6 @@ loc_826EFB84:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// lis r11,5
 	ctx.r11.s64 = 327680;
@@ -73647,9 +72080,6 @@ loc_826EFB84:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82701F88(ctx, base);
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -73663,9 +72093,6 @@ loc_826EFB84:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// lis r11,5
 	ctx.r11.s64 = 327680;
@@ -73690,9 +72117,6 @@ loc_826EFB84:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82701F88(ctx, base);
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -73706,9 +72130,6 @@ loc_826EFB84:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// extsb r11,r3
 	ctx.r11.s64 = ctx.r3.s8;
@@ -73892,9 +72313,6 @@ loc_826EFD84:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82701F88(ctx, base);
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -73908,9 +72326,6 @@ loc_826EFD84:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// extsb r11,r3
 	ctx.r11.s64 = ctx.r3.s8;
@@ -73944,9 +72359,6 @@ loc_826EFD84:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82701F88(ctx, base);
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -73960,9 +72372,6 @@ loc_826EFD84:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// extsb r11,r3
 	ctx.r11.s64 = ctx.r3.s8;
@@ -73986,9 +72395,6 @@ loc_826EFD84:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82701F88(ctx, base);
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -74002,9 +72408,6 @@ loc_826EFD84:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// extsb r11,r3
 	ctx.r11.s64 = ctx.r3.s8;
@@ -74034,9 +72437,6 @@ loc_826EFD84:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82787340(ctx, base);
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -74050,9 +72450,6 @@ loc_826EFD84:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 loc_826EFE00:
 	// addi r1,r1,144
@@ -74202,8 +72599,6 @@ loc_826EFEB0:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_8278CCE8(ctx, base);
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -74217,8 +72612,6 @@ loc_826EFEB0:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// li r11,0
 	ctx.r11.s64 = 0;
@@ -74360,8 +72753,6 @@ DEFINE_REX_FUNC(sub_826EFF58) {
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82701F58(ctx, base);
 		r25 = ctx.r25;
 		ctx.r25 = s_r25;
@@ -74373,8 +72764,6 @@ DEFINE_REX_FUNC(sub_826EFF58) {
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// extsb r5,r3
 	ctx.r5.s64 = ctx.r3.s8;
@@ -74418,8 +72807,6 @@ DEFINE_REX_FUNC(sub_826EFF58) {
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82701F58(ctx, base);
 		r25 = ctx.r25;
 		ctx.r25 = s_r25;
@@ -74433,8 +72820,6 @@ DEFINE_REX_FUNC(sub_826EFF58) {
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r26,r3
 	r26.u64 = ctx.r3.u64;
@@ -74492,9 +72877,6 @@ loc_826F0014:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82701F58(ctx, base);
 		r25 = ctx.r25;
 		ctx.r25 = s_r25;
@@ -74510,9 +72892,6 @@ loc_826F0014:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// extsb r5,r3
 	ctx.r5.s64 = ctx.r3.s8;
@@ -74557,9 +72936,6 @@ loc_826F0014:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82701F58(ctx, base);
 		r25 = ctx.r25;
 		ctx.r25 = s_r25;
@@ -74575,9 +72951,6 @@ loc_826F0014:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// mr r24,r3
 	r24.u64 = ctx.r3.u64;
@@ -74717,9 +73090,6 @@ loc_826F0140:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82703F80(ctx, base);
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -74737,9 +73107,6 @@ loc_826F0140:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// mr r3,r30
 	ctx.r3.u64 = r30.u64;
@@ -74760,9 +73127,6 @@ loc_826F0140:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82704070(ctx, base);
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -74780,9 +73144,6 @@ loc_826F0140:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// lis r11,-31983
 	ctx.r11.s64 = -2096037888;
@@ -74808,9 +73169,6 @@ loc_826F0184:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826FE880(ctx, base);
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -74828,9 +73186,6 @@ loc_826F0184:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// mr r29,r3
 	r29.u64 = ctx.r3.u64;
@@ -74873,9 +73228,6 @@ loc_826F0184:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82702DE8(ctx, base);
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -74893,9 +73245,6 @@ loc_826F0184:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -74916,9 +73265,6 @@ loc_826F0184:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82703038(ctx, base);
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -74936,9 +73282,6 @@ loc_826F0184:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// mr r29,r3
 	r29.u64 = ctx.r3.u64;
@@ -74957,9 +73300,6 @@ loc_826F0184:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82703038(ctx, base);
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -74977,9 +73317,6 @@ loc_826F0184:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// lbz r11,0(r29)
 	ctx.r11.u64 = REX_LOAD_U8(r29.u32 + 0);
@@ -75021,9 +73358,6 @@ loc_826F0210:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82702190(ctx, base);
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -75041,9 +73375,6 @@ loc_826F0210:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// mr r3,r30
 	ctx.r3.u64 = r30.u64;
@@ -75058,9 +73389,6 @@ loc_826F0210:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821778A0(ctx, base);
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -75078,9 +73406,6 @@ loc_826F0210:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// cmpwi cr6,r3,1
 	cr6.compare<int32_t>(ctx.r3.s32, 1, xer);
@@ -75106,9 +73431,6 @@ loc_826F0244:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826FE880(ctx, base);
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -75126,9 +73448,6 @@ loc_826F0244:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// mr r28,r3
 	r28.u64 = ctx.r3.u64;
@@ -75171,9 +73490,6 @@ loc_826F0244:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82702DE8(ctx, base);
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -75191,9 +73507,6 @@ loc_826F0244:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -75218,9 +73531,6 @@ loc_826F0244:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82703160(ctx, base);
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -75238,9 +73548,6 @@ loc_826F0244:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 loc_826F02A8:
 	// addi r11,r27,1
@@ -75365,9 +73672,6 @@ loc_826F031C:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82704070(ctx, base);
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -75385,9 +73689,6 @@ loc_826F031C:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// lwz r11,0(r31)
 	ctx.r11.u64 = REX_LOAD_U32(r31.u32 + 0);
@@ -75445,15 +73746,11 @@ DEFINE_REX_FUNC(sub_826F0390) {
 	{
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826FE880(ctx, base);
 		r29 = ctx.r29;
 		ctx.r29 = s_r29;
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r31,r3
 	r31.u64 = ctx.r3.u64;
@@ -75687,15 +73984,11 @@ DEFINE_REX_FUNC(sub_826F0520) {
 	{
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826FE880(ctx, base);
 		r29 = ctx.r29;
 		ctx.r29 = s_r29;
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r31,r3
 	r31.u64 = ctx.r3.u64;
@@ -76838,9 +75131,6 @@ loc_826F0CE0:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_827845E0(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -76860,9 +75150,6 @@ loc_826F0CE0:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// lwz r3,296(r25)
 	ctx.r3.u64 = REX_LOAD_U32(r25.u32 + 296);
@@ -76933,9 +75220,6 @@ loc_826F0D14:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3560(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -76955,9 +75239,6 @@ loc_826F0D14:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// lwz r3,4(r31)
 	ctx.r3.u64 = REX_LOAD_U32(r31.u32 + 4);
@@ -76973,9 +75254,6 @@ loc_826F0D14:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3560(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -76995,9 +75273,6 @@ loc_826F0D14:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 loc_826F0D74:
 	// stw r28,0(r31)
@@ -77025,9 +75300,6 @@ loc_826F0D88:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3560(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -77047,9 +75319,6 @@ loc_826F0D88:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 loc_826F0D90:
 	// lis r30,-31975
@@ -77090,9 +75359,6 @@ loc_826F0D90:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3560(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -77112,9 +75378,6 @@ loc_826F0D90:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// lwz r3,4(r31)
 	ctx.r3.u64 = REX_LOAD_U32(r31.u32 + 4);
@@ -77130,9 +75393,6 @@ loc_826F0D90:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3560(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -77152,9 +75412,6 @@ loc_826F0D90:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 loc_826F0DD0:
 	// stw r28,0(r31)
@@ -77182,9 +75439,6 @@ loc_826F0DE4:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3560(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -77204,9 +75458,6 @@ loc_826F0DE4:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 loc_826F0DEC:
 	// mr r11,r28
@@ -77247,9 +75498,6 @@ loc_826F0DEC:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3560(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -77269,9 +75517,6 @@ loc_826F0DEC:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// lwz r3,4(r31)
 	ctx.r3.u64 = REX_LOAD_U32(r31.u32 + 4);
@@ -77287,9 +75532,6 @@ loc_826F0DEC:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3560(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -77309,9 +75551,6 @@ loc_826F0DEC:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 loc_826F0E2C:
 	// stw r28,0(r31)
@@ -77339,9 +75578,6 @@ loc_826F0E40:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3560(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -77361,9 +75597,6 @@ loc_826F0E40:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 loc_826F0E48:
 	// mr r11,r28
@@ -77409,9 +75642,6 @@ loc_826F0E48:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3560(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -77431,9 +75661,6 @@ loc_826F0E48:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// lwz r3,4(r31)
 	ctx.r3.u64 = REX_LOAD_U32(r31.u32 + 4);
@@ -77449,9 +75676,6 @@ loc_826F0E48:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3560(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -77471,9 +75695,6 @@ loc_826F0E48:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 loc_826F0E90:
 	// stw r28,0(r31)
@@ -77501,9 +75722,6 @@ loc_826F0EA4:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3560(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -77523,9 +75741,6 @@ loc_826F0EA4:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 loc_826F0EAC:
 	// mr r11,r28
@@ -77566,9 +75781,6 @@ loc_826F0EAC:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3560(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -77588,9 +75800,6 @@ loc_826F0EAC:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// lwz r3,4(r31)
 	ctx.r3.u64 = REX_LOAD_U32(r31.u32 + 4);
@@ -77606,9 +75815,6 @@ loc_826F0EAC:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3560(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -77628,9 +75834,6 @@ loc_826F0EAC:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 loc_826F0EEC:
 	// stw r28,0(r31)
@@ -77658,9 +75861,6 @@ loc_826F0F00:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3560(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -77680,9 +75880,6 @@ loc_826F0F00:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 loc_826F0F08:
 	// mr r11,r28
@@ -77723,9 +75920,6 @@ loc_826F0F08:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3560(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -77745,9 +75939,6 @@ loc_826F0F08:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// lwz r3,4(r31)
 	ctx.r3.u64 = REX_LOAD_U32(r31.u32 + 4);
@@ -77763,9 +75954,6 @@ loc_826F0F08:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3560(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -77785,9 +75973,6 @@ loc_826F0F08:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 loc_826F0F48:
 	// stw r28,0(r31)
@@ -77815,9 +76000,6 @@ loc_826F0F5C:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3560(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -77837,9 +76019,6 @@ loc_826F0F5C:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 loc_826F0F64:
 	// mr r11,r28
@@ -77880,9 +76059,6 @@ loc_826F0F64:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3560(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -77902,9 +76078,6 @@ loc_826F0F64:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// lwz r3,4(r31)
 	ctx.r3.u64 = REX_LOAD_U32(r31.u32 + 4);
@@ -77920,9 +76093,6 @@ loc_826F0F64:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3560(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -77942,9 +76112,6 @@ loc_826F0F64:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 loc_826F0FA4:
 	// stw r28,0(r31)
@@ -77972,9 +76139,6 @@ loc_826F0FB8:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3560(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -77994,9 +76158,6 @@ loc_826F0FB8:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 loc_826F0FC0:
 	// mr r11,r28
@@ -78095,8 +76256,6 @@ DEFINE_REX_FUNC(sub_826F0FF0) {
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826FE808(ctx, base);
 		r27 = ctx.r27;
 		ctx.r27 = s_r27;
@@ -78106,8 +76265,6 @@ DEFINE_REX_FUNC(sub_826F0FF0) {
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r28,r3
 	r28.u64 = ctx.r3.u64;
@@ -78235,8 +76392,6 @@ DEFINE_REX_FUNC(sub_826F0FF0) {
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82701F88(ctx, base);
 		r27 = ctx.r27;
 		ctx.r27 = s_r27;
@@ -78248,8 +76403,6 @@ DEFINE_REX_FUNC(sub_826F0FF0) {
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r5,r3
 	ctx.r5.u64 = ctx.r3.u64;
@@ -78450,8 +76603,6 @@ DEFINE_REX_FUNC(sub_826F1158) {
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826EFE08(ctx, base);
 		r22 = ctx.r22;
 		ctx.r22 = s_r22;
@@ -78473,8 +76624,6 @@ DEFINE_REX_FUNC(sub_826F1158) {
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 loc_826F1204:
 	// mr r3,r29
@@ -78492,8 +76641,6 @@ loc_826F1204:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821778A0(ctx, base);
 		r22 = ctx.r22;
 		ctx.r22 = s_r22;
@@ -78515,8 +76662,6 @@ loc_826F1204:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r21,r3
 	r21.u64 = ctx.r3.u64;
@@ -78629,8 +76774,6 @@ loc_826F129C:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821778A0(ctx, base);
 		r21 = ctx.r21;
 		ctx.r21 = s_r21;
@@ -78654,8 +76797,6 @@ loc_826F129C:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r4,r3
 	ctx.r4.u64 = ctx.r3.u64;
@@ -78743,8 +76884,6 @@ loc_826F130C:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_8278CCE8(ctx, base);
 		r21 = ctx.r21;
 		ctx.r21 = s_r21;
@@ -78768,8 +76907,6 @@ loc_826F130C:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// addis r11,r23,1
 	ctx.r11.s64 = r23.s64 + 65536;
@@ -78810,8 +76947,6 @@ loc_826F130C:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826F0840(ctx, base);
 		r21 = ctx.r21;
 		ctx.r21 = s_r21;
@@ -78835,8 +76970,6 @@ loc_826F130C:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r3,r29
 	ctx.r3.u64 = r29.u64;
@@ -78970,8 +77103,6 @@ DEFINE_REX_FUNC(sub_826F13C0) {
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826F0520(ctx, base);
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -78989,8 +77120,6 @@ DEFINE_REX_FUNC(sub_826F13C0) {
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r8,r25
 	ctx.r8.u64 = r25.u64;
@@ -79085,8 +77214,6 @@ DEFINE_REX_FUNC(sub_826F1468) {
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826F0520(ctx, base);
 		r27 = ctx.r27;
 		ctx.r27 = s_r27;
@@ -79098,8 +77225,6 @@ DEFINE_REX_FUNC(sub_826F1468) {
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r5,r28
 	ctx.r5.u64 = r28.u64;
@@ -79192,8 +77317,6 @@ DEFINE_REX_FUNC(sub_826F14E8) {
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826F0390(ctx, base);
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -79207,8 +77330,6 @@ DEFINE_REX_FUNC(sub_826F14E8) {
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r6,r27
 	ctx.r6.u64 = r27.u64;
@@ -79299,8 +77420,6 @@ DEFINE_REX_FUNC(sub_826F1570) {
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826F0520(ctx, base);
 		r27 = ctx.r27;
 		ctx.r27 = s_r27;
@@ -79312,8 +77431,6 @@ DEFINE_REX_FUNC(sub_826F1570) {
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r5,r28
 	ctx.r5.u64 = r28.u64;
@@ -79402,8 +77519,6 @@ DEFINE_REX_FUNC(sub_826F15F0) {
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826F0520(ctx, base);
 		r27 = ctx.r27;
 		ctx.r27 = s_r27;
@@ -79415,8 +77530,6 @@ DEFINE_REX_FUNC(sub_826F15F0) {
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r5,r28
 	ctx.r5.u64 = r28.u64;
@@ -79592,8 +77705,6 @@ DEFINE_REX_FUNC(sub_826F1670) {
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826ED600(ctx, base);
 		r17 = ctx.r17;
 		ctx.r17 = s_r17;
@@ -79617,8 +77728,6 @@ DEFINE_REX_FUNC(sub_826F1670) {
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r31,r3
 	r31.u64 = ctx.r3.u64;
@@ -79649,8 +77758,6 @@ loc_826F1728:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826FE880(ctx, base);
 		r17 = ctx.r17;
 		ctx.r17 = s_r17;
@@ -79674,8 +77781,6 @@ loc_826F1728:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// lis r11,-32251
 	ctx.r11.s64 = -2113601536;
@@ -79718,8 +77823,6 @@ loc_826F1728:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82701F58(ctx, base);
 		r15 = ctx.r15;
 		ctx.r15 = s_r15;
@@ -79753,8 +77856,6 @@ loc_826F1728:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// extsb r11,r25
 	ctx.r11.s64 = r25.s8;
@@ -80062,9 +78163,6 @@ loc_826F1958:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826E85B0(ctx, base);
 		r15 = ctx.r15;
 		ctx.r15 = s_r15;
@@ -80100,9 +78198,6 @@ loc_826F1958:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// clrlwi r11,r3,24
 	ctx.r11.u64 = ctx.r3.u32 & 0xFF;
@@ -80135,9 +78230,6 @@ loc_826F1978:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826EB5D8(ctx, base);
 		r15 = ctx.r15;
 		ctx.r15 = s_r15;
@@ -80173,9 +78265,6 @@ loc_826F1978:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// mr r5,r28
 	ctx.r5.u64 = r28.u64;
@@ -80446,9 +78535,6 @@ loc_826F1B0C:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826EE9A8(ctx, base);
 		r15 = ctx.r15;
 		ctx.r15 = s_r15;
@@ -80484,9 +78570,6 @@ loc_826F1B0C:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// mr r3,r31
 	ctx.r3.u64 = r31.u64;
@@ -80560,9 +78643,6 @@ loc_826F1B6C:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826FDDC0(ctx, base);
 		r15 = ctx.r15;
 		ctx.r15 = s_r15;
@@ -80598,9 +78678,6 @@ loc_826F1B6C:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// mr r8,r3
 	ctx.r8.u64 = ctx.r3.u64;
@@ -80828,9 +78905,6 @@ loc_826F1CE4:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826FDDC0(ctx, base);
 		r15 = ctx.r15;
 		ctx.r15 = s_r15;
@@ -80866,9 +78940,6 @@ loc_826F1CE4:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// mr r8,r3
 	ctx.r8.u64 = ctx.r3.u64;
@@ -80990,9 +79061,6 @@ loc_826F1DB4:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826F1468(ctx, base);
 		r15 = ctx.r15;
 		ctx.r15 = s_r15;
@@ -81028,9 +79096,6 @@ loc_826F1DB4:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 loc_826F1DD0:
 	// addi r1,r1,240
@@ -81234,9 +79299,6 @@ loc_826F1EE8:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826ED600(ctx, base);
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -81250,9 +79312,6 @@ loc_826F1EE8:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// mr r30,r3
 	r30.u64 = ctx.r3.u64;
@@ -81424,10 +79483,6 @@ loc_826F2000:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr0 = ctx.cr0; ctx.cr0 = cr0;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826FE880(ctx, base);
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -81441,10 +79496,6 @@ loc_826F2000:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr0 = s_cr0;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -81467,10 +79518,6 @@ loc_826F2000:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr0 = ctx.cr0; ctx.cr0 = cr0;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826F15F0(ctx, base);
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -81484,10 +79531,6 @@ loc_826F2000:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr0 = s_cr0;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 loc_826F2038:
 	// addi r1,r1,176
@@ -81728,8 +79771,6 @@ DEFINE_REX_FUNC(sub_826F2118) {
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826FE808(ctx, base);
 		r27 = ctx.r27;
 		ctx.r27 = s_r27;
@@ -81739,8 +79780,6 @@ DEFINE_REX_FUNC(sub_826F2118) {
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -81918,8 +79957,6 @@ loc_826F21D8:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826FE808(ctx, base);
 		r19 = ctx.r19;
 		ctx.r19 = s_r19;
@@ -81947,8 +79984,6 @@ loc_826F21D8:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// bl 0x82701f88
 	ctx.lr = 0x826F22D0;
@@ -81966,8 +80001,6 @@ loc_826F21D8:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82701F88(ctx, base);
 		r19 = ctx.r19;
 		ctx.r19 = s_r19;
@@ -81995,8 +80028,6 @@ loc_826F21D8:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r4,r3
 	ctx.r4.u64 = ctx.r3.u64;
@@ -82024,8 +80055,6 @@ loc_826F21D8:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826F14E8(ctx, base);
 		r19 = ctx.r19;
 		ctx.r19 = s_r19;
@@ -82053,8 +80082,6 @@ loc_826F21D8:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// addi r3,r1,112
 	ctx.r3.s64 = ctx.r1.s64 + 112;
@@ -82411,9 +80438,6 @@ loc_826F23AC:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821778A0(ctx, base);
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -82431,9 +80455,6 @@ loc_826F23AC:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// mr r5,r3
 	ctx.r5.u64 = ctx.r3.u64;
@@ -82460,9 +80481,6 @@ loc_826F23AC:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826F13C0(ctx, base);
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -82480,9 +80498,6 @@ loc_826F23AC:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// mr r4,r28
 	ctx.r4.u64 = r28.u64;
@@ -82499,9 +80514,6 @@ loc_826F23AC:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_8278CCE8(ctx, base);
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -82519,9 +80531,6 @@ loc_826F23AC:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// li r5,1
 	ctx.r5.s64 = 1;
@@ -82540,9 +80549,6 @@ loc_826F23AC:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82702D60(ctx, base);
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -82560,9 +80566,6 @@ loc_826F23AC:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// lwz r11,0(r31)
 	ctx.r11.u64 = REX_LOAD_U32(r31.u32 + 0);
@@ -82596,9 +80599,6 @@ loc_826F23AC:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82702DE8(ctx, base);
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -82616,9 +80616,6 @@ loc_826F23AC:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -82639,9 +80636,6 @@ loc_826F23AC:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82702E00(ctx, base);
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -82659,9 +80653,6 @@ loc_826F23AC:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 loc_826F2594:
 	// lwz r11,0(r31)
@@ -82892,8 +80883,6 @@ loc_826F26C0:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826F1570(ctx, base);
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -82907,8 +80896,6 @@ loc_826F26C0:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r4,r26
 	ctx.r4.u64 = r26.u64;
@@ -82923,8 +80910,6 @@ loc_826F26C0:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_8278CCE8(ctx, base);
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -82938,8 +80923,6 @@ loc_826F26C0:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// li r5,0
 	ctx.r5.s64 = 0;
@@ -82956,8 +80939,6 @@ loc_826F26C0:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82702CF0(ctx, base);
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -82971,8 +80952,6 @@ loc_826F26C0:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// li r5,0
 	ctx.r5.s64 = 0;
@@ -82989,8 +80968,6 @@ loc_826F26C0:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82702D60(ctx, base);
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -83004,8 +80981,6 @@ loc_826F26C0:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// li r5,1
 	ctx.r5.s64 = 1;
@@ -83022,8 +80997,6 @@ loc_826F26C0:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82702DD0(ctx, base);
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -83037,8 +81010,6 @@ loc_826F26C0:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r4,r30
 	ctx.r4.u64 = r30.u64;
@@ -83053,8 +81024,6 @@ loc_826F26C0:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82702E00(ctx, base);
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -83068,8 +81037,6 @@ loc_826F26C0:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// lis r11,-31978
 	ctx.r11.s64 = -2095710208;
@@ -83164,8 +81131,6 @@ loc_826F26C0:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826FE808(ctx, base);
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -83179,8 +81144,6 @@ loc_826F26C0:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// bl 0x82708a18
 	ctx.lr = 0x826F27D8;
@@ -83191,8 +81154,6 @@ loc_826F26C0:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82708A18(ctx, base);
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -83206,8 +81167,6 @@ loc_826F26C0:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r26,r3
 	r26.u64 = ctx.r3.u64;
@@ -83246,8 +81205,6 @@ loc_826F26C0:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826FE808(ctx, base);
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -83261,8 +81218,6 @@ loc_826F26C0:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// bl 0x82708a18
 	ctx.lr = 0x826F2814;
@@ -83273,8 +81228,6 @@ loc_826F26C0:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82708A18(ctx, base);
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -83288,8 +81241,6 @@ loc_826F26C0:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r27,r3
 	r27.u64 = ctx.r3.u64;

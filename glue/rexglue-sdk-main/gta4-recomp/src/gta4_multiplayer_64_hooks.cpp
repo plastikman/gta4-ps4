@@ -1,3 +1,4 @@
+#include <orbis_ranges.h>
 #include "gta4_multiplayer_64_policy.h"
 #include "gta4_player_info_alias_gate.h"
 #include "gta4_sony_event_hooks.h"

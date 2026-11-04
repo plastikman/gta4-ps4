@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstdio>
 #include <cstring>
 #include <thread>
 
@@ -42,7 +43,7 @@
 #include <sys/resource.h>
 #include <unistd.h>
 #endif
-#if REX_PLATFORM_PS5
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
 #include <pthread.h>
 #include <rex/frame_stats.h>
 #endif
@@ -54,6 +55,14 @@ REXCVAR_DEFINE_BOOL(ignore_thread_affinities, true, "Kernel",
                     "Ignores game-specified thread affinities");
 
 namespace rex::system {
+
+#if REX_PLATFORM_PS4
+namespace {
+void Ps4XThreadTrace(const char* message) {
+  sceKernelDebugOutText(0, message);
+}
+}  // namespace
+#endif
 
 const uint32_t XAPC::kSize;
 const uint32_t XAPC::kDummyKernelRoutine;
@@ -298,6 +307,11 @@ bool XThread::AllocateStack(uint32_t size) {
 
   auto alignment = heap->page_size();
   auto padding = heap->page_size() * 2;  // Guard page size * 2
+#if REX_PLATFORM_PS4
+  // Orbis direct-memory mapping and protection require 16 KiB aligned ranges.
+  alignment = std::max<uint32_t>(alignment, 16 * 1024);
+  padding = alignment * 2;
+#endif
   size = rex::round_up(size, alignment);
   auto actual_size = size + padding;
 
@@ -337,16 +351,31 @@ void XThread::FreeStack() {
 }
 
 X_STATUS XThread::Create() {
+#if REX_PLATFORM_PS4
+  Ps4XThreadTrace("[PS4 xthread trace] Create entered\n");
+#endif
   // Thread kernel object.
   if (!CreateNative<X_KTHREAD>()) {
+#if REX_PLATFORM_PS4
+    Ps4XThreadTrace("[PS4 xthread trace] CreateNative failed\n");
+#endif
     REXSYS_WARN("Unable to allocate thread object");
     return X_STATUS_NO_MEMORY;
   }
+#if REX_PLATFORM_PS4
+  Ps4XThreadTrace("[PS4 xthread trace] CreateNative succeeded\n");
+#endif
 
   // Allocate a stack.
   if (!AllocateStack(creation_params_.stack_size)) {
+#if REX_PLATFORM_PS4
+    Ps4XThreadTrace("[PS4 xthread trace] AllocateStack failed\n");
+#endif
     return X_STATUS_NO_MEMORY;
   }
+#if REX_PLATFORM_PS4
+  Ps4XThreadTrace("[PS4 xthread trace] AllocateStack succeeded\n");
+#endif
 
   // Allocate thread scratch.
   // This is used by interrupts/APCs/etc so we can round-trip pointers through.
@@ -377,9 +406,15 @@ X_STATUS XThread::Create() {
   tls_static_address_ = memory()->SystemHeapAlloc(tls_total_size_);
   tls_dynamic_address_ = tls_static_address_ + tls_extended_size;
   if (!tls_static_address_) {
+#if REX_PLATFORM_PS4
+    Ps4XThreadTrace("[PS4 xthread trace] TLS allocation failed\n");
+#endif
     REXSYS_WARN("Unable to allocate thread local storage block");
     return X_STATUS_NO_MEMORY;
   }
+#if REX_PLATFORM_PS4
+  Ps4XThreadTrace("[PS4 xthread trace] TLS allocation succeeded\n");
+#endif
 
   // Zero all of TLS.
   memory()->Fill(tls_static_address_, tls_total_size_, 0);
@@ -406,9 +441,19 @@ X_STATUS XThread::Create() {
   // structure.
   pcr_address_ = memory()->SystemHeapAlloc(0x2D8);
   if (!pcr_address_) {
+#if REX_PLATFORM_PS4
+    Ps4XThreadTrace("[PS4 xthread trace] PCR allocation failed\n");
+#endif
     REXSYS_WARN("Unable to allocate thread state block");
     return X_STATUS_NO_MEMORY;
   }
+#if REX_PLATFORM_PS4
+  char pcr_trace[96];
+  std::snprintf(pcr_trace, sizeof(pcr_trace),
+                "[PS4 xthread trace] PCR allocation succeeded guest=0x%08x\n",
+                pcr_address_);
+  Ps4XThreadTrace(pcr_trace);
+#endif
 
   // Create thread state - needed for interrupt callbacks and kernel exports
   thread_state_ =
@@ -440,8 +485,13 @@ X_STATUS XThread::Create() {
   RetainHandle();
 
   rex::thread::Thread::CreationParameters params;
-  params.stack_size = 16_MiB;  // Allocate a big host stack.
+  // A 16 MiB host stack exceeds the practical per-thread budget on PS4 and
+  // makes the runtime's first dispatcher thread fail during startup.
+  params.stack_size = REX_PLATFORM_PS4 ? 2_MiB : 16_MiB;
   params.create_suspended = true;
+#if REX_PLATFORM_PS4
+  Ps4XThreadTrace("[PS4 xthread trace] calling host Thread::Create\n");
+#endif
   thread_ = rex::thread::Thread::Create(params, [this]() {
     rex::initialize_seh_thread();
     runtime::ThreadState::Bind(thread_state_.get());
@@ -470,10 +520,16 @@ X_STATUS XThread::Create() {
   });
 
   if (!thread_) {
+#if REX_PLATFORM_PS4
+    Ps4XThreadTrace("[PS4 xthread trace] host Thread::Create failed\n");
+#endif
     // TODO(benvanik): translate error?
     REXSYS_ERROR("CreateThread failed");
     return X_STATUS_NO_MEMORY;
   }
+#if REX_PLATFORM_PS4
+  Ps4XThreadTrace("[PS4 xthread trace] host Thread::Create succeeded\n");
+#endif
 
   // Set the thread name based on host ID (for easier debugging).
   if (thread_name_.empty()) {
@@ -584,7 +640,7 @@ void XThread::Execute() {
 
   // Let the kernel know we are starting.
   kernel_state_->OnThreadExecute(this);
-#if REX_PLATFORM_PS5
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
   // [ps5 port] The game's main thread, for the timing line and its own core.
   if (main_thread_) {
     rex::frame_stats::g_game_main_thread.store(reinterpret_cast<uintptr_t>(pthread_self()),
@@ -682,6 +738,24 @@ void XThread::Execute() {
 
   // Execute the function
   REXSYS_NOISY_DEBUG("XThread::Execute - Calling function at {:08X}", address);
+#if REX_PLATFORM_PS4
+  char ps4_entry_trace[192];
+  std::snprintf(ps4_entry_trace, sizeof(ps4_entry_trace),
+                "[PS4 guest entry] host_tid=%u os_tid=%llu guest_tid=%u function=0x%08x r1=0x%08x "
+                "r3=0x%08x r4=0x%08x r13=0x%08x stack=0x%08x-0x%08x base=%p\n",
+                rex::thread::current_thread_system_id(),
+                static_cast<unsigned long long>(thread_->system_id()), thread_id_, address,
+                ctx->r1.u32, ctx->r3.u32, ctx->r4.u32, ctx->r13.u32, stack_limit_, stack_base_,
+                base);
+  sceKernelDebugOutText(0, ps4_entry_trace);
+  char ps4_dispatch_trace[192];
+  std::snprintf(ps4_dispatch_trace, sizeof(ps4_dispatch_trace),
+                "[PS4 guest dispatch] host_tid=%u guest_tid=%u function=0x%08x func=%p ctx=%p "
+                "r1=0x%08x r13=0x%08x base=%p\n",
+                rex::thread::current_thread_system_id(), thread_id_, address, reinterpret_cast<void*>(func),
+                static_cast<void*>(ctx), ctx->r1.u32, ctx->r13.u32, base);
+  sceKernelDebugOutText(0, ps4_dispatch_trace);
+#endif
   func(*ctx, base);
 
   exit_code = static_cast<int>(ctx->r3.u32);
@@ -982,11 +1056,22 @@ bool XThread::GetTLSValue(uint32_t slot, uint32_t* value_out) {
 }
 
 bool XThread::SetTLSValue(uint32_t slot, uint32_t value) {
-  if (slot * 4 >= tls_total_size_) {
+  const uint64_t offset = uint64_t(slot) * sizeof(uint32_t);
+  const uint64_t guest_address = uint64_t(tls_dynamic_address_) + offset;
+  if (offset + sizeof(uint32_t) > tls_total_size_ || guest_address < 0x10000 ||
+      guest_address > UINT32_MAX) {
+#if REX_PLATFORM_PS4
+    char trace[192];
+    std::snprintf(trace, sizeof(trace),
+                  "[PS4 TLS guard] slot=%u value=0x%08x dynamic=0x%08x size=0x%08x guest=0x%llx\n",
+                  slot, value, tls_dynamic_address_, tls_total_size_,
+                  static_cast<unsigned long long>(guest_address));
+    Ps4XThreadTrace(trace);
+#endif
     return false;
   }
 
-  auto mem = memory()->TranslateVirtual(tls_dynamic_address_ + slot * 4);
+  auto mem = memory()->TranslateVirtual(static_cast<uint32_t>(guest_address));
   memory::store_and_swap<uint32_t>(mem, value);
   return true;
 }
@@ -1130,7 +1215,22 @@ X_STATUS XThread::Delay(uint32_t processor_mode, uint32_t alertable, uint64_t in
         rex::thread::MaybeYield();
       }
     } else {
+#if REX_PLATFORM_PS4
+      const int64_t sleep_begin_ns = rex::frame_stats::NowNs();
+#endif
       rex::thread::Sleep(std::chrono::milliseconds(timeout_ms));
+#if REX_PLATFORM_PS4
+      {
+        void Ps4NoteAudioWait(uint32_t lr, uint32_t kind, uint64_t us);  // (audio threads only)
+        Ps4NoteAudioWait(thread_state() && thread_state()->context() ? uint32_t(thread_state()->context()->lr) : 0,
+                         0xF1, uint64_t(rex::frame_stats::NowNs() - sleep_begin_ns) / 1000);
+      }
+      rex::frame_stats::g_guest_sleeps.fetch_add(1, std::memory_order_relaxed);
+      rex::frame_stats::g_guest_sleep_requested_us.fetch_add(uint64_t(timeout_ms) * 1000,
+                                                            std::memory_order_relaxed);
+      rex::frame_stats::g_guest_sleep_actual_us.fetch_add(
+          uint64_t(rex::frame_stats::NowNs() - sleep_begin_ns) / 1000, std::memory_order_relaxed);
+#endif
     }
     CheckTitleTermination();
   }
@@ -1490,7 +1590,7 @@ object_ref<XThread> XThread::Restore(KernelState* kernel_state, stream::ByteStre
 
     rex::thread::Thread::CreationParameters params;
     params.create_suspended = true;  // Not done restoring yet.
-    params.stack_size = 16_MiB;
+    params.stack_size = REX_PLATFORM_PS4 ? 2_MiB : 16_MiB;
     thread->thread_ = rex::thread::Thread::Create(params, [thread, state]() {
       // Set thread ID override. This is used by logging.
       rex::thread::set_current_thread_id(thread->handle());

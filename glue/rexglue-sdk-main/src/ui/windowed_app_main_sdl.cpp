@@ -17,13 +17,24 @@
 #include <memory>
 #include <string>
 #include <vector>
-
 #include <rex/cvar.h>
+#include <rex/diagnostics/gpu_flight_recorder.h>
 #include <rex/diagnostics/policy.h>
 #include <rex/logging.h>
 #include <rex/platform.h>
+#if REX_PLATFORM_PS4
+#include <cstdarg>
+#include <exception>
+#include <execinfo.h>
+#include <orbis/libkernel.h>
+#include <orbis_log.h>
+#include <typeinfo>
+#endif
 #include <rex/ui/windowed_app.h>
 #include <rex/ui/windowed_app_context_sdl.h>
+#if REX_PLATFORM_PS4
+#include <SDL3/SDL.h>
+#endif
 #if REX_PLATFORM_PS5
 #include <SDL3/SDL_hints.h>
 #endif
@@ -55,6 +66,10 @@ namespace {
 #if REX_PLATFORM_PS5
 void Ps5EarlyFailure(const char* what);  // (below)
 #endif
+#if REX_PLATFORM_PS4
+void Ps4StartupLog(const char* fmt, ...);
+
+#endif
 
 int RunWindowedApp(int argc, char** argv) {
   auto remaining = rex::cvar::Init(argc, argv);
@@ -66,6 +81,16 @@ int RunWindowedApp(int argc, char** argv) {
   {
     bool diagnostics = REXCVAR_GET(diagnostics);
     std::string categories = REXCVAR_GET(diagnostics_categories);
+#if REX_PLATFORM_PS4
+    // Keep PS4 startup failures diagnosable. The console logger is suppressed
+    // in retail title launches, so persist ordinary application logs instead.
+    // Only "logging", as on the PS5 (LXXXIV): "transition" made the producer
+    // copy the 22 KB device state into a new zeroed buffer for every draw
+    // that changed state (the title thread's top cost, and the 22400-byte
+    // malloc refusals), and "vulkan" named and traced every GPU object.
+    // diagnostics_categories in native.toml still turns them back on.
+    if (!diagnostics) diagnostics = true, categories = "logging";
+#endif
 #if REX_PLATFORM_PS5
     // [ps5 port] No command line on the PS5: the log is on unless the hub's
     // Save Logs setting is off (read straight from its config file, as the
@@ -90,6 +115,9 @@ int RunWindowedApp(int argc, char** argv) {
     std::string diagnostics_error;
     if (!rex::diagnostics::Configure(diagnostics, categories, &diagnostics_error)) {
       std::fprintf(stderr, "diagnostics: %s\n", diagnostics_error.c_str());
+#if REX_PLATFORM_PS4
+      Ps4StartupLog("diagnostics setup failed: %s", diagnostics_error.c_str());
+#endif
 #if REX_PLATFORM_ANDROID
       // stderr is discarded on Android; without this the app just closes.
       __android_log_print(ANDROID_LOG_ERROR, "LibertyRecomp", "diagnostics: %s",
@@ -102,15 +130,19 @@ int RunWindowedApp(int argc, char** argv) {
 
   int result;
   {
-#if REX_PLATFORM_PS5
-    // [ps5 port] SDL has no PS5 video driver: its dummy driver keeps windows and
-    // events working; the picture goes to the TV through VK_KHR_display.
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
+    // SDL has no Sony console video driver: its dummy driver keeps windows and
+    // events working; the picture goes to the TV through the console Vulkan
+    // display path.
     SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "dummy");
 #endif
     rex::ui::SDLWindowedAppContext app_context;
     if (!app_context.Initialize()) {
 #if REX_PLATFORM_PS5
       Ps5EarlyFailure("SDL didn't start");
+#endif
+#if REX_PLATFORM_PS4
+      Ps4StartupLog("SDL context initialization failed: %s", SDL_GetError());
 #endif
       return EXIT_FAILURE;
     }
@@ -133,7 +165,14 @@ int RunWindowedApp(int argc, char** argv) {
     }
     app->SetParsedArguments(std::move(parsed));
 
-    result = app->OnInitialize() ? app_context.RunMainMessageLoop() : EXIT_FAILURE;
+    const bool app_initialized = app->OnInitialize();
+#if REX_PLATFORM_PS4
+    if (!app_initialized) Ps4StartupLog("application OnInitialize returned false");
+#endif
+    result = app_initialized ? app_context.RunMainMessageLoop() : EXIT_FAILURE;
+#if REX_PLATFORM_PS4
+    if (result != EXIT_SUCCESS) Ps4StartupLog("application loop returned %d", result);
+#endif
 #if REX_PLATFORM_PS5
     // [ps5 port] Skip the teardown: guest threads can't be stopped reliably.
     rex::FlushLogging();
@@ -149,6 +188,81 @@ int RunWindowedApp(int argc, char** argv) {
 
   return result;
 }
+
+#if REX_PLATFORM_PS4
+void Ps4StartupLog(const char* fmt, ...) {
+  char line[1024] = "[GTA4 PS4 startup] ";
+  constexpr size_t prefix = sizeof("[GTA4 PS4 startup] ") - 1;
+  va_list args;
+  va_start(args, fmt);
+  std::vsnprintf(line + prefix, sizeof(line) - prefix, fmt, args);
+  va_end(args);
+  size_t length = std::strlen(line);
+  if (length + 1 < sizeof(line)) line[length++] = '\n', line[length] = '\0';
+  sceKernelDebugOutText(0, line);
+}
+
+static void Ps4OrbisFatalLog(const char* fmt, va_list args) {
+  char line[1024];
+  int n = std::snprintf(line, sizeof(line), "[GTA4 PS4 fatal] ");
+  if (n < 0 || static_cast<size_t>(n) >= sizeof(line)) return;
+  std::vsnprintf(line + n, sizeof(line) - static_cast<size_t>(n) - 1, fmt, args);
+  size_t length = std::strlen(line);
+  if (length + 1 < sizeof(line)) line[length++] = '\n', line[length] = '\0';
+  sceKernelDebugOutText(0, line);
+}
+
+// The compat layer's own reports (orbis_log): which pool its allocator ran out
+// of, carve-outs taken or refused. Unregistered they went nowhere (LXXXIV).
+// Formats into a stack buffer: it runs while malloc is failing.
+static void Ps4OrbisLog(const char* fmt, va_list args) {
+  char line[1024];
+  int n = std::snprintf(line, sizeof(line), "[orbis] ");
+  if (n < 0 || static_cast<size_t>(n) >= sizeof(line)) return;
+  std::vsnprintf(line + n, sizeof(line) - static_cast<size_t>(n) - 1, fmt, args);
+  size_t length = std::strlen(line);
+  if (length + 1 < sizeof(line)) line[length++] = '\n', line[length] = '\0';
+  sceKernelDebugOutText(0, line);
+}
+
+static void Ps4TerminateWithLog() {
+  char text[768] = "Uncaught C++ exception";
+  if (auto current = std::current_exception()) {
+    try {
+      std::rethrow_exception(current);
+    } catch (const std::exception& e) {
+      std::snprintf(text, sizeof(text), "Uncaught %s: %s", typeid(e).name(), e.what());
+    } catch (...) {
+      std::snprintf(text, sizeof(text), "Uncaught non-standard C++ exception");
+    }
+  }
+  char line[800];
+  std::snprintf(line, sizeof(line), "[GTA4 PS4] %s\n", text);
+  sceKernelDebugOutText(0, line);
+  void* frames[24]{};
+  const int frame_count = backtrace(frames, 24);
+  for (int i = 0; i < frame_count; ++i) {
+    char frame[128];
+    std::snprintf(frame, sizeof(frame), "[GTA4 PS4 terminate trace] #%02d %p\n", i,
+                  frames[i]);
+    sceKernelDebugOutText(0, frame);
+  }
+  if (FILE* f = std::fopen("/data/gta4-ps4-startup-error.log", "w")) {
+    std::fprintf(f, "%s\n", text);
+    std::fclose(f);
+  }
+  std::_Exit(EXIT_FAILURE);
+}
+
+// Install before normal C++ global constructors; the failure may happen before
+// main is reached, which is too late for main() to replace the SDK handler.
+__attribute__((constructor(101))) static void Ps4InstallEarlyTerminate() {
+  sceKernelDebugOutText(0, "[GTA4 PS4] early startup\n");
+  orbis_set_log(Ps4OrbisLog);
+  orbis_set_log_fatal(Ps4OrbisFatalLog);
+  std::set_terminate(Ps4TerminateWithLog);
+}
+#endif
 
 #if REX_PLATFORM_WIN32
 // Convert wide argv from CommandLineToArgvW to UTF-8 for cvar::Init.
@@ -547,8 +661,90 @@ int main(int argc, char* argv[]) {
 
 #else
 
+#if REX_PLATFORM_PS4
+#include <chrono>
+#include <cstring>
+#include <thread>
+#include <rex/frame_stats.h>
+#include <rex/ps5_diag.h>
+REXCVAR_DEFINE_BOOL(ps4_cpu_sampler, true, "PS4",
+                    "Sample where each thread spends its time (100 times a second) and log the "
+                    "busiest code every 30 s");
+// The PS5 port's sampling profiler (rex/ps5_diag.h): from 30 s in, signal each
+// registered thread every 10 ms, and log what they were doing every 30 s.
+// Every 10 s it also logs the fault and GPU counters' growth (a write-watch or
+// MMIO fault costs a signal round trip here). Breadcrumbs go to klog too.
+namespace rex::system {
+void Ps4ReportGuestWaits(double seconds);
+}
+
+static void Ps4Profiler() {
+  using namespace rex::ps5diag;
+  sceKernelDebugOutText(0, "[PS4 prof] thread started\n");
+  std::this_thread::sleep_for(std::chrono::seconds(30));
+  sceKernelDebugOutText(0, "[PS4 prof] sampling\n");
+  auto now = std::chrono::steady_clock::now();
+  auto report_at = now + std::chrono::seconds(30);
+  auto counters_at = now + std::chrono::seconds(10);
+  uint64_t last[kCount] = {};
+  bool first_tick = true;
+  // (The loop also runs the 10 s reports and the audio core layout, so it
+  // keeps going with the sampler off; only the sampling stops.)
+  while (true) {
+    const bool sampling = REXCVAR_GET(ps4_cpu_sampler);
+    std::this_thread::sleep_for(std::chrono::milliseconds(sampling ? 10 : 100));
+    if (sampling) ProfileTick();
+    if (first_tick) {
+      first_tick = false;
+      sceKernelDebugOutText(0, "[PS4 prof] first tick done\n");
+    }
+    now = std::chrono::steady_clock::now();
+    if (now >= counters_at) {
+      counters_at += std::chrono::seconds(10);
+      uint64_t value[kCount];
+      for (int i = 0; i < kCount; ++i) value[i] = counters[i].load(std::memory_order_relaxed);
+      char line[256];
+      std::snprintf(line, sizeof(line),
+                    "ps4 counters (10 s): faults=%llu mmio=%llu watch=%llu unhandled=%llu "
+                    "vblanks=%llu interrupts=%llu write-pointer=%llu batches=%llu",
+                    (unsigned long long)(value[kAccessViolations] - last[kAccessViolations]),
+                    (unsigned long long)(value[kMmioAccesses] - last[kMmioAccesses]),
+                    (unsigned long long)(value[kWatchFaults] - last[kWatchFaults]),
+                    (unsigned long long)(value[kUnhandledFaults] - last[kUnhandledFaults]),
+                    (unsigned long long)(value[kVblanks] - last[kVblanks]),
+                    (unsigned long long)(value[kInterrupts] - last[kInterrupts]),
+                    (unsigned long long)(value[kWritePointer] - last[kWritePointer]),
+                    (unsigned long long)(value[kPrimaryBuffers] - last[kPrimaryBuffers]));
+      std::memcpy(last, value, sizeof(last));
+      REXLOG_WARN("{}", line);
+      rex::system::Ps4ReportGuestWaits(10.0);
+      rex::ps5diag::ApplyPs4AudioCoreLayout();
+      std::strncat(line, "\n", sizeof(line) - std::strlen(line) - 1);
+      sceKernelDebugOutText(0, line);
+    }
+    if (now >= report_at && sampling) {
+      sceKernelDebugOutText(0, "[PS4 prof] report begin\n");
+      ProfileReport();
+      sceKernelDebugOutText(0, "[PS4 prof] report end\n");
+      report_at += std::chrono::seconds(30);
+    }
+  }
+}
+#endif
+
 int main(int argc, char* argv[]) {
-  return RunWindowedApp(argc, argv);
+#if REX_PLATFORM_PS4
+  sceKernelDebugOutText(0, "[GTA4 PS4] main entered\n");
+  orbis_set_log_fatal(Ps4OrbisFatalLog);
+  std::set_terminate(Ps4TerminateWithLog);
+  std::thread(Ps4Profiler).detach();
+#endif
+  const int result = RunWindowedApp(argc, argv);
+#if REX_PLATFORM_PS4
+  rex::diagnostics::gpu_flight::Dump("ps4-app-main-exit");
+  Ps4StartupLog("main returning %d", result);
+#endif
+  return result;
 }
 #endif  // REX_PLATFORM_PS5
 

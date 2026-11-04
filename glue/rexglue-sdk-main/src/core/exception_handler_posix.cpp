@@ -14,12 +14,12 @@
 #endif
 
 #include <rex/platform.h>
-#if REX_PLATFORM_PS5
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
 #include <rex/ps5_diag.h>
 #endif
 #include <rex/exception_handler.h>
 
-#if REX_PLATFORM_LINUX || REX_PLATFORM_MAC
+#if REX_PLATFORM_LINUX || REX_PLATFORM_MAC || REX_PLATFORM_PS4
 
 #include <signal.h>
 
@@ -34,14 +34,14 @@
 
 #include <ucontext.h>
 
-#if REX_PLATFORM_PS5
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
 // [ps5 port] The PS5 kernel hands signal handlers the FreeBSD amd64 ucontext
 // with 48 extra bytes in front: mcontext starts at +64, not at +16 where the
 // SDK header puts it (measured on a 13.60 console: rdi +72, rax +120, rip
 // +224). View it the way the Linux code below reads gregs / fpregs, as
 // 64-bit slots of FreeBSD's struct __mcontext.
 namespace {
-using greg_t = uint64_t;
+using Ps5Greg = uint64_t;
 enum : int {
   REG_RDI = 1, REG_RSI = 2, REG_RDX = 3, REG_RCX = 4, REG_R8 = 5, REG_R9 = 6,
   REG_RAX = 7, REG_RBX = 8, REG_RBP = 9, REG_R10 = 10, REG_R11 = 11, REG_R12 = 12,
@@ -55,12 +55,12 @@ struct Ps5FpRegs {
   uint8_t _xmm[16][16];
 };
 struct Ps5MContext {
-  greg_t* gregs;
+  Ps5Greg* gregs;
   Ps5FpRegs* fpregs;
   explicit Ps5MContext(void* signal_context) {
     auto* base = reinterpret_cast<uint8_t*>(signal_context) + kPs5McontextOffset;
-    gregs = reinterpret_cast<greg_t*>(base);
-    fpregs = reinterpret_cast<Ps5FpRegs*>(base + kPs5FpstateSlot * sizeof(greg_t));
+    gregs = reinterpret_cast<Ps5Greg*>(base);
+    fpregs = reinterpret_cast<Ps5FpRegs*>(base + kPs5FpstateSlot * sizeof(Ps5Greg));
   }
 };
 }  // namespace
@@ -118,7 +118,7 @@ static void ExceptionHandlerCallback(int signal_number, siginfo_t* signal_info,
                                      void* signal_context) {
 #if REX_PLATFORM_MAC
   mcontext_t mcontext = reinterpret_cast<ucontext_t*>(signal_context)->uc_mcontext;
-#elif REX_PLATFORM_PS5
+#elif REX_PLATFORM_PS5 || REX_PLATFORM_PS4
   Ps5MContext mcontext(signal_context);
 #else
   mcontext_t& mcontext = reinterpret_cast<ucontext_t*>(signal_context)->uc_mcontext;
@@ -274,8 +274,8 @@ static void ExceptionHandlerCallback(int signal_number, siginfo_t* signal_info,
     if (handlers_[i].first(&ex, handlers_[i].second)) {
       // Exception handled.
 #if REX_ARCH_AMD64
-      mcontext.gregs[REG_RIP] = greg_t(thread_context.rip);
-      mcontext.gregs[REG_EFL] = greg_t(thread_context.eflags);
+      mcontext.gregs[REG_RIP] = Ps5Greg(thread_context.rip);
+      mcontext.gregs[REG_EFL] = Ps5Greg(thread_context.eflags);
       uint32_t modified_register_index;
       // The order must match the order in X64Register.
       static const size_t kIntRegisterMap[] = {
@@ -348,12 +348,23 @@ static void ExceptionHandlerCallback(int signal_number, siginfo_t* signal_info,
       return;
     }
   }
-#if REX_PLATFORM_PS5
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
   // [ps5 port] Nothing took it: the thread would re-execute the faulting
   // instruction forever (a game stuck on a loading screen). Say where.
+  // [ps4 port] The same thing happens here: a guest store to an unmapped low
+  // address from the allocator's free-list unlink (sub_82848B68) retried
+  // forever and looked like a hang on the loading carousel for a whole
+  // debugging session, with no crash report to go on.
   if (signal_number == SIGSEGV || signal_number == SIGBUS) {
     rex::ps5diag::UnhandledHostFault(thread_context.rip, reinterpret_cast<uintptr_t>(signal_info->si_addr),
                                      thread_context.rsp);
+#if REX_PLATFORM_PS4
+    // [ps4 port] Do not fall through to DispatchUnhandledSignal: it restores
+    // SIG_DFL and re-raises, and a default-action SIGSEGV in an Orbis title
+    // goes through the kernel's crash path - that took the whole console down,
+    // not just the game. The report is already written; leave quietly instead.
+    std::_Exit(1);
+#endif
   }
 #endif
 

@@ -53,7 +53,7 @@ set(REXSYSTEM_SOURCES
 )
 
 # [ps5 port] one static app on the PS5 (no shared libraries of our own).
-if(PS5)
+if(PS4 OR PS5)
     add_library(rexruntime STATIC ${REXSYSTEM_SOURCES})
 else()
     add_library(rexruntime SHARED ${REXSYSTEM_SOURCES})

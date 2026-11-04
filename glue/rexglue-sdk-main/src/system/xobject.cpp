@@ -9,7 +9,12 @@
  * @modified    Tom Clay, 2026 - Adapted for ReXGlue runtime
  */
 
+#include <cstdio>
 #include <vector>
+
+#if REX_PLATFORM_PS4
+#include <orbis/libkernel.h>
+#endif
 
 #include <rex/chrono/clock.h>
 #include <rex/stream.h>
@@ -26,11 +31,14 @@
 #include <rex/system/xsemaphore.h>
 #include <rex/system/xsymboliclink.h>
 #include <rex/system/xthread.h>
-#if REX_PLATFORM_PS5
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
 #include <pthread.h>
 #include <atomic>
 #include <string>
 #include <rex/frame_stats.h>
+#if REX_PLATFORM_PS4
+void Ps4RaiseAudioThreadPriority(const char* what);  // (audio_system.cpp)
+#endif
 #include <rex/logging.h>
 #include <rex/ps5_diag.h>
 #include <rex/system/thread_state.h>
@@ -91,12 +99,151 @@ struct Ps5WaitScope {
                     : std::string());
   }
 };
+#elif REX_PLATFORM_PS4
+// [ps4 port] Where the game's render thread and main thread wait, and for how
+// long, by the guest code that waits (its LR) and the object's type: summed
+// here, reported every 10 s (Ps4ReportGuestWaits, from the profiler thread).
+// LXXXIX: every thread half idle, frames 85 ms, 720p no faster: the two
+// threads take turns, and this names what each one waits for.
+struct Ps4WaitSite {
+  std::atomic<uint64_t> key{0};  // lr << 8 | object type (0: empty)
+  std::atomic<uint64_t> us{0};
+  std::atomic<uint32_t> count{0};
+};
+constexpr uint32_t kPs4WaitSites = 128;
+// Roles: the game's render thread, its main thread, the audio worker (the
+// game's mixer callback runs on it; XCVI: 15-18 ms a callback, two thirds of
+// it blocked).
+// C: the callback spends 99% of its time waiting for the game's mixing thread
+// (sub_821909D0, idle wait returning to 82190A28): a fourth role.
+constexpr uint32_t kPs4WaitRoles = 4;
+constexpr uint32_t kAudioMixIdleWaitLr = 0x82190A28;
+Ps4WaitSite g_ps4_wait_sites[kPs4WaitRoles][kPs4WaitSites];
+std::atomic<uint64_t> g_ps4_wait_dropped{0};
+
+void NotePs4Wait(uint32_t role, uint64_t key, uint64_t us) {
+  uint32_t i = uint32_t((key * 0x9E3779B97F4A7C15ull) >> 57) & (kPs4WaitSites - 1);
+  for (uint32_t probe = 0; probe < kPs4WaitSites; ++probe, i = (i + 1) & (kPs4WaitSites - 1)) {
+    Ps4WaitSite& site = g_ps4_wait_sites[role][i];
+    uint64_t current = site.key.load(std::memory_order_relaxed);
+    if (current == 0 && site.key.compare_exchange_strong(current, key)) current = key;
+    if (current == key) {
+      site.us.fetch_add(us, std::memory_order_relaxed);
+      site.count.fetch_add(1, std::memory_order_relaxed);
+      return;
+    }
+  }
+  g_ps4_wait_dropped.fetch_add(1, std::memory_order_relaxed);
+}
+
+struct Ps5WaitScope {
+  int role = -1;
+  uint64_t key = 0;
+  int64_t begin_ns = 0;
+  Ps5WaitScope(rex::system::XObject* first, uint32_t, uint64_t*) {
+    const uintptr_t self = reinterpret_cast<uintptr_t>(pthread_self());
+    if (self == rex::frame_stats::g_title_thread.load(std::memory_order_relaxed)) {
+      role = 0;
+    } else if (self == rex::frame_stats::g_game_main_thread.load(std::memory_order_relaxed)) {
+      role = 1;
+    } else if (self == rex::frame_stats::g_audio_worker_thread.load(std::memory_order_relaxed)) {
+      role = 2;
+    } else if (self == rex::frame_stats::g_audio_mix_thread.load(std::memory_order_relaxed)) {
+      role = 3;
+    }
+    uint32_t lr = 0;
+    auto* thread = rex::system::XThread::GetCurrentThread();
+    if (thread && thread->thread_state() && thread->thread_state()->context())
+      lr = uint32_t(thread->thread_state()->context()->lr);
+    if (role < 0) {
+      if (lr != kAudioMixIdleWaitLr) return;
+      rex::frame_stats::g_audio_mix_thread.store(self, std::memory_order_relaxed);
+      ::Ps4RaiseAudioThreadPriority("game mixing");
+      rex::ps5diag::MarkAudioThread();
+      role = 3;
+    }
+    key = (uint64_t(lr) << 8) | (first ? uint32_t(first->type()) & 0xFF : 0) | (uint64_t(1) << 63);
+    begin_ns = rex::frame_stats::NowNs();
+  }
+  ~Ps5WaitScope() {
+    if (role < 0) return;
+    NotePs4Wait(uint32_t(role), key, uint64_t(rex::frame_stats::NowNs() - begin_ns) / 1000);
+  }
+};
 #else
 struct Ps5WaitScope {
   Ps5WaitScope(rex::system::XObject*, uint32_t, uint64_t*) {}
 };
 #endif
 }  // namespace
+
+#if REX_PLATFORM_PS4
+namespace rex::system {
+// The audio threads' waits outside kernel objects, by the guest code's LR:
+// critical-section spins (kind 0xF0), the guest's timed sleeps (0xF1), XMA
+// context locks (0xF2 enable, 0xF3 disable, 0xF4 block, 0xF5 clear, 0xF6
+// release). Other threads' are ignored.
+void Ps4NoteAudioWait(uint32_t lr, uint32_t kind, uint64_t us) {
+  const uintptr_t self = reinterpret_cast<uintptr_t>(pthread_self());
+  uint32_t role;
+  if (self == rex::frame_stats::g_audio_worker_thread.load(std::memory_order_relaxed)) role = 2;
+  else if (self == rex::frame_stats::g_audio_mix_thread.load(std::memory_order_relaxed)) role = 3;
+  else return;
+  if (!lr) {
+    auto* thread = XThread::GetCurrentThread();
+    if (thread && thread->thread_state() && thread->thread_state()->context())
+      lr = uint32_t(thread->thread_state()->context()->lr);
+  }
+  NotePs4Wait(role, (uint64_t(lr) << 8) | (kind & 0xFF) | (uint64_t(1) << 63), us);
+}
+bool Ps4IsAudioThread() {
+  const uintptr_t self = reinterpret_cast<uintptr_t>(pthread_self());
+  return self == rex::frame_stats::g_audio_worker_thread.load(std::memory_order_relaxed) ||
+         self == rex::frame_stats::g_audio_mix_thread.load(std::memory_order_relaxed);
+}
+// The top waits of the last period, per thread, then cleared.
+void Ps4ReportGuestWaits(double seconds) {
+  static const char* const kRoles[kPs4WaitRoles] = {"render", "main", "audio", "audio-mix"};
+  for (uint32_t role = 0; role < kPs4WaitRoles; ++role) {
+    struct Entry {
+      uint64_t key, us;
+      uint32_t count;
+    };
+    Entry top[8]{};
+    uint64_t total_us = 0;
+    for (Ps4WaitSite& site : g_ps4_wait_sites[role]) {
+      const uint64_t key = site.key.load(std::memory_order_relaxed);
+      if (!key) continue;
+      const uint64_t us = site.us.exchange(0, std::memory_order_relaxed);
+      const uint32_t count = site.count.exchange(0, std::memory_order_relaxed);
+      total_us += us;
+      Entry entry{key, us, count};
+      for (Entry& slot : top) {
+        if (entry.us > slot.us) std::swap(entry, slot);
+      }
+    }
+    std::string text;
+    for (const Entry& entry : top) {
+      if (!entry.us) break;
+      const uint32_t kind = uint32_t(entry.key & 0xFF);
+      text += fmt::format(" {:08X}/{}:{:.0f}ms/{}", uint32_t(entry.key >> 8),
+                          kind == 0xF0   ? "cs-spin"
+                          : kind == 0xF1 ? "sleep"
+                          : kind == 0xF2 ? "xma-enable"
+                          : kind == 0xF3 ? "xma-disable"
+                          : kind == 0xF4 ? "xma-block"
+                          : kind == 0xF5 ? "xma-clear"
+                          : kind == 0xF6 ? "xma-release"
+                                         : rex::ps5diag::ObjectTypeName(kind),
+                          entry.us / 1000.0, entry.count);
+    }
+    REXLOG_WARN("ps4 waits: {} thread waited {:.0f} ms of {:.0f} s in guest waits; by game code/object "
+                "(ms, count):{}",
+                kRoles[role], total_us / 1000.0, seconds, text);
+  }
+}
+}  // namespace rex::system
+#endif
 
 namespace rex::system {
 

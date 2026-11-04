@@ -46,11 +46,19 @@
 #include <rex/system/xtimer.h>
 #include <rex/system/xam/arbitration_async.h>
 
-REXCVAR_DEFINE_UINT32(host_file_io_workers, 4, "Kernel/IO",
+REXCVAR_DEFINE_UINT32(host_file_io_workers, REX_PLATFORM_PS4 ? 0 : 4, "Kernel/IO",
                       "Ordered file-I/O lanes; zero uses the original shared kernel dispatcher")
     .range(0, 4).lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 
 namespace rex::system {
+
+#if REX_PLATFORM_PS4
+namespace {
+void Ps4KernelStateTrace(const char* message) {
+  sceKernelDebugOutText(0, message);
+}
+}  // namespace
+#endif
 
 constexpr uint32_t kDeferredOverlappedDelayMillis = 100;
 
@@ -1267,6 +1275,9 @@ void KernelState::CompleteOverlappedDeferredEx(
 }
 
 void KernelState::StartHostTaskWorker() {
+#if REX_PLATFORM_PS4
+  Ps4KernelStateTrace("[PS4 worker trace] StartHostTaskWorker entered\n");
+#endif
   {
     auto global_lock = global_critical_region_.Acquire();
     if (dispatch_thread_running_) {
@@ -1277,6 +1288,9 @@ void KernelState::StartHostTaskWorker() {
     dispatch_accepting_ = true;
   }
 
+#if REX_PLATFORM_PS4
+  Ps4KernelStateTrace("[PS4 worker trace] constructing XHostThread\n");
+#endif
   dispatch_thread_ = object_ref<XHostThread>(new XHostThread(this, 128 * 1024, 0, [this]() {
     auto global_lock = global_critical_region_.AcquireDeferred();
     for (;;) {
@@ -1320,8 +1334,21 @@ void KernelState::StartHostTaskWorker() {
     }
     return 0;
   }));
+#if REX_PLATFORM_PS4
+  Ps4KernelStateTrace("[PS4 worker trace] XHostThread constructed\n");
+#endif
   dispatch_thread_->set_name("Kernel Host Tasks");
+#if REX_PLATFORM_PS4
+  Ps4KernelStateTrace("[PS4 worker trace] calling XThread::Create\n");
+#endif
   X_STATUS create_status = dispatch_thread_->Create();
+#if REX_PLATFORM_PS4
+  char status_line[128];
+  std::snprintf(status_line, sizeof(status_line),
+                "[PS4 worker trace] XThread::Create returned status=0x%08x\n",
+                static_cast<uint32_t>(create_status));
+  Ps4KernelStateTrace(status_line);
+#endif
   if (XFAILED(create_status)) {
     auto global_lock = global_critical_region_.Acquire();
     dispatch_accepting_ = false;

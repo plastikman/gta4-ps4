@@ -18,7 +18,7 @@
 #include <vector>
 
 #include <rex/platform.h>
-#if REX_PLATFORM_PS5
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
 #include <rex/filesystem/direct_io.h>
 #endif
 
@@ -61,8 +61,8 @@ DiscImageDevice::DiscImageDevice(const std::string_view mount_path,
 DiscImageDevice::~DiscImageDevice() = default;
 
 bool DiscImageDevice::Initialize() {
-#if REX_PLATFORM_PS5
-  // [ps5 port] The image is read with pread, not mapped (paging an 8 GB disc
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
+  // [console port] The image is read with pread, not mapped (paging an 8 GB disc
   // image in through a file mapping froze the whole console), and past the
   // file cache (rex/filesystem/direct_io.h).
   reader_ = std::make_unique<direct::Reader>();
@@ -117,7 +117,7 @@ bool DiscImageDevice::ReadAt(size_t offset, void* out, size_t length) const {
   if (!RangeWithin(offset, length, host_size_)) {
     return false;
   }
-#if REX_PLATFORM_PS5
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
   return reader_->ReadAt(offset, out, length);
 #else
   std::memcpy(out, mmap_->data() + offset, length);

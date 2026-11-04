@@ -33,7 +33,23 @@ u32 XAudioGetSpeakerConfig_entry(mapped_u32 config_ptr) {
 u32 XAudioGetVoiceCategoryVolumeChangeMask_entry(mapped_void driver_ptr, mapped_u32 out_ptr) {
   assert_true((driver_ptr.guest_address() & 0xFFFF0000) == 0x41550000);
 
+#if REX_PLATFORM_PS4
+  // [ps4 port] No sleep: the game's audio mixing thread calls this once per
+  // 5.3 ms frame, and a 1 us nanosleep is far longer on the PS4 (measured at
+  // start, "PS4 nanosleep(1 us)" below): CI found that thread mostly blocked
+  // outside any guest wait, the sound a third silence.
+  static const bool measured = [] {
+    const auto begin = std::chrono::steady_clock::now();
+    for (int i = 0; i < 50; ++i) rex::thread::Sleep(std::chrono::microseconds(1));
+    const double us = double(std::chrono::duration_cast<std::chrono::microseconds>(
+                                 std::chrono::steady_clock::now() - begin).count()) / 50.0;
+    REXKRNL_WARN("PS4 nanosleep(1 us) takes {:.0f} us on average (50 calls)", us);
+    return true;
+  }();
+  (void)measured;
+#else
   rex::thread::Sleep(std::chrono::microseconds(1));
+#endif
 
   // Checking these bits to see if any voice volume changed.
   // I think.

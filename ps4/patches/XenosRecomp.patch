@@ -1,0 +1,15 @@
+diff --git a/thirdparty/CMakeLists.txt b/thirdparty/CMakeLists.txt
+index 420195d..238ff9f 100644
+--- a/thirdparty/CMakeLists.txt
++++ b/thirdparty/CMakeLists.txt
+@@ -10,6 +10,10 @@ if (NOT TARGET libzstd)
+     add_subdirectory("${XENOS_RECOMP_THIRDPARTY_ROOT}/zstd/build/cmake")
+ endif()
+ 
++if(TARGET libzstd_static)
++    target_compile_definitions(libzstd_static PRIVATE ZSTD_TRACE=0)
++endif()
++
+ if (NOT TARGET Microsoft::DirectXShaderCompiler)
+     add_subdirectory("${XENOS_RECOMP_THIRDPARTY_ROOT}/dxc-bin")
+ endif()

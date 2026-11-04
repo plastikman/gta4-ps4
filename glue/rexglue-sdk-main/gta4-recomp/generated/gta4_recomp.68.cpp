@@ -1,4 +1,25 @@
+
+
 #include "gta4_init.h"
+#include "gta4_ps4_crash_trace.h"
+void GTA4_Ps4GuestStoreTrace(const char* site, uint32_t address, uint32_t base,
+							 uint32_t index, uint32_t value, uint32_t lr);
+#undef REX_STORE_U32
+#define REX_STORE_U32(x, y) \
+	(((u32)(x) >= 0x8285e000u && (u32)(x) < 0x82860000u) ? \
+		(GTA4_Ps4GuestStoreTrace("gta4_recomp.68-write32", (u32)(x), ctx.r1.u32, \
+			ctx.r3.u32, (u32)(y), static_cast<uint32_t>(ctx.lr)), \
+		 GTA4_Ps4GuestMemoryWriteAllowedContext((u32)(x), "write32", ctx, (u32)(y)), (u32)0) : \
+		(REX_TRACE_GUEST_ADDR_OP(x, "write32"), \
+		 *(volatile u32*)(base + (u32)(x) + REX_PHYS_HOST_OFFSET(x)) = __builtin_bswap32(y)))
+#if REX_PLATFORM_PS4 && defined(REX_PS4_GUEST_MEMORY_TRACE)  // bring-up tracing: every guest load and store
+#undef REX_TRACE_GUEST_ADDR
+#undef REX_TRACE_GUEST_ADDR_OP
+#define REX_TRACE_GUEST_ADDR(addr) \
+	((((u32)(addr) < 0x10000u || ((u32)(addr) >= 0x10a96000u && (u32)(addr) < 0x10a97000u)) || ((u32)(addr) >= 0x3a000u && (u32)(addr) < 0x3b000u) || ((u32)(addr) >= 0x8285e000u && (u32)(addr) < 0x82860000u)) ? GTA4_Ps4GuestMemoryTraceContextSite((u32)(addr), "raw", ctx, __FILE__, __LINE__, __func__) : (void)0)
+#define REX_TRACE_GUEST_ADDR_OP(addr, op) \
+	(((u32)(addr) < 0x10000u || ((u32)(addr) >= 0x10a96000u && (u32)(addr) < 0x10a97000u)) ? GTA4_Ps4GuestMemoryTraceContextSite((u32)(addr), op, ctx, __FILE__, __LINE__, __func__) : (void)0)
+#endif
 
 DEFINE_REX_FUNC(sub_828832C0) {
 	REX_FUNC_PROLOGUE();
@@ -662,7 +683,7 @@ loc_828836C8:
 	temp.f32 = float(ctx.f13.f64);
 	REX_STORE_U32(ctx.r3.u32 + 88, temp.u32);
 	// fmadds f0,f0,f11,f13
-	ctx.f0.f64 = double(float(std::fma(ctx.f0.f64, ctx.f11.f64, ctx.f13.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f11.f64, ctx.f13.f64)));
 	// stfs f0,92(r3)
 	temp.f32 = float(ctx.f0.f64);
 	REX_STORE_U32(ctx.r3.u32 + 92, temp.u32);
@@ -3329,7 +3350,7 @@ loc_82884888:
 	// fdivs f13,f13,f29
 	ctx.f13.f64 = double(float(ctx.f13.f64 / f29.f64));
 	// fmadds f0,f13,f31,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f13.f64, f31.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f13.f64, f31.f64, ctx.f0.f64)));
 	// stfs f0,160(r1)
 	temp.f32 = float(ctx.f0.f64);
 	REX_STORE_U32(ctx.r1.u32 + 160, temp.u32);
@@ -12628,13 +12649,9 @@ DEFINE_REX_FUNC(sub_828886F0) {
 	ctx.lr = 0x82888720;
 	{
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3560(ctx, base);
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r3,r31
 	ctx.r3.u64 = r31.u64;
@@ -12685,13 +12702,9 @@ DEFINE_REX_FUNC(sub_82888738) {
 	ctx.lr = 0x82888768;
 	{
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3560(ctx, base);
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r3,r31
 	ctx.r3.u64 = r31.u64;
@@ -12742,13 +12755,9 @@ DEFINE_REX_FUNC(sub_82888780) {
 	ctx.lr = 0x828887B0;
 	{
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3560(ctx, base);
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r3,r31
 	ctx.r3.u64 = r31.u64;
@@ -14579,15 +14588,11 @@ DEFINE_REX_FUNC(sub_82889318) {
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3560(ctx, base);
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r3,r31
 	ctx.r3.u64 = r31.u64;
@@ -15701,13 +15706,9 @@ DEFINE_REX_FUNC(sub_82889AE0) {
 	ctx.lr = 0x82889B10;
 	{
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3560(ctx, base);
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r3,r31
 	ctx.r3.u64 = r31.u64;
@@ -20151,15 +20152,11 @@ DEFINE_REX_FUNC(sub_8288B978) {
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3560(ctx, base);
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r3,r31
 	ctx.r3.u64 = r31.u64;
@@ -20227,13 +20224,9 @@ loc_8288BA00:
 	ctx.lr = 0x8288BA14;
 	{
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3560(ctx, base);
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r3,r31
 	ctx.r3.u64 = r31.u64;
@@ -21499,13 +21492,7 @@ loc_8288C16C:
 	ctr.u64 = ctx.r11.u64;
 	// bctr 
 	{
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; ctx.v1 = v1; ctx.v2 = v2; ctx.v10 = v10; ctx.v11 = v11; ctx.v12 = v12; ctx.v13 = v13; REX_CALL_INDIRECT_FUNC(ctr.u32); v0 = ctx.v0; v1 = ctx.v1; v2 = ctx.v2; v10 = ctx.v10; v11 = ctx.v11; v12 = ctx.v12; v13 = ctx.v13; }
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	{ ctx.v0 = v0; ctx.v1 = v1; ctx.v2 = v2; ctx.v10 = v10; ctx.v11 = v11; ctx.v12 = v12; ctx.v13 = v13; return; }
 }
@@ -21725,13 +21712,7 @@ loc_8288C2D0:
 	ctr.u64 = ctx.r11.u64;
 	// bctr 
 	{
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; ctx.v13 = v13; REX_CALL_INDIRECT_FUNC(ctr.u32); v0 = ctx.v0; v13 = ctx.v13; }
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	{ ctx.v0 = v0; ctx.v13 = v13; return; }
 }
@@ -21843,7 +21824,7 @@ loc_8288C31C:
 	temp.u32 = REX_LOAD_U32(ctx.r3.u32 + 232);
 	ctx.f12.f64 = double(temp.f32);
 	// fmadds f13,f0,f0,f13
-	ctx.f13.f64 = double(float(std::fma(ctx.f0.f64, ctx.f0.f64, ctx.f13.f64)));
+	ctx.f13.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f0.f64, ctx.f13.f64)));
 	// stfs f13,224(r3)
 	temp.f32 = float(ctx.f13.f64);
 	REX_STORE_U32(ctx.r3.u32 + 224, temp.u32);
@@ -21884,9 +21865,9 @@ DEFINE_REX_FUNC(sub_8288C3A0) {
 	temp.f32 = float(ctx.f1.f64);
 	REX_STORE_U32(ctx.r1.u32 + 28, temp.u32);
 	// fmadds f0,f0,f0,f13
-	ctx.f0.f64 = double(float(std::fma(ctx.f0.f64, ctx.f0.f64, ctx.f13.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f0.f64, ctx.f13.f64)));
 	// fmadds f0,f12,f12,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f12.f64, ctx.f12.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f12.f64, ctx.f12.f64, ctx.f0.f64)));
 	// fcmpu cr6,f0,f11
 	cr6.compare(ctx.f0.f64, ctx.f11.f64);
 	// ble cr6,0x8288c434
@@ -21915,17 +21896,17 @@ DEFINE_REX_FUNC(sub_8288C3A0) {
 	// lis r11,-32244
 	ctx.r11.s64 = -2113142784;
 	// fnmsub f9,f9,f0,f11
-	ctx.f9.f64 = -std::fma(ctx.f9.f64, ctx.f0.f64, -ctx.f11.f64);
+	ctx.f9.f64 = -REX_FMA(ctx.f9.f64, ctx.f0.f64, -ctx.f11.f64);
 	// fmadd f13,f9,f8,f13
-	ctx.f13.f64 = std::fma(ctx.f9.f64, ctx.f8.f64, ctx.f13.f64);
+	ctx.f13.f64 = REX_FMA(ctx.f9.f64, ctx.f8.f64, ctx.f13.f64);
 	// fmul f9,f13,f13
 	ctx.f9.f64 = ctx.f13.f64 * ctx.f13.f64;
 	// fmul f12,f13,f12
 	ctx.f12.f64 = ctx.f13.f64 * ctx.f12.f64;
 	// fnmsub f0,f9,f0,f11
-	ctx.f0.f64 = -std::fma(ctx.f9.f64, ctx.f0.f64, -ctx.f11.f64);
+	ctx.f0.f64 = -REX_FMA(ctx.f9.f64, ctx.f0.f64, -ctx.f11.f64);
 	// fmadd f0,f0,f12,f13
-	ctx.f0.f64 = std::fma(ctx.f0.f64, ctx.f12.f64, ctx.f13.f64);
+	ctx.f0.f64 = REX_FMA(ctx.f0.f64, ctx.f12.f64, ctx.f13.f64);
 	// lfd f13,-4848(r11)
 	ctx.f13.u64 = REX_LOAD_U64(ctx.r11.u32 + -4848);
 	// fsel f0,f10,f13,f0
@@ -21991,17 +21972,17 @@ loc_8288C434:
 	// lis r11,-32244
 	ctx.r11.s64 = -2113142784;
 	// fnmsub f9,f9,f0,f11
-	ctx.f9.f64 = -std::fma(ctx.f9.f64, ctx.f0.f64, -ctx.f11.f64);
+	ctx.f9.f64 = -REX_FMA(ctx.f9.f64, ctx.f0.f64, -ctx.f11.f64);
 	// fmadd f13,f9,f8,f13
-	ctx.f13.f64 = std::fma(ctx.f9.f64, ctx.f8.f64, ctx.f13.f64);
+	ctx.f13.f64 = REX_FMA(ctx.f9.f64, ctx.f8.f64, ctx.f13.f64);
 	// fmul f9,f13,f13
 	ctx.f9.f64 = ctx.f13.f64 * ctx.f13.f64;
 	// fmul f12,f13,f12
 	ctx.f12.f64 = ctx.f13.f64 * ctx.f12.f64;
 	// fnmsub f0,f9,f0,f11
-	ctx.f0.f64 = -std::fma(ctx.f9.f64, ctx.f0.f64, -ctx.f11.f64);
+	ctx.f0.f64 = -REX_FMA(ctx.f9.f64, ctx.f0.f64, -ctx.f11.f64);
 	// fmadd f0,f0,f12,f13
-	ctx.f0.f64 = std::fma(ctx.f0.f64, ctx.f12.f64, ctx.f13.f64);
+	ctx.f0.f64 = REX_FMA(ctx.f0.f64, ctx.f12.f64, ctx.f13.f64);
 	// lfd f13,-4848(r11)
 	ctx.f13.u64 = REX_LOAD_U64(ctx.r11.u32 + -4848);
 	// fsel f0,f10,f13,f0
@@ -23422,13 +23403,7 @@ loc_8288CD00:
 	ctr.u64 = ctx.r11.u64;
 	// bctr 
 	{
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; ctx.v10 = v10; ctx.v11 = v11; ctx.v12 = v12; ctx.v13 = v13; REX_CALL_INDIRECT_FUNC(ctr.u32); v0 = ctx.v0; v10 = ctx.v10; v11 = ctx.v11; v12 = ctx.v12; v13 = ctx.v13; }
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	{ ctx.v0 = v0; ctx.v10 = v10; ctx.v11 = v11; ctx.v12 = v12; ctx.v13 = v13; return; }
 }
@@ -26263,9 +26238,9 @@ DEFINE_REX_FUNC(sub_8288DE68) {
 	temp.u32 = REX_LOAD_U32(ctx.r3.u32 + 8);
 	ctx.f12.f64 = double(temp.f32);
 	// fmadds f0,f0,f0,f13
-	ctx.f0.f64 = double(float(std::fma(ctx.f0.f64, ctx.f0.f64, ctx.f13.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f0.f64, ctx.f13.f64)));
 	// fmadds f1,f12,f12,f0
-	ctx.f1.f64 = double(float(std::fma(ctx.f12.f64, ctx.f12.f64, ctx.f0.f64)));
+	ctx.f1.f64 = double(float(REX_FMA(ctx.f12.f64, ctx.f12.f64, ctx.f0.f64)));
 	// blr 
 	return;
 }
@@ -26301,9 +26276,9 @@ DEFINE_REX_FUNC(sub_8288DE88) {
 	// fmuls f0,f0,f0
 	ctx.f0.f64 = double(float(ctx.f0.f64 * ctx.f0.f64));
 	// fmadds f0,f13,f13,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f13.f64, ctx.f13.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f13.f64, ctx.f0.f64)));
 	// fmadds f1,f12,f12,f0
-	ctx.f1.f64 = double(float(std::fma(ctx.f12.f64, ctx.f12.f64, ctx.f0.f64)));
+	ctx.f1.f64 = double(float(REX_FMA(ctx.f12.f64, ctx.f12.f64, ctx.f0.f64)));
 	// blr 
 	return;
 }
@@ -26332,9 +26307,9 @@ DEFINE_REX_FUNC(sub_8288DEC0) {
 	// lis r11,-32256
 	ctx.r11.s64 = -2113929216;
 	// fmadds f0,f0,f0,f13
-	ctx.f0.f64 = double(float(std::fma(ctx.f0.f64, ctx.f0.f64, ctx.f13.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f0.f64, ctx.f13.f64)));
 	// fmadds f0,f12,f12,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f12.f64, ctx.f12.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f12.f64, ctx.f12.f64, ctx.f0.f64)));
 	// fcmpu cr6,f0,f1
 	cr6.compare(ctx.f0.f64, ctx.f1.f64);
 	// ble cr6,0x8288df20
@@ -26415,9 +26390,9 @@ DEFINE_REX_FUNC(sub_8288DF38) {
 	temp.u32 = REX_LOAD_U32(ctx.r4.u32 + 8);
 	ctx.f10.f64 = double(temp.f32);
 	// fmadds f0,f13,f12,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f13.f64, ctx.f12.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f12.f64, ctx.f0.f64)));
 	// fmadds f0,f11,f10,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f11.f64, ctx.f10.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f11.f64, ctx.f10.f64, ctx.f0.f64)));
 	// stfs f0,0(r3)
 	temp.f32 = float(ctx.f0.f64);
 	REX_STORE_U32(ctx.r3.u32 + 0, temp.u32);
@@ -26442,9 +26417,9 @@ DEFINE_REX_FUNC(sub_8288DF38) {
 	temp.u32 = REX_LOAD_U32(ctx.r4.u32 + 0);
 	ctx.f10.f64 = double(temp.f32);
 	// fmadds f0,f13,f12,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f13.f64, ctx.f12.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f12.f64, ctx.f0.f64)));
 	// fmadds f0,f11,f10,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f11.f64, ctx.f10.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f11.f64, ctx.f10.f64, ctx.f0.f64)));
 	// stfs f0,4(r3)
 	temp.f32 = float(ctx.f0.f64);
 	REX_STORE_U32(ctx.r3.u32 + 4, temp.u32);
@@ -26469,9 +26444,9 @@ DEFINE_REX_FUNC(sub_8288DF38) {
 	temp.u32 = REX_LOAD_U32(ctx.r4.u32 + 0);
 	ctx.f10.f64 = double(temp.f32);
 	// fmadds f0,f13,f12,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f13.f64, ctx.f12.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f12.f64, ctx.f0.f64)));
 	// fmadds f0,f11,f10,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f11.f64, ctx.f10.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f11.f64, ctx.f10.f64, ctx.f0.f64)));
 	// stfs f0,8(r3)
 	temp.f32 = float(ctx.f0.f64);
 	REX_STORE_U32(ctx.r3.u32 + 8, temp.u32);
@@ -26496,9 +26471,9 @@ DEFINE_REX_FUNC(sub_8288DF38) {
 	temp.u32 = REX_LOAD_U32(ctx.r5.u32 + 0);
 	ctx.f10.f64 = double(temp.f32);
 	// fmadds f0,f13,f12,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f13.f64, ctx.f12.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f12.f64, ctx.f0.f64)));
 	// fmadds f0,f11,f10,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f11.f64, ctx.f10.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f11.f64, ctx.f10.f64, ctx.f0.f64)));
 	// stfs f0,12(r3)
 	temp.f32 = float(ctx.f0.f64);
 	REX_STORE_U32(ctx.r3.u32 + 12, temp.u32);
@@ -26523,9 +26498,9 @@ DEFINE_REX_FUNC(sub_8288DF38) {
 	temp.u32 = REX_LOAD_U32(ctx.r5.u32 + 4);
 	ctx.f10.f64 = double(temp.f32);
 	// fmadds f0,f13,f12,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f13.f64, ctx.f12.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f12.f64, ctx.f0.f64)));
 	// fmadds f0,f11,f10,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f11.f64, ctx.f10.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f11.f64, ctx.f10.f64, ctx.f0.f64)));
 	// stfs f0,16(r3)
 	temp.f32 = float(ctx.f0.f64);
 	REX_STORE_U32(ctx.r3.u32 + 16, temp.u32);
@@ -26550,9 +26525,9 @@ DEFINE_REX_FUNC(sub_8288DF38) {
 	temp.u32 = REX_LOAD_U32(ctx.r5.u32 + 8);
 	ctx.f10.f64 = double(temp.f32);
 	// fmadds f0,f13,f12,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f13.f64, ctx.f12.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f12.f64, ctx.f0.f64)));
 	// fmadds f0,f11,f10,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f11.f64, ctx.f10.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f11.f64, ctx.f10.f64, ctx.f0.f64)));
 	// stfs f0,20(r3)
 	temp.f32 = float(ctx.f0.f64);
 	REX_STORE_U32(ctx.r3.u32 + 20, temp.u32);
@@ -26571,7 +26546,7 @@ DEFINE_REX_FUNC(sub_8288DF38) {
 	temp.u32 = REX_LOAD_U32(ctx.r5.u32 + 0);
 	ctx.f13.f64 = double(temp.f32);
 	// fmadds f0,f12,f13,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f12.f64, ctx.f13.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f12.f64, ctx.f13.f64, ctx.f0.f64)));
 	// lfs f13,28(r4)
 	temp.u32 = REX_LOAD_U32(ctx.r4.u32 + 28);
 	ctx.f13.f64 = double(temp.f32);
@@ -26579,7 +26554,7 @@ DEFINE_REX_FUNC(sub_8288DF38) {
 	temp.u32 = REX_LOAD_U32(ctx.r5.u32 + 12);
 	ctx.f12.f64 = double(temp.f32);
 	// fmadds f0,f13,f12,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f13.f64, ctx.f12.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f12.f64, ctx.f0.f64)));
 	// stfs f0,24(r3)
 	temp.f32 = float(ctx.f0.f64);
 	REX_STORE_U32(ctx.r3.u32 + 24, temp.u32);
@@ -26604,9 +26579,9 @@ DEFINE_REX_FUNC(sub_8288DF38) {
 	temp.u32 = REX_LOAD_U32(ctx.r4.u32 + 24);
 	ctx.f10.f64 = double(temp.f32);
 	// fmadds f0,f13,f12,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f13.f64, ctx.f12.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f12.f64, ctx.f0.f64)));
 	// fmadds f0,f11,f10,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f11.f64, ctx.f10.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f11.f64, ctx.f10.f64, ctx.f0.f64)));
 	// stfs f0,28(r3)
 	temp.f32 = float(ctx.f0.f64);
 	REX_STORE_U32(ctx.r3.u32 + 28, temp.u32);
@@ -26631,9 +26606,9 @@ DEFINE_REX_FUNC(sub_8288DF38) {
 	temp.u32 = REX_LOAD_U32(ctx.r4.u32 + 24);
 	ctx.f10.f64 = double(temp.f32);
 	// fmadds f0,f13,f12,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f13.f64, ctx.f12.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f12.f64, ctx.f0.f64)));
 	// fmadds f0,f11,f10,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f11.f64, ctx.f10.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f11.f64, ctx.f10.f64, ctx.f0.f64)));
 	// stfs f0,32(r3)
 	temp.f32 = float(ctx.f0.f64);
 	REX_STORE_U32(ctx.r3.u32 + 32, temp.u32);
@@ -26867,17 +26842,17 @@ loc_8288E1CC:
 	// fmuls f3,f12,f10
 	ctx.f3.f64 = double(float(ctx.f12.f64 * ctx.f10.f64));
 	// fmsubs f13,f12,f13,f5
-	ctx.f13.f64 = double(float(std::fma(ctx.f12.f64, ctx.f13.f64, -ctx.f5.f64)));
+	ctx.f13.f64 = double(float(REX_FMA(ctx.f12.f64, ctx.f13.f64, -ctx.f5.f64)));
 	// fmsubs f0,f10,f0,f4
-	ctx.f0.f64 = double(float(std::fma(ctx.f10.f64, ctx.f0.f64, -ctx.f4.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f10.f64, ctx.f0.f64, -ctx.f4.f64)));
 	// fmsubs f12,f11,f9,f3
-	ctx.f12.f64 = double(float(std::fma(ctx.f11.f64, ctx.f9.f64, -ctx.f3.f64)));
+	ctx.f12.f64 = double(float(REX_FMA(ctx.f11.f64, ctx.f9.f64, -ctx.f3.f64)));
 	// fmuls f13,f13,f8
 	ctx.f13.f64 = double(float(ctx.f13.f64 * ctx.f8.f64));
 	// fmadds f0,f0,f6,f13
-	ctx.f0.f64 = double(float(std::fma(ctx.f0.f64, ctx.f6.f64, ctx.f13.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f6.f64, ctx.f13.f64)));
 	// fmadds f13,f12,f7,f0
-	ctx.f13.f64 = double(float(std::fma(ctx.f12.f64, ctx.f7.f64, ctx.f0.f64)));
+	ctx.f13.f64 = double(float(REX_FMA(ctx.f12.f64, ctx.f7.f64, ctx.f0.f64)));
 	// lfs f0,3400(r11)
 	temp.u32 = REX_LOAD_U32(ctx.r11.u32 + 3400);
 	ctx.f0.f64 = double(temp.f32);
@@ -27506,11 +27481,11 @@ DEFINE_REX_FUNC(sub_8288E580) {
 	temp.u32 = REX_LOAD_U32(ctx.r3.u32 + 8);
 	ctx.f7.f64 = double(temp.f32);
 	// fmadds f0,f11,f12,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f11.f64, ctx.f12.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f11.f64, ctx.f12.f64, ctx.f0.f64)));
 	// fnmadds f0,f10,f13,f0
-	ctx.f0.f64 = double(float(-std::fma(ctx.f10.f64, ctx.f13.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(-REX_FMA(ctx.f10.f64, ctx.f13.f64, ctx.f0.f64)));
 	// fmadds f13,f13,f0,f9
-	ctx.f13.f64 = double(float(std::fma(ctx.f13.f64, ctx.f0.f64, ctx.f9.f64)));
+	ctx.f13.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f0.f64, ctx.f9.f64)));
 	// stfs f13,0(r3)
 	temp.f32 = float(ctx.f13.f64);
 	REX_STORE_U32(ctx.r3.u32 + 0, temp.u32);
@@ -27518,7 +27493,7 @@ DEFINE_REX_FUNC(sub_8288E580) {
 	temp.u32 = REX_LOAD_U32(ctx.r10.u32 + 4);
 	ctx.f13.f64 = double(temp.f32);
 	// fmadds f13,f13,f0,f8
-	ctx.f13.f64 = double(float(std::fma(ctx.f13.f64, ctx.f0.f64, ctx.f8.f64)));
+	ctx.f13.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f0.f64, ctx.f8.f64)));
 	// stfs f13,4(r3)
 	temp.f32 = float(ctx.f13.f64);
 	REX_STORE_U32(ctx.r3.u32 + 4, temp.u32);
@@ -27526,7 +27501,7 @@ DEFINE_REX_FUNC(sub_8288E580) {
 	temp.u32 = REX_LOAD_U32(ctx.r10.u32 + 8);
 	ctx.f13.f64 = double(temp.f32);
 	// fmadds f0,f0,f13,f7
-	ctx.f0.f64 = double(float(std::fma(ctx.f0.f64, ctx.f13.f64, ctx.f7.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f13.f64, ctx.f7.f64)));
 	// stfs f0,8(r3)
 	temp.f32 = float(ctx.f0.f64);
 	REX_STORE_U32(ctx.r3.u32 + 8, temp.u32);
@@ -27559,17 +27534,17 @@ DEFINE_REX_FUNC(sub_8288E580) {
 	// fmuls f6,f9,f0
 	ctx.f6.f64 = double(float(ctx.f9.f64 * ctx.f0.f64));
 	// fmsubs f13,f9,f13,f7
-	ctx.f13.f64 = double(float(std::fma(ctx.f9.f64, ctx.f13.f64, -ctx.f7.f64)));
+	ctx.f13.f64 = double(float(REX_FMA(ctx.f9.f64, ctx.f13.f64, -ctx.f7.f64)));
 	// stfs f13,40(r10)
 	temp.f32 = float(ctx.f13.f64);
 	REX_STORE_U32(ctx.r10.u32 + 40, temp.u32);
 	// fmsubs f0,f11,f0,f8
-	ctx.f0.f64 = double(float(std::fma(ctx.f11.f64, ctx.f0.f64, -ctx.f8.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f11.f64, ctx.f0.f64, -ctx.f8.f64)));
 	// stfs f0,36(r10)
 	temp.f32 = float(ctx.f0.f64);
 	REX_STORE_U32(ctx.r10.u32 + 36, temp.u32);
 	// fmsubs f12,f12,f10,f6
-	ctx.f12.f64 = double(float(std::fma(ctx.f12.f64, ctx.f10.f64, -ctx.f6.f64)));
+	ctx.f12.f64 = double(float(REX_FMA(ctx.f12.f64, ctx.f10.f64, -ctx.f6.f64)));
 	// stfs f12,32(r10)
 	temp.f32 = float(ctx.f12.f64);
 	REX_STORE_U32(ctx.r10.u32 + 32, temp.u32);
@@ -27678,12 +27653,12 @@ DEFINE_REX_FUNC(sub_8288E698) {
 	temp.u32 = REX_LOAD_U32(ctx.r4.u32 + 0);
 	ctx.f12.f64 = double(temp.f32);
 	// fmadds f13,f0,f0,f13
-	ctx.f13.f64 = double(float(std::fma(ctx.f0.f64, ctx.f0.f64, ctx.f13.f64)));
+	ctx.f13.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f0.f64, ctx.f13.f64)));
 	// lfs f0,3400(r11)
 	temp.u32 = REX_LOAD_U32(ctx.r11.u32 + 3400);
 	ctx.f0.f64 = double(temp.f32);
 	// fmadds f11,f12,f12,f0
-	ctx.f11.f64 = double(float(std::fma(ctx.f12.f64, ctx.f12.f64, ctx.f0.f64)));
+	ctx.f11.f64 = double(float(REX_FMA(ctx.f12.f64, ctx.f12.f64, ctx.f0.f64)));
 	// lis r11,-32256
 	ctx.r11.s64 = -2113929216;
 	// lfs f12,3528(r11)
@@ -27728,7 +27703,7 @@ DEFINE_REX_FUNC(sub_8288E698) {
 	temp.u32 = REX_LOAD_U32(ctx.r4.u32 + 4);
 	ctx.f9.f64 = double(temp.f32);
 	// fmadds f0,f0,f9,f10
-	ctx.f0.f64 = double(float(std::fma(ctx.f0.f64, ctx.f9.f64, ctx.f10.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f9.f64, ctx.f10.f64)));
 	// fmuls f0,f0,f12
 	ctx.f0.f64 = double(float(ctx.f0.f64 * ctx.f12.f64));
 	// stfs f0,8(r3)
@@ -27748,7 +27723,7 @@ DEFINE_REX_FUNC(sub_8288E698) {
 	temp.u32 = REX_LOAD_U32(ctx.r4.u32 + 8);
 	ctx.f11.f64 = double(temp.f32);
 	// fmsubs f0,f0,f11,f13
-	ctx.f0.f64 = double(float(std::fma(ctx.f0.f64, ctx.f11.f64, -ctx.f13.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f11.f64, -ctx.f13.f64)));
 	// fmuls f0,f0,f12
 	ctx.f0.f64 = double(float(ctx.f0.f64 * ctx.f12.f64));
 	// stfs f0,12(r3)
@@ -27792,13 +27767,9 @@ DEFINE_REX_FUNC(sub_8288E730) {
 	ctx.lr = 0x8288E760;
 	{
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3560(ctx, base);
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r3,r31
 	ctx.r3.u64 = r31.u64;
@@ -27895,9 +27866,7 @@ DEFINE_REX_FUNC(sub_8288E7E0) {
 	ctr.u64 = ctx.r11.u64;
 	// bctr 
 	{
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
 		REX_CALL_INDIRECT_FUNC(ctr.u32);
-		ctx.ctr = s_ctr;
 	}
 	return;
 }
@@ -28074,9 +28043,9 @@ DEFINE_REX_FUNC(sub_8288E8B0) {
 	temp.f32 = float(ctx.f8.f64);
 	REX_STORE_U32(ctx.r3.u32 + 304, temp.u32);
 	// fnmsubs f13,f12,f11,f9
-	ctx.f13.f64 = double(float(-std::fma(ctx.f12.f64, ctx.f11.f64, -ctx.f9.f64)));
+	ctx.f13.f64 = double(float(-REX_FMA(ctx.f12.f64, ctx.f11.f64, -ctx.f9.f64)));
 	// fmadds f12,f12,f11,f9
-	ctx.f12.f64 = double(float(std::fma(ctx.f12.f64, ctx.f11.f64, ctx.f9.f64)));
+	ctx.f12.f64 = double(float(REX_FMA(ctx.f12.f64, ctx.f11.f64, ctx.f9.f64)));
 	// lfs f0,26808(r11)
 	temp.u32 = REX_LOAD_U32(ctx.r11.u32 + 26808);
 	ctx.f0.f64 = double(temp.f32);
@@ -28088,7 +28057,7 @@ DEFINE_REX_FUNC(sub_8288E8B0) {
 	temp.u32 = REX_LOAD_U32(ctx.r3.u32 + 288);
 	ctx.f0.f64 = double(temp.f32);
 	// fmadds f9,f8,f7,f6
-	ctx.f9.f64 = double(float(std::fma(ctx.f8.f64, ctx.f7.f64, ctx.f6.f64)));
+	ctx.f9.f64 = double(float(REX_FMA(ctx.f8.f64, ctx.f7.f64, ctx.f6.f64)));
 	// fsubs f11,f0,f13
 	ctx.f11.f64 = double(float(ctx.f0.f64 - ctx.f13.f64));
 	// fmuls f9,f9,f5
@@ -28233,7 +28202,7 @@ DEFINE_REX_FUNC(sub_8288E9D8) {
 	temp.u32 = REX_LOAD_U32(ctx.r3.u32 + 324);
 	ctx.f13.f64 = double(temp.f32);
 	// fmadds f0,f0,f1,f13
-	ctx.f0.f64 = double(float(std::fma(ctx.f0.f64, ctx.f1.f64, ctx.f13.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f1.f64, ctx.f13.f64)));
 	// stfs f0,288(r3)
 	temp.f32 = float(ctx.f0.f64);
 	REX_STORE_U32(ctx.r3.u32 + 288, temp.u32);
@@ -28591,7 +28560,7 @@ DEFINE_REX_FUNC(sub_8288EBB0) {
 	// fmuls f0,f12,f0
 	ctx.f0.f64 = double(float(ctx.f12.f64 * ctx.f0.f64));
 	// fmadds f0,f13,f11,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f13.f64, ctx.f11.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f11.f64, ctx.f0.f64)));
 	// stfs f0,288(r3)
 	temp.f32 = float(ctx.f0.f64);
 	REX_STORE_U32(ctx.r3.u32 + 288, temp.u32);
@@ -28689,9 +28658,7 @@ DEFINE_REX_FUNC(sub_8288EC88) {
 	ctr.u64 = ctx.r11.u64;
 	// bctr 
 	{
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
 		REX_CALL_INDIRECT_FUNC(ctr.u32);
-		ctx.ctr = s_ctr;
 	}
 	return;
 }
@@ -29621,7 +29588,7 @@ loc_8288F1B0:
 	// fmuls f0,f0,f0
 	ctx.f0.f64 = double(float(ctx.f0.f64 * ctx.f0.f64));
 	// fmadds f0,f13,f13,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f13.f64, ctx.f13.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f13.f64, ctx.f0.f64)));
 	// fsqrts f1,f0
 	ctx.f1.f64 = double(float(sqrt(ctx.f0.f64)));
 	// blr 
@@ -29701,7 +29668,7 @@ DEFINE_REX_FUNC(sub_8288F1D0) {
 	// lis r10,-32256
 	ctx.r10.s64 = -2113929216;
 	// fmadds f0,f0,f11,f12
-	ctx.f0.f64 = double(float(std::fma(ctx.f0.f64, ctx.f11.f64, ctx.f12.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f11.f64, ctx.f12.f64)));
 	// fmuls f0,f0,f10
 	ctx.f0.f64 = double(float(ctx.f0.f64 * ctx.f10.f64));
 	// fmuls f11,f0,f1
@@ -29822,7 +29789,7 @@ loc_8288F288:
 	// fmuls f2,f0,f0
 	ctx.f2.f64 = double(float(ctx.f0.f64 * ctx.f0.f64));
 	// fmadds f2,f13,f13,f2
-	ctx.f2.f64 = double(float(std::fma(ctx.f13.f64, ctx.f13.f64, ctx.f2.f64)));
+	ctx.f2.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f13.f64, ctx.f2.f64)));
 	// fcmpu cr6,f2,f12
 	cr6.compare(ctx.f2.f64, ctx.f12.f64);
 	// ble cr6,0x8288f32c
@@ -29836,9 +29803,9 @@ loc_8288F288:
 	// fmuls f0,f8,f0
 	ctx.f0.f64 = double(float(ctx.f8.f64 * ctx.f0.f64));
 	// fmadds f7,f13,f5,f10
-	ctx.f7.f64 = double(float(std::fma(ctx.f13.f64, ctx.f5.f64, ctx.f10.f64)));
+	ctx.f7.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f5.f64, ctx.f10.f64)));
 	// fmadds f8,f0,f6,f11
-	ctx.f8.f64 = double(float(std::fma(ctx.f0.f64, ctx.f6.f64, ctx.f11.f64)));
+	ctx.f8.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f6.f64, ctx.f11.f64)));
 loc_8288F32C:
 	// lis r10,-31971
 	ctx.r10.s64 = -2095251456;
@@ -30130,17 +30097,17 @@ DEFINE_REX_FUNC(sub_8288F460) {
 	temp.f32 = float(ctx.f13.f64);
 	REX_STORE_U32(r31.u32 + 328, temp.u32);
 	// fmadds f12,f12,f0,f10
-	ctx.f12.f64 = double(float(std::fma(ctx.f12.f64, ctx.f0.f64, ctx.f10.f64)));
+	ctx.f12.f64 = double(float(REX_FMA(ctx.f12.f64, ctx.f0.f64, ctx.f10.f64)));
 	// stfs f12,336(r31)
 	temp.f32 = float(ctx.f12.f64);
 	REX_STORE_U32(r31.u32 + 336, temp.u32);
 	// fmadds f11,f11,f0,f8
-	ctx.f11.f64 = double(float(std::fma(ctx.f11.f64, ctx.f0.f64, ctx.f8.f64)));
+	ctx.f11.f64 = double(float(REX_FMA(ctx.f11.f64, ctx.f0.f64, ctx.f8.f64)));
 	// stfs f11,340(r31)
 	temp.f32 = float(ctx.f11.f64);
 	REX_STORE_U32(r31.u32 + 340, temp.u32);
 	// fmadds f0,f9,f0,f13
-	ctx.f0.f64 = double(float(std::fma(ctx.f9.f64, ctx.f0.f64, ctx.f13.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f9.f64, ctx.f0.f64, ctx.f13.f64)));
 	// stfs f0,332(r31)
 	temp.f32 = float(ctx.f0.f64);
 	REX_STORE_U32(r31.u32 + 332, temp.u32);
@@ -30306,9 +30273,9 @@ DEFINE_REX_FUNC(sub_8288F5A0) {
 	// fmuls f10,f13,f9
 	ctx.f10.f64 = double(float(ctx.f13.f64 * ctx.f9.f64));
 	// fmadds f11,f8,f0,f12
-	ctx.f11.f64 = double(float(std::fma(ctx.f8.f64, ctx.f0.f64, ctx.f12.f64)));
+	ctx.f11.f64 = double(float(REX_FMA(ctx.f8.f64, ctx.f0.f64, ctx.f12.f64)));
 	// fmadds f12,f7,f0,f10
-	ctx.f12.f64 = double(float(std::fma(ctx.f7.f64, ctx.f0.f64, ctx.f10.f64)));
+	ctx.f12.f64 = double(float(REX_FMA(ctx.f7.f64, ctx.f0.f64, ctx.f10.f64)));
 	// bnelr cr6
 	if (!cr6.eq) return;
 	// lfs f10,356(r3)
@@ -30326,7 +30293,7 @@ DEFINE_REX_FUNC(sub_8288F5A0) {
 	temp.f32 = float(ctx.f11.f64);
 	REX_STORE_U32(ctx.r3.u32 + 364, temp.u32);
 	// fmadds f0,f9,f0,f13
-	ctx.f0.f64 = double(float(std::fma(ctx.f9.f64, ctx.f0.f64, ctx.f13.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f9.f64, ctx.f0.f64, ctx.f13.f64)));
 	// stfs f0,356(r3)
 	temp.f32 = float(ctx.f0.f64);
 	REX_STORE_U32(ctx.r3.u32 + 356, temp.u32);
@@ -30424,9 +30391,7 @@ DEFINE_REX_FUNC(sub_8288F6A0) {
 	ctr.u64 = ctx.r11.u64;
 	// bctr 
 	{
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
 		REX_CALL_INDIRECT_FUNC(ctr.u32);
-		ctx.ctr = s_ctr;
 	}
 	return;
 }
@@ -30906,7 +30871,7 @@ DEFINE_REX_FUNC(sub_8288F958) {
 	temp.u32 = REX_LOAD_U32(ctx.r3.u32 + 424);
 	ctx.f13.f64 = double(temp.f32);
 	// fmadds f0,f0,f1,f13
-	ctx.f0.f64 = double(float(std::fma(ctx.f0.f64, ctx.f1.f64, ctx.f13.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f1.f64, ctx.f13.f64)));
 	// stfs f0,356(r3)
 	temp.f32 = float(ctx.f0.f64);
 	REX_STORE_U32(ctx.r3.u32 + 356, temp.u32);
@@ -30935,7 +30900,7 @@ DEFINE_REX_FUNC(sub_8288F980) {
 	temp.u32 = REX_LOAD_U32(ctx.r3.u32 + 432);
 	ctx.f13.f64 = double(temp.f32);
 	// fmadds f0,f0,f1,f13
-	ctx.f0.f64 = double(float(std::fma(ctx.f0.f64, ctx.f1.f64, ctx.f13.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f1.f64, ctx.f13.f64)));
 	// stfs f0,360(r3)
 	temp.f32 = float(ctx.f0.f64);
 	REX_STORE_U32(ctx.r3.u32 + 360, temp.u32);
@@ -30964,7 +30929,7 @@ DEFINE_REX_FUNC(sub_8288F9A8) {
 	temp.u32 = REX_LOAD_U32(ctx.r3.u32 + 440);
 	ctx.f13.f64 = double(temp.f32);
 	// fmadds f0,f0,f1,f13
-	ctx.f0.f64 = double(float(std::fma(ctx.f0.f64, ctx.f1.f64, ctx.f13.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f1.f64, ctx.f13.f64)));
 	// stfs f0,364(r3)
 	temp.f32 = float(ctx.f0.f64);
 	REX_STORE_U32(ctx.r3.u32 + 364, temp.u32);
@@ -34592,17 +34557,17 @@ loc_82890EA8:
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 308);
 	ctx.f12.f64 = double(temp.f32);
 	// fmadds f31,f0,f13,f5
-	f31.f64 = double(float(std::fma(ctx.f0.f64, ctx.f13.f64, ctx.f5.f64)));
+	f31.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f13.f64, ctx.f5.f64)));
 	// lfs f5,288(r1)
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 288);
 	ctx.f5.f64 = double(temp.f32);
 	// fmadds f30,f10,f0,f3
-	f30.f64 = double(float(std::fma(ctx.f10.f64, ctx.f0.f64, ctx.f3.f64)));
+	f30.f64 = double(float(REX_FMA(ctx.f10.f64, ctx.f0.f64, ctx.f3.f64)));
 	// lfs f3,240(r1)
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 240);
 	ctx.f3.f64 = double(temp.f32);
 	// fmadds f29,f8,f0,f2
-	f29.f64 = double(float(std::fma(ctx.f8.f64, ctx.f0.f64, ctx.f2.f64)));
+	f29.f64 = double(float(REX_FMA(ctx.f8.f64, ctx.f0.f64, ctx.f2.f64)));
 	// lfs f0,256(r1)
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 256);
 	ctx.f0.f64 = double(temp.f32);
@@ -34610,24 +34575,24 @@ loc_82890EA8:
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 304);
 	ctx.f2.f64 = double(temp.f32);
 	// fmadds f1,f12,f13,f1
-	ctx.f1.f64 = double(float(std::fma(ctx.f12.f64, ctx.f13.f64, ctx.f1.f64)));
+	ctx.f1.f64 = double(float(REX_FMA(ctx.f12.f64, ctx.f13.f64, ctx.f1.f64)));
 	// fmadds f31,f5,f4,f31
-	f31.f64 = double(float(std::fma(ctx.f5.f64, ctx.f4.f64, f31.f64)));
+	f31.f64 = double(float(REX_FMA(ctx.f5.f64, ctx.f4.f64, f31.f64)));
 	// stfs f31,176(r1)
 	temp.f32 = float(f31.f64);
 	REX_STORE_U32(ctx.r1.u32 + 176, temp.u32);
 	// fmadds f31,f3,f5,f30
-	f31.f64 = double(float(std::fma(ctx.f3.f64, ctx.f5.f64, f30.f64)));
+	f31.f64 = double(float(REX_FMA(ctx.f3.f64, ctx.f5.f64, f30.f64)));
 	// stfs f31,180(r1)
 	temp.f32 = float(f31.f64);
 	REX_STORE_U32(ctx.r1.u32 + 180, temp.u32);
 	// fmadds f5,f0,f5,f29
-	ctx.f5.f64 = double(float(std::fma(ctx.f0.f64, ctx.f5.f64, f29.f64)));
+	ctx.f5.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f5.f64, f29.f64)));
 	// stfs f5,184(r1)
 	temp.f32 = float(ctx.f5.f64);
 	REX_STORE_U32(ctx.r1.u32 + 184, temp.u32);
 	// fmadds f5,f2,f4,f1
-	ctx.f5.f64 = double(float(std::fma(ctx.f2.f64, ctx.f4.f64, ctx.f1.f64)));
+	ctx.f5.f64 = double(float(REX_FMA(ctx.f2.f64, ctx.f4.f64, ctx.f1.f64)));
 	// stfs f5,188(r1)
 	temp.f32 = float(ctx.f5.f64);
 	REX_STORE_U32(ctx.r1.u32 + 188, temp.u32);
@@ -34651,39 +34616,39 @@ loc_82890EA8:
 	// addi r4,r1,176
 	ctx.r4.s64 = ctx.r1.s64 + 176;
 	// fmadds f1,f12,f10,f28
-	ctx.f1.f64 = double(float(std::fma(ctx.f12.f64, ctx.f10.f64, f28.f64)));
+	ctx.f1.f64 = double(float(REX_FMA(ctx.f12.f64, ctx.f10.f64, f28.f64)));
 	// mr r3,r28
 	ctx.r3.u64 = r28.u64;
 	// fmadds f12,f12,f8,f31
-	ctx.f12.f64 = double(float(std::fma(ctx.f12.f64, ctx.f8.f64, f31.f64)));
+	ctx.f12.f64 = double(float(REX_FMA(ctx.f12.f64, ctx.f8.f64, f31.f64)));
 	// fmadds f13,f6,f13,f30
-	ctx.f13.f64 = double(float(std::fma(ctx.f6.f64, ctx.f13.f64, f30.f64)));
+	ctx.f13.f64 = double(float(REX_FMA(ctx.f6.f64, ctx.f13.f64, f30.f64)));
 	// fmadds f10,f6,f10,f9
-	ctx.f10.f64 = double(float(std::fma(ctx.f6.f64, ctx.f10.f64, ctx.f9.f64)));
+	ctx.f10.f64 = double(float(REX_FMA(ctx.f6.f64, ctx.f10.f64, ctx.f9.f64)));
 	// fmadds f9,f6,f8,f7
-	ctx.f9.f64 = double(float(std::fma(ctx.f6.f64, ctx.f8.f64, ctx.f7.f64)));
+	ctx.f9.f64 = double(float(REX_FMA(ctx.f6.f64, ctx.f8.f64, ctx.f7.f64)));
 	// fmadds f8,f2,f3,f1
-	ctx.f8.f64 = double(float(std::fma(ctx.f2.f64, ctx.f3.f64, ctx.f1.f64)));
+	ctx.f8.f64 = double(float(REX_FMA(ctx.f2.f64, ctx.f3.f64, ctx.f1.f64)));
 	// stfs f8,192(r1)
 	temp.f32 = float(ctx.f8.f64);
 	REX_STORE_U32(ctx.r1.u32 + 192, temp.u32);
 	// fmadds f12,f2,f0,f12
-	ctx.f12.f64 = double(float(std::fma(ctx.f2.f64, ctx.f0.f64, ctx.f12.f64)));
+	ctx.f12.f64 = double(float(REX_FMA(ctx.f2.f64, ctx.f0.f64, ctx.f12.f64)));
 	// stfs f12,196(r1)
 	temp.f32 = float(ctx.f12.f64);
 	REX_STORE_U32(ctx.r1.u32 + 196, temp.u32);
 	// fmadds f13,f11,f4,f13
-	ctx.f13.f64 = double(float(std::fma(ctx.f11.f64, ctx.f4.f64, ctx.f13.f64)));
+	ctx.f13.f64 = double(float(REX_FMA(ctx.f11.f64, ctx.f4.f64, ctx.f13.f64)));
 	// stfs f13,200(r1)
 	temp.f32 = float(ctx.f13.f64);
 	REX_STORE_U32(ctx.r1.u32 + 200, temp.u32);
 	// fmadds f13,f11,f3,f10
-	ctx.f13.f64 = double(float(std::fma(ctx.f11.f64, ctx.f3.f64, ctx.f10.f64)));
+	ctx.f13.f64 = double(float(REX_FMA(ctx.f11.f64, ctx.f3.f64, ctx.f10.f64)));
 	// stfs f13,204(r1)
 	temp.f32 = float(ctx.f13.f64);
 	REX_STORE_U32(ctx.r1.u32 + 204, temp.u32);
 	// fmadds f0,f11,f0,f9
-	ctx.f0.f64 = double(float(std::fma(ctx.f11.f64, ctx.f0.f64, ctx.f9.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f11.f64, ctx.f0.f64, ctx.f9.f64)));
 	// stfs f0,208(r1)
 	temp.f32 = float(ctx.f0.f64);
 	REX_STORE_U32(ctx.r1.u32 + 208, temp.u32);
@@ -34884,7 +34849,7 @@ DEFINE_REX_FUNC(sub_82891130) {
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + -8);
 	ctx.f13.f64 = double(temp.f32);
 	// fmadds f0,f0,f0,f12
-	ctx.f0.f64 = double(float(std::fma(ctx.f0.f64, ctx.f0.f64, ctx.f12.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f0.f64, ctx.f12.f64)));
 	// vor v7,v0,v0
 	simde_mm_store_si128((simde__m128i*)v7.u8, simde_mm_load_si128((simde__m128i*)v0.u8));
 	// vrsqrtefp v0,v0
@@ -34892,7 +34857,7 @@ DEFINE_REX_FUNC(sub_82891130) {
 	simde_mm_store_ps(v0.f32, simde_mm_div_ps(simde_mm_set1_ps(1), simde_mm_sqrt_ps(simde_mm_load_ps(v0.f32))));
 	// fmadds f0,f13,f13,f0
 	ctx.fpscr.disableFlushModeUnconditional();
-	ctx.f0.f64 = double(float(std::fma(ctx.f13.f64, ctx.f13.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f13.f64, ctx.f0.f64)));
 	// vor v6,v0,v0
 	simde_mm_store_si128((simde__m128i*)v6.u8, simde_mm_load_si128((simde__m128i*)v0.u8));
 	// vcmpeqfp v0,v0,v12
@@ -35488,7 +35453,7 @@ loc_82891278:
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + -64);
 	ctx.f3.f64 = double(temp.f32);
 	// fmadds f0,f10,f0,f7
-	ctx.f0.f64 = double(float(std::fma(ctx.f10.f64, ctx.f0.f64, ctx.f7.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f10.f64, ctx.f0.f64, ctx.f7.f64)));
 	// lfs f10,-120(r1)
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + -120);
 	ctx.f10.f64 = double(temp.f32);
@@ -35498,7 +35463,7 @@ loc_82891278:
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + -156);
 	f31.f64 = double(temp.f32);
 	// fmadds f6,f6,f5,f4
-	ctx.f6.f64 = double(float(std::fma(ctx.f6.f64, ctx.f5.f64, ctx.f4.f64)));
+	ctx.f6.f64 = double(float(REX_FMA(ctx.f6.f64, ctx.f5.f64, ctx.f4.f64)));
 	// lfs f7,-172(r1)
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + -172);
 	ctx.f7.f64 = double(temp.f32);
@@ -35509,7 +35474,7 @@ loc_82891278:
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + -96);
 	ctx.f2.f64 = double(temp.f32);
 	// fmadds f12,f31,f12,f30
-	ctx.f12.f64 = double(float(std::fma(f31.f64, ctx.f12.f64, f30.f64)));
+	ctx.f12.f64 = double(float(REX_FMA(f31.f64, ctx.f12.f64, f30.f64)));
 	// lfs f29,-160(r1)
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + -160);
 	f29.f64 = double(temp.f32);
@@ -35517,15 +35482,15 @@ loc_82891278:
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + -176);
 	ctx.f5.f64 = double(temp.f32);
 	// fmadds f10,f13,f3,f0
-	ctx.f10.f64 = double(float(std::fma(ctx.f13.f64, ctx.f3.f64, ctx.f0.f64)));
+	ctx.f10.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f3.f64, ctx.f0.f64)));
 	// fmadds f13,f9,f7,f28
-	ctx.f13.f64 = double(float(std::fma(ctx.f9.f64, ctx.f7.f64, f28.f64)));
+	ctx.f13.f64 = double(float(REX_FMA(ctx.f9.f64, ctx.f7.f64, f28.f64)));
 	// fmadds f0,f2,f1,f6
-	ctx.f0.f64 = double(float(std::fma(ctx.f2.f64, ctx.f1.f64, ctx.f6.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f2.f64, ctx.f1.f64, ctx.f6.f64)));
 	// fmadds f12,f11,f29,f12
-	ctx.f12.f64 = double(float(std::fma(ctx.f11.f64, f29.f64, ctx.f12.f64)));
+	ctx.f12.f64 = double(float(REX_FMA(ctx.f11.f64, f29.f64, ctx.f12.f64)));
 	// fmadds f11,f8,f5,f13
-	ctx.f11.f64 = double(float(std::fma(ctx.f8.f64, ctx.f5.f64, ctx.f13.f64)));
+	ctx.f11.f64 = double(float(REX_FMA(ctx.f8.f64, ctx.f5.f64, ctx.f13.f64)));
 	// fsubs f13,f10,f0
 	ctx.f13.f64 = double(float(ctx.f10.f64 - ctx.f0.f64));
 	// fsel f13,f13,f0,f10
@@ -35600,9 +35565,9 @@ loc_82891278:
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + -176);
 	ctx.f5.f64 = double(temp.f32);
 	// fmadds f9,f8,f6,f9
-	ctx.f9.f64 = double(float(std::fma(ctx.f8.f64, ctx.f6.f64, ctx.f9.f64)));
+	ctx.f9.f64 = double(float(REX_FMA(ctx.f8.f64, ctx.f6.f64, ctx.f9.f64)));
 	// fmadds f9,f5,f7,f9
-	ctx.f9.f64 = double(float(std::fma(ctx.f5.f64, ctx.f7.f64, ctx.f9.f64)));
+	ctx.f9.f64 = double(float(REX_FMA(ctx.f5.f64, ctx.f7.f64, ctx.f9.f64)));
 	// stfs f9,-192(r1)
 	temp.f32 = float(ctx.f9.f64);
 	REX_STORE_U32(ctx.r1.u32 + -192, temp.u32);
@@ -35729,13 +35694,13 @@ loc_82891684:
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + -160);
 	ctx.f9.f64 = double(temp.f32);
 	// fmadds f12,f12,f0,f11
-	ctx.f12.f64 = double(float(std::fma(ctx.f12.f64, ctx.f0.f64, ctx.f11.f64)));
+	ctx.f12.f64 = double(float(REX_FMA(ctx.f12.f64, ctx.f0.f64, ctx.f11.f64)));
 	// fmadds f0,f0,f0,f10
-	ctx.f0.f64 = double(float(std::fma(ctx.f0.f64, ctx.f0.f64, ctx.f10.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f0.f64, ctx.f10.f64)));
 	// fmadds f12,f13,f9,f12
-	ctx.f12.f64 = double(float(std::fma(ctx.f13.f64, ctx.f9.f64, ctx.f12.f64)));
+	ctx.f12.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f9.f64, ctx.f12.f64)));
 	// fmadds f0,f13,f13,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f13.f64, ctx.f13.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f13.f64, ctx.f0.f64)));
 	// lfd f13,-4848(r11)
 	ctx.f13.u64 = REX_LOAD_U64(ctx.r11.u32 + -4848);
 	// lis r11,-32244
@@ -35897,7 +35862,7 @@ DEFINE_REX_FUNC(sub_82891720) {
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + -28);
 	ctx.f6.f64 = double(temp.f32);
 	// fmadds f0,f0,f11,f8
-	ctx.f0.f64 = double(float(std::fma(ctx.f0.f64, ctx.f11.f64, ctx.f8.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f11.f64, ctx.f8.f64)));
 	// lfs f4,-32(r1)
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + -32);
 	ctx.f4.f64 = double(temp.f32);
@@ -35905,14 +35870,14 @@ DEFINE_REX_FUNC(sub_82891720) {
 	temp.u32 = REX_LOAD_U32(ctx.r3.u32 + 4);
 	ctx.f8.f64 = double(temp.f32);
 	// fmadds f12,f12,f6,f5
-	ctx.f12.f64 = double(float(std::fma(ctx.f12.f64, ctx.f6.f64, ctx.f5.f64)));
+	ctx.f12.f64 = double(float(REX_FMA(ctx.f12.f64, ctx.f6.f64, ctx.f5.f64)));
 	// fmadds f0,f13,f7,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f13.f64, ctx.f7.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f7.f64, ctx.f0.f64)));
 	// lfs f7,0(r3)
 	temp.u32 = REX_LOAD_U32(ctx.r3.u32 + 0);
 	ctx.f7.f64 = double(temp.f32);
 	// fmadds f11,f13,f4,f12
-	ctx.f11.f64 = double(float(std::fma(ctx.f13.f64, ctx.f4.f64, ctx.f12.f64)));
+	ctx.f11.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f4.f64, ctx.f12.f64)));
 	// lfs f12,-22844(r11)
 	temp.u32 = REX_LOAD_U32(ctx.r11.u32 + -22844);
 	ctx.f12.f64 = double(temp.f32);
@@ -36029,13 +35994,13 @@ DEFINE_REX_FUNC(sub_82891720) {
 	// fdivs f9,f0,f9
 	ctx.f9.f64 = double(float(ctx.f0.f64 / ctx.f9.f64));
 	// fmadds f8,f7,f13,f8
-	ctx.f8.f64 = double(float(std::fma(ctx.f7.f64, ctx.f13.f64, ctx.f8.f64)));
+	ctx.f8.f64 = double(float(REX_FMA(ctx.f7.f64, ctx.f13.f64, ctx.f8.f64)));
 	// vnmsubfp v11,v6,v11,v8
 	ctx.fpscr.enableFlushModeUnconditional();
 	simde_mm_store_ps(v11.f32, REX_VNMSUBFP(simde_mm_load_ps(v6.f32), simde_mm_load_ps(v11.f32), simde_mm_load_ps(v8.f32)));
 	// fmadds f8,f12,f6,f8
 	ctx.fpscr.disableFlushModeUnconditional();
-	ctx.f8.f64 = double(float(std::fma(ctx.f12.f64, ctx.f6.f64, ctx.f8.f64)));
+	ctx.f8.f64 = double(float(REX_FMA(ctx.f12.f64, ctx.f6.f64, ctx.f8.f64)));
 	// vmaddfp v11,v11,v7,v10
 	ctx.fpscr.enableFlushModeUnconditional();
 	simde_mm_store_ps(v11.f32, REX_VMADDFP(simde_mm_load_ps(v11.f32), simde_mm_load_ps(v7.f32), simde_mm_load_ps(v10.f32)));
@@ -36065,7 +36030,7 @@ DEFINE_REX_FUNC(sub_82891720) {
 	simde_mm_store_ps(v12.f32, REX_VNMSUBFP(simde_mm_load_ps(v9.f32), simde_mm_load_ps(v4.f32), simde_mm_load_ps(v12.f32)));
 	// fmadds f12,f11,f7,f12
 	ctx.fpscr.disableFlushModeUnconditional();
-	ctx.f12.f64 = double(float(std::fma(ctx.f11.f64, ctx.f7.f64, ctx.f12.f64)));
+	ctx.f12.f64 = double(float(REX_FMA(ctx.f11.f64, ctx.f7.f64, ctx.f12.f64)));
 	// stvx128 v12,r0,r11
 	ea = (ctx.r11.u32) & ~0xF;
 	simde_mm_store_si128((simde__m128i*)REX_RAW_ADDR(ea), simde_mm_shuffle_epi8(simde_mm_load_si128((simde__m128i*)v12.u8), simde_mm_load_si128((simde__m128i*)VectorMaskL)));
@@ -36078,7 +36043,7 @@ DEFINE_REX_FUNC(sub_82891720) {
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + -32);
 	ctx.f7.f64 = double(temp.f32);
 	// fmadds f13,f13,f6,f12
-	ctx.f13.f64 = double(float(std::fma(ctx.f13.f64, ctx.f6.f64, ctx.f12.f64)));
+	ctx.f13.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f6.f64, ctx.f12.f64)));
 	// lfs f6,-44(r1)
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + -44);
 	ctx.f6.f64 = double(temp.f32);
@@ -36120,13 +36085,13 @@ DEFINE_REX_FUNC(sub_82891720) {
 	temp.u32 = REX_LOAD_U32(ctx.r3.u32 + 0);
 	ctx.f11.f64 = double(temp.f32);
 	// fmadds f13,f13,f5,f6
-	ctx.f13.f64 = double(float(std::fma(ctx.f13.f64, ctx.f5.f64, ctx.f6.f64)));
+	ctx.f13.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f5.f64, ctx.f6.f64)));
 	// fmadds f12,f12,f8,f3
-	ctx.f12.f64 = double(float(std::fma(ctx.f12.f64, ctx.f8.f64, ctx.f3.f64)));
+	ctx.f12.f64 = double(float(REX_FMA(ctx.f12.f64, ctx.f8.f64, ctx.f3.f64)));
 	// fmadds f13,f11,f4,f13
-	ctx.f13.f64 = double(float(std::fma(ctx.f11.f64, ctx.f4.f64, ctx.f13.f64)));
+	ctx.f13.f64 = double(float(REX_FMA(ctx.f11.f64, ctx.f4.f64, ctx.f13.f64)));
 	// fmadds f12,f11,f7,f12
-	ctx.f12.f64 = double(float(std::fma(ctx.f11.f64, ctx.f7.f64, ctx.f12.f64)));
+	ctx.f12.f64 = double(float(REX_FMA(ctx.f11.f64, ctx.f7.f64, ctx.f12.f64)));
 	// fmuls f11,f10,f13
 	ctx.f11.f64 = double(float(ctx.f10.f64 * ctx.f13.f64));
 	// fmuls f10,f9,f12
@@ -36134,7 +36099,7 @@ DEFINE_REX_FUNC(sub_82891720) {
 	// fmuls f11,f11,f11
 	ctx.f11.f64 = double(float(ctx.f11.f64 * ctx.f11.f64));
 	// fmadds f11,f10,f10,f11
-	ctx.f11.f64 = double(float(std::fma(ctx.f10.f64, ctx.f10.f64, ctx.f11.f64)));
+	ctx.f11.f64 = double(float(REX_FMA(ctx.f10.f64, ctx.f10.f64, ctx.f11.f64)));
 	// fsqrts f10,f11
 	ctx.f10.f64 = double(float(sqrt(ctx.f11.f64)));
 	// lfs f11,-12208(r11)
@@ -36234,7 +36199,7 @@ DEFINE_REX_FUNC(sub_82891998) {
 	temp.u32 = REX_LOAD_U32(ctx.r11.u32 + 2612);
 	f28.f64 = double(temp.f32);
 	// fmadds f9,f11,f11,f9
-	ctx.f9.f64 = double(float(std::fma(ctx.f11.f64, ctx.f11.f64, ctx.f9.f64)));
+	ctx.f9.f64 = double(float(REX_FMA(ctx.f11.f64, ctx.f11.f64, ctx.f9.f64)));
 	// fadds f9,f9,f12
 	ctx.f9.f64 = double(float(ctx.f9.f64 + ctx.f12.f64));
 	// fsqrts f9,f9
@@ -36246,7 +36211,7 @@ DEFINE_REX_FUNC(sub_82891998) {
 	// lis r11,-32247
 	ctx.r11.s64 = -2113339392;
 	// fmadds f12,f0,f0,f12
-	ctx.f12.f64 = double(float(std::fma(ctx.f0.f64, ctx.f0.f64, ctx.f12.f64)));
+	ctx.f12.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f0.f64, ctx.f12.f64)));
 	// lfs f9,-1748(r11)
 	temp.u32 = REX_LOAD_U32(ctx.r11.u32 + -1748);
 	ctx.f9.f64 = double(temp.f32);
@@ -36280,9 +36245,9 @@ DEFINE_REX_FUNC(sub_82891998) {
 	// fdivs f8,f13,f7
 	ctx.f8.f64 = double(float(ctx.f13.f64 / ctx.f7.f64));
 	// fmsubs f7,f10,f13,f6
-	ctx.f7.f64 = double(float(std::fma(ctx.f10.f64, ctx.f13.f64, -ctx.f6.f64)));
+	ctx.f7.f64 = double(float(REX_FMA(ctx.f10.f64, ctx.f13.f64, -ctx.f6.f64)));
 	// fmadds f11,f0,f10,f11
-	ctx.f11.f64 = double(float(std::fma(ctx.f0.f64, ctx.f10.f64, ctx.f11.f64)));
+	ctx.f11.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f10.f64, ctx.f11.f64)));
 	// fdivs f13,f31,f12
 	ctx.f13.f64 = double(float(f31.f64 / ctx.f12.f64));
 	// fsel f28,f0,f9,f8
@@ -36312,7 +36277,7 @@ loc_82891A60:
 	ctx.fpscr.disableFlushMode();
 	ctx.f0.f64 = double(float(f29.f64 * f29.f64));
 	// fmadds f0,f30,f30,f0
-	ctx.f0.f64 = double(float(std::fma(f30.f64, f30.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(f30.f64, f30.f64, ctx.f0.f64)));
 	// fsqrts f27,f0
 	f27.f64 = double(float(sqrt(ctx.f0.f64)));
 	// fmr f1,f27
@@ -36434,9 +36399,9 @@ DEFINE_REX_FUNC(sub_82891AE8) {
 	temp.u32 = REX_LOAD_U32(ctx.r11.u32 + 2612);
 	f27.f64 = double(temp.f32);
 	// fmadds f0,f26,f26,f0
-	ctx.f0.f64 = double(float(std::fma(f26.f64, f26.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(f26.f64, f26.f64, ctx.f0.f64)));
 	// fmadds f0,f13,f13,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f13.f64, ctx.f13.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f13.f64, ctx.f0.f64)));
 	// fsqrts f0,f0
 	ctx.f0.f64 = double(float(sqrt(ctx.f0.f64)));
 	// fcmpu cr6,f0,f27
@@ -36456,7 +36421,7 @@ DEFINE_REX_FUNC(sub_82891AE8) {
 	temp.u32 = REX_LOAD_U32(ctx.r11.u32 + -27020);
 	f31.f64 = double(temp.f32);
 	// fmadds f0,f29,f29,f0
-	ctx.f0.f64 = double(float(std::fma(f29.f64, f29.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(f29.f64, f29.f64, ctx.f0.f64)));
 	// fsqrts f30,f0
 	f30.f64 = double(float(sqrt(ctx.f0.f64)));
 	// fmuls f1,f30,f31
@@ -36509,9 +36474,9 @@ DEFINE_REX_FUNC(sub_82891AE8) {
 	// fmuls f11,f12,f12
 	ctx.f11.f64 = double(float(ctx.f12.f64 * ctx.f12.f64));
 	// fmadds f9,f0,f0,f31
-	ctx.f9.f64 = double(float(std::fma(ctx.f0.f64, ctx.f0.f64, f31.f64)));
+	ctx.f9.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f0.f64, f31.f64)));
 	// fmadds f11,f13,f13,f11
-	ctx.f11.f64 = double(float(std::fma(ctx.f13.f64, ctx.f13.f64, ctx.f11.f64)));
+	ctx.f11.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f13.f64, ctx.f11.f64)));
 	// fadds f8,f11,f31
 	ctx.f8.f64 = double(float(ctx.f11.f64 + f31.f64));
 	// fdivs f11,f10,f9
@@ -36533,9 +36498,9 @@ DEFINE_REX_FUNC(sub_82891AE8) {
 	// fmuls f11,f8,f11
 	ctx.f11.f64 = double(float(ctx.f8.f64 * ctx.f11.f64));
 	// fmadds f13,f7,f0,f13
-	ctx.f13.f64 = double(float(std::fma(ctx.f7.f64, ctx.f0.f64, ctx.f13.f64)));
+	ctx.f13.f64 = double(float(REX_FMA(ctx.f7.f64, ctx.f0.f64, ctx.f13.f64)));
 	// fmsubs f12,f6,f0,f12
-	ctx.f12.f64 = double(float(std::fma(ctx.f6.f64, ctx.f0.f64, -ctx.f12.f64)));
+	ctx.f12.f64 = double(float(REX_FMA(ctx.f6.f64, ctx.f0.f64, -ctx.f12.f64)));
 	// fmuls f9,f8,f9
 	ctx.f9.f64 = double(float(ctx.f8.f64 * ctx.f9.f64));
 	// stfs f9,12(r31)
@@ -36741,13 +36706,13 @@ loc_82891CD8:
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 128);
 	ctx.f7.f64 = double(temp.f32);
 	// fmadds f11,f11,f0,f10
-	ctx.f11.f64 = double(float(std::fma(ctx.f11.f64, ctx.f0.f64, ctx.f10.f64)));
+	ctx.f11.f64 = double(float(REX_FMA(ctx.f11.f64, ctx.f0.f64, ctx.f10.f64)));
 	// fmadds f0,f8,f0,f13
-	ctx.f0.f64 = double(float(std::fma(ctx.f8.f64, ctx.f0.f64, ctx.f13.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f8.f64, ctx.f0.f64, ctx.f13.f64)));
 	// fnmadds f13,f9,f12,f11
-	ctx.f13.f64 = double(float(-std::fma(ctx.f9.f64, ctx.f12.f64, ctx.f11.f64)));
+	ctx.f13.f64 = double(float(-REX_FMA(ctx.f9.f64, ctx.f12.f64, ctx.f11.f64)));
 	// fnmadds f1,f7,f12,f0
-	ctx.f1.f64 = double(float(-std::fma(ctx.f7.f64, ctx.f12.f64, ctx.f0.f64)));
+	ctx.f1.f64 = double(float(-REX_FMA(ctx.f7.f64, ctx.f12.f64, ctx.f0.f64)));
 	// fmuls f2,f13,f31
 	ctx.f2.f64 = double(float(ctx.f13.f64 * f31.f64));
 	// bl 0x829fffd8
@@ -36842,14 +36807,14 @@ loc_82891D8C:
 	temp.u32 = REX_LOAD_U32(r30.u32 + 8);
 	ctx.f12.f64 = double(temp.f32);
 	// fmadds f0,f0,f0,f13
-	ctx.f0.f64 = double(float(std::fma(ctx.f0.f64, ctx.f0.f64, ctx.f13.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f0.f64, ctx.f13.f64)));
 	// lfs f13,3400(r11)
 	temp.u32 = REX_LOAD_U32(ctx.r11.u32 + 3400);
 	ctx.f13.f64 = double(temp.f32);
 	// lis r11,-32255
 	ctx.r11.s64 = -2113863680;
 	// fmadds f0,f12,f12,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f12.f64, ctx.f12.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f12.f64, ctx.f12.f64, ctx.f0.f64)));
 	// fsqrts f0,f0
 	ctx.f0.f64 = double(float(sqrt(ctx.f0.f64)));
 	// fsubs f12,f0,f13
@@ -38121,9 +38086,7 @@ DEFINE_REX_FUNC(sub_82892668) {
 	ctr.u64 = ctx.r11.u64;
 	// bctr 
 	{
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
 		REX_CALL_INDIRECT_FUNC(ctr.u32);
-		ctx.ctr = s_ctr;
 	}
 	return;
 }
@@ -39600,12 +39563,12 @@ loc_82892FAC:
 	// cmplwi cr6,r10,0
 	cr6.compare<uint32_t>(ctx.r10.u32, 0, xer);
 	// fmadds f11,f11,f0,f10
-	ctx.f11.f64 = double(float(std::fma(ctx.f11.f64, ctx.f0.f64, ctx.f10.f64)));
+	ctx.f11.f64 = double(float(REX_FMA(ctx.f11.f64, ctx.f0.f64, ctx.f10.f64)));
 	// lfs f10,84(r1)
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 84);
 	ctx.f10.f64 = double(temp.f32);
 	// fmadds f11,f13,f9,f11
-	ctx.f11.f64 = double(float(std::fma(ctx.f13.f64, ctx.f9.f64, ctx.f11.f64)));
+	ctx.f11.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f9.f64, ctx.f11.f64)));
 	// lfs f9,80(r1)
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 80);
 	ctx.f9.f64 = double(temp.f32);
@@ -39615,9 +39578,9 @@ loc_82892FAC:
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 88);
 	ctx.f9.f64 = double(temp.f32);
 	// fmadds f0,f10,f0,f12
-	ctx.f0.f64 = double(float(std::fma(ctx.f10.f64, ctx.f0.f64, ctx.f12.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f10.f64, ctx.f0.f64, ctx.f12.f64)));
 	// fmadds f0,f13,f9,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f13.f64, ctx.f9.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f9.f64, ctx.f0.f64)));
 	// bne cr6,0x82893044
 	if (!cr6.eq) goto loc_82893044;
 	// fmuls f13,f11,f31
@@ -41849,12 +41812,12 @@ loc_82893DF0:
 	// fmuls f4,f4,f13
 	ctx.f4.f64 = double(float(ctx.f4.f64 * ctx.f13.f64));
 	// fmadds f3,f3,f2,f1
-	ctx.f3.f64 = double(float(std::fma(ctx.f3.f64, ctx.f2.f64, ctx.f1.f64)));
+	ctx.f3.f64 = double(float(REX_FMA(ctx.f3.f64, ctx.f2.f64, ctx.f1.f64)));
 	// lfs f1,88(r1)
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 88);
 	ctx.f1.f64 = double(temp.f32);
 	// fmadds f2,f31,f30,f29
-	ctx.f2.f64 = double(float(std::fma(f31.f64, f30.f64, f29.f64)));
+	ctx.f2.f64 = double(float(REX_FMA(f31.f64, f30.f64, f29.f64)));
 	// lfs f31,84(r1)
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 84);
 	f31.f64 = double(temp.f32);
@@ -41864,7 +41827,7 @@ loc_82893DF0:
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 80);
 	f31.f64 = double(temp.f32);
 	// fmadds f12,f12,f12,f11
-	ctx.f12.f64 = double(float(std::fma(ctx.f12.f64, ctx.f12.f64, ctx.f11.f64)));
+	ctx.f12.f64 = double(float(REX_FMA(ctx.f12.f64, ctx.f12.f64, ctx.f11.f64)));
 	// stvx128 v0,r0,r11
 	ea = (ctx.r11.u32) & ~0xF;
 	simde_mm_store_si128((simde__m128i*)REX_RAW_ADDR(ea), simde_mm_shuffle_epi8(simde_mm_load_si128((simde__m128i*)v0.u8), simde_mm_load_si128((simde__m128i*)VectorMaskL)));
@@ -41873,18 +41836,18 @@ loc_82893DF0:
 	// fadds f5,f24,f5
 	ctx.f5.f64 = double(float(f24.f64 + ctx.f5.f64));
 	// fmadds f11,f9,f9,f8
-	ctx.f11.f64 = double(float(std::fma(ctx.f9.f64, ctx.f9.f64, ctx.f8.f64)));
+	ctx.f11.f64 = double(float(REX_FMA(ctx.f9.f64, ctx.f9.f64, ctx.f8.f64)));
 	// fmadds f3,f28,f27,f3
-	ctx.f3.f64 = double(float(std::fma(f28.f64, f27.f64, ctx.f3.f64)));
+	ctx.f3.f64 = double(float(REX_FMA(f28.f64, f27.f64, ctx.f3.f64)));
 	// fmadds f2,f26,f25,f2
-	ctx.f2.f64 = double(float(std::fma(f26.f64, f25.f64, ctx.f2.f64)));
+	ctx.f2.f64 = double(float(REX_FMA(f26.f64, f25.f64, ctx.f2.f64)));
 	// fadds f1,f1,f31
 	ctx.f1.f64 = double(float(ctx.f1.f64 + f31.f64));
 	// lfs f31,112(r1)
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 112);
 	f31.f64 = double(temp.f32);
 	// fmadds f12,f10,f10,f12
-	ctx.f12.f64 = double(float(std::fma(ctx.f10.f64, ctx.f10.f64, ctx.f12.f64)));
+	ctx.f12.f64 = double(float(REX_FMA(ctx.f10.f64, ctx.f10.f64, ctx.f12.f64)));
 	// stvx128 v0,r0,r11
 	ea = (ctx.r11.u32) & ~0xF;
 	simde_mm_store_si128((simde__m128i*)REX_RAW_ADDR(ea), simde_mm_shuffle_epi8(simde_mm_load_si128((simde__m128i*)v0.u8), simde_mm_load_si128((simde__m128i*)VectorMaskL)));
@@ -41894,7 +41857,7 @@ loc_82893DF0:
 	// lwz r11,4(r10)
 	ctx.r11.u64 = REX_LOAD_U32(ctx.r10.u32 + 4);
 	// fmadds f11,f7,f7,f11
-	ctx.f11.f64 = double(float(std::fma(ctx.f7.f64, ctx.f7.f64, ctx.f11.f64)));
+	ctx.f11.f64 = double(float(REX_FMA(ctx.f7.f64, ctx.f7.f64, ctx.f11.f64)));
 	// addi r9,r11,608
 	ctx.r9.s64 = ctx.r11.s64 + 608;
 	// lvx128 v0,r11,r6
@@ -41909,20 +41872,20 @@ loc_82893DF0:
 	// fmuls f12,f12,f10
 	ctx.f12.f64 = double(float(ctx.f12.f64 * ctx.f10.f64));
 	// fmadds f6,f3,f0,f6
-	ctx.f6.f64 = double(float(std::fma(ctx.f3.f64, ctx.f0.f64, ctx.f6.f64)));
+	ctx.f6.f64 = double(float(REX_FMA(ctx.f3.f64, ctx.f0.f64, ctx.f6.f64)));
 	// fmuls f11,f11,f2
 	ctx.f11.f64 = double(float(ctx.f11.f64 * ctx.f2.f64));
 	// fmadds f6,f4,f0,f6
-	ctx.f6.f64 = double(float(std::fma(ctx.f4.f64, ctx.f0.f64, ctx.f6.f64)));
+	ctx.f6.f64 = double(float(REX_FMA(ctx.f4.f64, ctx.f0.f64, ctx.f6.f64)));
 	// lfs f4,96(r1)
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 96);
 	ctx.f4.f64 = double(temp.f32);
 	// fadds f5,f4,f5
 	ctx.f5.f64 = double(float(ctx.f4.f64 + ctx.f5.f64));
 	// fmadds f12,f12,f0,f6
-	ctx.f12.f64 = double(float(std::fma(ctx.f12.f64, ctx.f0.f64, ctx.f6.f64)));
+	ctx.f12.f64 = double(float(REX_FMA(ctx.f12.f64, ctx.f0.f64, ctx.f6.f64)));
 	// fmadds f6,f11,f0,f12
-	ctx.f6.f64 = double(float(std::fma(ctx.f11.f64, ctx.f0.f64, ctx.f12.f64)));
+	ctx.f6.f64 = double(float(REX_FMA(ctx.f11.f64, ctx.f0.f64, ctx.f12.f64)));
 	// addi r8,r11,624
 	ctx.r8.s64 = ctx.r11.s64 + 624;
 	// lvx128 v13,r11,r7
@@ -42010,7 +41973,7 @@ loc_82893DF0:
 	temp.u32 = REX_LOAD_U32(ctx.r11.u32 + 608);
 	ctx.f9.f64 = double(temp.f32);
 	// fmadds f1,f1,f31,f30
-	ctx.f1.f64 = double(float(std::fma(ctx.f1.f64, f31.f64, f30.f64)));
+	ctx.f1.f64 = double(float(REX_FMA(ctx.f1.f64, f31.f64, f30.f64)));
 	// lfs f30,84(r1)
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 84);
 	f30.f64 = double(temp.f32);
@@ -42032,7 +41995,7 @@ loc_82893DF0:
 	temp.u32 = REX_LOAD_U32(ctx.r11.u32 + 624);
 	ctx.f10.f64 = double(temp.f32);
 	// fmadds f30,f29,f28,f27
-	f30.f64 = double(float(std::fma(f29.f64, f28.f64, f27.f64)));
+	f30.f64 = double(float(REX_FMA(f29.f64, f28.f64, f27.f64)));
 	// lfs f11,632(r11)
 	temp.u32 = REX_LOAD_U32(ctx.r11.u32 + 632);
 	ctx.f11.f64 = double(temp.f32);
@@ -42040,7 +42003,7 @@ loc_82893DF0:
 	temp.u32 = REX_LOAD_U32(ctx.r11.u32 + 616);
 	ctx.f12.f64 = double(temp.f32);
 	// fmadds f9,f9,f9,f7
-	ctx.f9.f64 = double(float(std::fma(ctx.f9.f64, ctx.f9.f64, ctx.f7.f64)));
+	ctx.f9.f64 = double(float(REX_FMA(ctx.f9.f64, ctx.f9.f64, ctx.f7.f64)));
 	// stvx128 v0,r0,r30
 	ea = (r30.u32) & ~0xF;
 	simde_mm_store_si128((simde__m128i*)REX_RAW_ADDR(ea), simde_mm_shuffle_epi8(simde_mm_load_si128((simde__m128i*)v0.u8), simde_mm_load_si128((simde__m128i*)VectorMaskL)));
@@ -42050,7 +42013,7 @@ loc_82893DF0:
 	// addi r11,r1,96
 	ctx.r11.s64 = ctx.r1.s64 + 96;
 	// fmadds f2,f2,f26,f1
-	ctx.f2.f64 = double(float(std::fma(ctx.f2.f64, f26.f64, ctx.f1.f64)));
+	ctx.f2.f64 = double(float(REX_FMA(ctx.f2.f64, f26.f64, ctx.f1.f64)));
 	// lfs f1,80(r1)
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 80);
 	ctx.f1.f64 = double(temp.f32);
@@ -42067,11 +42030,11 @@ loc_82893DF0:
 	// addi r11,r1,112
 	ctx.r11.s64 = ctx.r1.s64 + 112;
 	// fmadds f3,f3,f25,f30
-	ctx.f3.f64 = double(float(std::fma(ctx.f3.f64, f25.f64, f30.f64)));
+	ctx.f3.f64 = double(float(REX_FMA(ctx.f3.f64, f25.f64, f30.f64)));
 	// fadds f5,f24,f5
 	ctx.f5.f64 = double(float(f24.f64 + ctx.f5.f64));
 	// fmadds f12,f12,f12,f9
-	ctx.f12.f64 = double(float(std::fma(ctx.f12.f64, ctx.f12.f64, ctx.f9.f64)));
+	ctx.f12.f64 = double(float(REX_FMA(ctx.f12.f64, ctx.f12.f64, ctx.f9.f64)));
 	// fmuls f4,f2,f4
 	ctx.f4.f64 = double(float(ctx.f2.f64 * ctx.f4.f64));
 	// fmuls f2,f1,f13
@@ -42085,20 +42048,20 @@ loc_82893DF0:
 	// fmuls f3,f3,f1
 	ctx.f3.f64 = double(float(ctx.f3.f64 * ctx.f1.f64));
 	// fmadds f6,f3,f0,f6
-	ctx.f6.f64 = double(float(std::fma(ctx.f3.f64, ctx.f0.f64, ctx.f6.f64)));
+	ctx.f6.f64 = double(float(REX_FMA(ctx.f3.f64, ctx.f0.f64, ctx.f6.f64)));
 	// fmuls f3,f8,f8
 	ctx.f3.f64 = double(float(ctx.f8.f64 * ctx.f8.f64));
 	// fmadds f8,f4,f0,f6
-	ctx.f8.f64 = double(float(std::fma(ctx.f4.f64, ctx.f0.f64, ctx.f6.f64)));
+	ctx.f8.f64 = double(float(REX_FMA(ctx.f4.f64, ctx.f0.f64, ctx.f6.f64)));
 	// lfs f6,96(r1)
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 96);
 	ctx.f6.f64 = double(temp.f32);
 	// fmadds f10,f10,f10,f3
-	ctx.f10.f64 = double(float(std::fma(ctx.f10.f64, ctx.f10.f64, ctx.f3.f64)));
+	ctx.f10.f64 = double(float(REX_FMA(ctx.f10.f64, ctx.f10.f64, ctx.f3.f64)));
 	// fadds f5,f6,f5
 	ctx.f5.f64 = double(float(ctx.f6.f64 + ctx.f5.f64));
 	// fmadds f11,f11,f11,f10
-	ctx.f11.f64 = double(float(std::fma(ctx.f11.f64, ctx.f11.f64, ctx.f10.f64)));
+	ctx.f11.f64 = double(float(REX_FMA(ctx.f11.f64, ctx.f11.f64, ctx.f10.f64)));
 	// lfs f10,112(r1)
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 112);
 	ctx.f10.f64 = double(temp.f32);
@@ -42107,9 +42070,9 @@ loc_82893DF0:
 	// fmuls f11,f11,f2
 	ctx.f11.f64 = double(float(ctx.f11.f64 * ctx.f2.f64));
 	// fmadds f12,f12,f0,f8
-	ctx.f12.f64 = double(float(std::fma(ctx.f12.f64, ctx.f0.f64, ctx.f8.f64)));
+	ctx.f12.f64 = double(float(REX_FMA(ctx.f12.f64, ctx.f0.f64, ctx.f8.f64)));
 	// fmadds f6,f11,f0,f12
-	ctx.f6.f64 = double(float(std::fma(ctx.f11.f64, ctx.f0.f64, ctx.f12.f64)));
+	ctx.f6.f64 = double(float(REX_FMA(ctx.f11.f64, ctx.f0.f64, ctx.f12.f64)));
 	// bne cr6,0x82893df0
 	if (!cr6.eq) goto loc_82893DF0;
 loc_82894070:
@@ -42179,7 +42142,7 @@ loc_82894088:
 	ea = (ctx.r11.u32 + ctx.r6.u32) & ~0xF;
 	simde_mm_store_si128((simde__m128i*)v0.u8, simde_mm_shuffle_epi8(simde_mm_load_si128((simde__m128i*)REX_RAW_ADDR(ea)), simde_mm_load_si128((simde__m128i*)VectorMaskL)));
 	// fmadds f12,f12,f12,f11
-	ctx.f12.f64 = double(float(std::fma(ctx.f12.f64, ctx.f12.f64, ctx.f11.f64)));
+	ctx.f12.f64 = double(float(REX_FMA(ctx.f12.f64, ctx.f12.f64, ctx.f11.f64)));
 	// stvx128 v0,r0,r8
 	ea = (ctx.r8.u32) & ~0xF;
 	simde_mm_store_si128((simde__m128i*)REX_RAW_ADDR(ea), simde_mm_shuffle_epi8(simde_mm_load_si128((simde__m128i*)v0.u8), simde_mm_load_si128((simde__m128i*)VectorMaskL)));
@@ -42191,7 +42154,7 @@ loc_82894088:
 	// fadds f4,f4,f3
 	ctx.f4.f64 = double(float(ctx.f4.f64 + ctx.f3.f64));
 	// fmadds f11,f10,f10,f8
-	ctx.f11.f64 = double(float(std::fma(ctx.f10.f64, ctx.f10.f64, ctx.f8.f64)));
+	ctx.f11.f64 = double(float(REX_FMA(ctx.f10.f64, ctx.f10.f64, ctx.f8.f64)));
 	// lfs f10,112(r1)
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 112);
 	ctx.f10.f64 = double(temp.f32);
@@ -42204,19 +42167,19 @@ loc_82894088:
 	// fadds f5,f3,f5
 	ctx.f5.f64 = double(float(ctx.f3.f64 + ctx.f5.f64));
 	// fmadds f12,f9,f9,f12
-	ctx.f12.f64 = double(float(std::fma(ctx.f9.f64, ctx.f9.f64, ctx.f12.f64)));
+	ctx.f12.f64 = double(float(REX_FMA(ctx.f9.f64, ctx.f9.f64, ctx.f12.f64)));
 	// fmuls f4,f4,f13
 	ctx.f4.f64 = double(float(ctx.f4.f64 * ctx.f13.f64));
 	// fmadds f11,f7,f7,f11
-	ctx.f11.f64 = double(float(std::fma(ctx.f7.f64, ctx.f7.f64, ctx.f11.f64)));
+	ctx.f11.f64 = double(float(REX_FMA(ctx.f7.f64, ctx.f7.f64, ctx.f11.f64)));
 	// fmuls f12,f12,f10
 	ctx.f12.f64 = double(float(ctx.f12.f64 * ctx.f10.f64));
 	// fmuls f11,f11,f4
 	ctx.f11.f64 = double(float(ctx.f11.f64 * ctx.f4.f64));
 	// fmadds f12,f12,f0,f6
-	ctx.f12.f64 = double(float(std::fma(ctx.f12.f64, ctx.f0.f64, ctx.f6.f64)));
+	ctx.f12.f64 = double(float(REX_FMA(ctx.f12.f64, ctx.f0.f64, ctx.f6.f64)));
 	// fmadds f6,f11,f0,f12
-	ctx.f6.f64 = double(float(std::fma(ctx.f11.f64, ctx.f0.f64, ctx.f12.f64)));
+	ctx.f6.f64 = double(float(REX_FMA(ctx.f11.f64, ctx.f0.f64, ctx.f12.f64)));
 	// bne cr6,0x82894088
 	if (!cr6.eq) goto loc_82894088;
 loc_82894120:
@@ -42718,7 +42681,7 @@ DEFINE_REX_FUNC(sub_82894340) {
 	// fsel f7,f31,f31,f0
 	ctx.f7.f64 = f31.f64 >= 0.0 ? f31.f64 : ctx.f0.f64;
 	// fmadds f13,f13,f12,f11
-	ctx.f13.f64 = double(float(std::fma(ctx.f13.f64, ctx.f12.f64, ctx.f11.f64)));
+	ctx.f13.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f12.f64, ctx.f11.f64)));
 	// lfd f0,-4840(r11)
 	ctx.f0.u64 = REX_LOAD_U64(ctx.r11.u32 + -4840);
 	// lis r11,-32256
@@ -42726,7 +42689,7 @@ DEFINE_REX_FUNC(sub_82894340) {
 	// fsub f12,f8,f0
 	ctx.f12.f64 = ctx.f8.f64 - ctx.f0.f64;
 	// fmadds f13,f10,f9,f13
-	ctx.f13.f64 = double(float(std::fma(ctx.f10.f64, ctx.f9.f64, ctx.f13.f64)));
+	ctx.f13.f64 = double(float(REX_FMA(ctx.f10.f64, ctx.f9.f64, ctx.f13.f64)));
 	// fsel f0,f12,f0,f7
 	ctx.f0.f64 = ctx.f12.f64 >= 0.0 ? ctx.f0.f64 : ctx.f7.f64;
 	// frsp f0,f0
@@ -42813,9 +42776,7 @@ DEFINE_REX_FUNC(sub_828944B8) {
 	ctr.u64 = ctx.r11.u64;
 	// bctr 
 	{
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
 		REX_CALL_INDIRECT_FUNC(ctr.u32);
-		ctx.ctr = s_ctr;
 	}
 	return;
 }
@@ -42831,9 +42792,7 @@ DEFINE_REX_FUNC(sub_828944C8) {
 	ctr.u64 = ctx.r11.u64;
 	// bctr 
 	{
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
 		REX_CALL_INDIRECT_FUNC(ctr.u32);
-		ctx.ctr = s_ctr;
 	}
 	return;
 }
@@ -42849,9 +42808,7 @@ DEFINE_REX_FUNC(sub_828944D8) {
 	ctr.u64 = ctx.r11.u64;
 	// bctr 
 	{
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
 		REX_CALL_INDIRECT_FUNC(ctr.u32);
-		ctx.ctr = s_ctr;
 	}
 	return;
 }
@@ -43912,7 +43869,7 @@ DEFINE_REX_FUNC(sub_828949C0) {
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 96);
 	ctx.f10.f64 = double(temp.f32);
 	// fmadds f0,f13,f11,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f13.f64, ctx.f11.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f11.f64, ctx.f0.f64)));
 	// lfs f13,2612(r10)
 	temp.u32 = REX_LOAD_U32(ctx.r10.u32 + 2612);
 	ctx.f13.f64 = double(temp.f32);
@@ -43924,7 +43881,7 @@ DEFINE_REX_FUNC(sub_828949C0) {
 	// addi r10,r1,84
 	ctx.r10.s64 = ctx.r1.s64 + 84;
 	// fmadds f0,f12,f10,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f12.f64, ctx.f10.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f12.f64, ctx.f10.f64, ctx.f0.f64)));
 	// fneg f12,f0
 	ctx.f12.u64 = ctx.f0.u64 ^ 0x8000000000000000;
 	// fsel f0,f12,f13,f0
@@ -44046,9 +44003,9 @@ DEFINE_REX_FUNC(sub_828949C0) {
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 128);
 	ctx.f10.f64 = double(temp.f32);
 	// fmadds f0,f12,f0,f11
-	ctx.f0.f64 = double(float(std::fma(ctx.f12.f64, ctx.f0.f64, ctx.f11.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f12.f64, ctx.f0.f64, ctx.f11.f64)));
 	// fmadds f0,f10,f13,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f10.f64, ctx.f13.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f10.f64, ctx.f13.f64, ctx.f0.f64)));
 	// stfs f0,80(r1)
 	temp.f32 = float(ctx.f0.f64);
 	REX_STORE_U32(ctx.r1.u32 + 80, temp.u32);
@@ -45012,9 +44969,9 @@ loc_8289520C:
 	ctx.fpscr.disableFlushMode();
 	ctx.f0.f64 = double(float(ctx.f0.f64 * ctx.f0.f64));
 	// fmadds f0,f12,f12,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f12.f64, ctx.f12.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f12.f64, ctx.f12.f64, ctx.f0.f64)));
 	// fmadds f0,f13,f13,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f13.f64, ctx.f13.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f13.f64, ctx.f0.f64)));
 	// fsqrts f0,f0
 	ctx.f0.f64 = double(float(sqrt(ctx.f0.f64)));
 	// fcmpu cr6,f0,f30
@@ -45043,7 +45000,7 @@ loc_82895228:
 	// lis r11,-32244
 	ctx.r11.s64 = -2113142784;
 	// fnmsubs f0,f11,f0,f8
-	ctx.f0.f64 = double(float(-std::fma(ctx.f11.f64, ctx.f0.f64, -ctx.f8.f64)));
+	ctx.f0.f64 = double(float(-REX_FMA(ctx.f11.f64, ctx.f0.f64, -ctx.f8.f64)));
 	// lfs f13,-4180(r11)
 	temp.u32 = REX_LOAD_U32(ctx.r11.u32 + -4180);
 	ctx.f13.f64 = double(temp.f32);
@@ -45199,14 +45156,14 @@ loc_82895228:
 	// addi r10,r1,144
 	ctx.r10.s64 = ctx.r1.s64 + 144;
 	// fmadds f13,f6,f13,f10
-	ctx.f13.f64 = double(float(std::fma(ctx.f6.f64, ctx.f13.f64, ctx.f10.f64)));
+	ctx.f13.f64 = double(float(REX_FMA(ctx.f6.f64, ctx.f13.f64, ctx.f10.f64)));
 	// lvx128 v11,r0,r10
 	ea = (ctx.r10.u32) & ~0xF;
 	simde_mm_store_si128((simde__m128i*)v11.u8, simde_mm_shuffle_epi8(simde_mm_load_si128((simde__m128i*)REX_RAW_ADDR(ea)), simde_mm_load_si128((simde__m128i*)VectorMaskL)));
 	// vand v3,v11,v12
 	simde_mm_store_si128((simde__m128i*)v3.u8, simde_mm_and_si128(simde_mm_load_si128((simde__m128i*)v11.u8), simde_mm_load_si128((simde__m128i*)v12.u8)));
 	// fnmadds f13,f5,f12,f13
-	ctx.f13.f64 = double(float(-std::fma(ctx.f5.f64, ctx.f12.f64, ctx.f13.f64)));
+	ctx.f13.f64 = double(float(-REX_FMA(ctx.f5.f64, ctx.f12.f64, ctx.f13.f64)));
 	// stfs f13,96(r1)
 	temp.f32 = float(ctx.f13.f64);
 	REX_STORE_U32(ctx.r1.u32 + 96, temp.u32);
@@ -46426,9 +46383,9 @@ loc_82895A90:
 	// fmuls f13,f13,f13
 	ctx.f13.f64 = double(float(ctx.f13.f64 * ctx.f13.f64));
 	// fmadds f0,f0,f0,f13
-	ctx.f0.f64 = double(float(std::fma(ctx.f0.f64, ctx.f0.f64, ctx.f13.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f0.f64, ctx.f13.f64)));
 	// fmadds f0,f12,f12,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f12.f64, ctx.f12.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f12.f64, ctx.f12.f64, ctx.f0.f64)));
 	// fsqrts f31,f0
 	f31.f64 = double(float(sqrt(ctx.f0.f64)));
 	// bl 0x82890380
@@ -46779,7 +46736,7 @@ loc_82895D44:
 	// lwz r11,0(r27)
 	ctx.r11.u64 = REX_LOAD_U32(r27.u32 + 0);
 	// fnmsubs f0,f1,f0,f13
-	ctx.f0.f64 = double(float(-std::fma(ctx.f1.f64, ctx.f0.f64, -ctx.f13.f64)));
+	ctx.f0.f64 = double(float(-REX_FMA(ctx.f1.f64, ctx.f0.f64, -ctx.f13.f64)));
 	// cmplwi cr6,r11,0
 	cr6.compare<uint32_t>(ctx.r11.u32, 0, xer);
 	// fsel f13,f0,f0,f30
@@ -47928,13 +47885,13 @@ loc_828961F8:
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 104);
 	ctx.f12.f64 = double(temp.f32);
 	// fmadds f11,f0,f11,f10
-	ctx.f11.f64 = double(float(std::fma(ctx.f0.f64, ctx.f11.f64, ctx.f10.f64)));
+	ctx.f11.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f11.f64, ctx.f10.f64)));
 	// fmadds f10,f9,f0,f8
-	ctx.f10.f64 = double(float(std::fma(ctx.f9.f64, ctx.f0.f64, ctx.f8.f64)));
+	ctx.f10.f64 = double(float(REX_FMA(ctx.f9.f64, ctx.f0.f64, ctx.f8.f64)));
 	// fmadds f11,f12,f7,f11
-	ctx.f11.f64 = double(float(std::fma(ctx.f12.f64, ctx.f7.f64, ctx.f11.f64)));
+	ctx.f11.f64 = double(float(REX_FMA(ctx.f12.f64, ctx.f7.f64, ctx.f11.f64)));
 	// fmadds f10,f6,f12,f10
-	ctx.f10.f64 = double(float(std::fma(ctx.f6.f64, ctx.f12.f64, ctx.f10.f64)));
+	ctx.f10.f64 = double(float(REX_FMA(ctx.f6.f64, ctx.f12.f64, ctx.f10.f64)));
 	// fdivs f11,f11,f10
 	ctx.f11.f64 = double(float(ctx.f11.f64 / ctx.f10.f64));
 	// stfs f11,88(r1)
@@ -47974,9 +47931,9 @@ loc_828961F8:
 	temp.u32 = REX_LOAD_U32(r27.u32 + 0);
 	ctx.f10.f64 = double(temp.f32);
 	// fmadds f13,f11,f13,f12
-	ctx.f13.f64 = double(float(std::fma(ctx.f11.f64, ctx.f13.f64, ctx.f12.f64)));
+	ctx.f13.f64 = double(float(REX_FMA(ctx.f11.f64, ctx.f13.f64, ctx.f12.f64)));
 	// fmadds f0,f0,f10,f13
-	ctx.f0.f64 = double(float(std::fma(ctx.f0.f64, ctx.f10.f64, ctx.f13.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f10.f64, ctx.f13.f64)));
 	// stfs f0,88(r1)
 	temp.f32 = float(ctx.f0.f64);
 	REX_STORE_U32(ctx.r1.u32 + 88, temp.u32);
@@ -48486,9 +48443,9 @@ loc_82896738:
 	ea = (r30.u32) & ~0xF;
 	simde_mm_store_si128((simde__m128i*)v10.u8, simde_mm_shuffle_epi8(simde_mm_load_si128((simde__m128i*)REX_RAW_ADDR(ea)), simde_mm_load_si128((simde__m128i*)VectorMaskL)));
 	// fmadds f0,f13,f12,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f13.f64, ctx.f12.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f12.f64, ctx.f0.f64)));
 	// fmadds f0,f11,f10,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f11.f64, ctx.f10.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f11.f64, ctx.f10.f64, ctx.f0.f64)));
 	// stfs f0,80(r1)
 	temp.f32 = float(ctx.f0.f64);
 	REX_STORE_U32(ctx.r1.u32 + 80, temp.u32);
@@ -48606,9 +48563,9 @@ loc_82896880:
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 100);
 	ctx.f13.f64 = double(temp.f32);
 	// fmadds f0,f0,f0,f12
-	ctx.f0.f64 = double(float(std::fma(ctx.f0.f64, ctx.f0.f64, ctx.f12.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f0.f64, ctx.f12.f64)));
 	// fmadds f0,f13,f13,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f13.f64, ctx.f13.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f13.f64, ctx.f0.f64)));
 	// fsqrts f31,f0
 	f31.f64 = double(float(sqrt(ctx.f0.f64)));
 	// fmr f1,f31
@@ -48670,13 +48627,13 @@ loc_82896880:
 	simde_mm_store_ps(v0.f32, simde_mm_div_ps(simde_mm_set1_ps(1), simde_mm_load_ps(v0.f32)));
 	// fmadds f0,f13,f12,f0
 	ctx.fpscr.disableFlushModeUnconditional();
-	ctx.f0.f64 = double(float(std::fma(ctx.f13.f64, ctx.f12.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f12.f64, ctx.f0.f64)));
 	// vnmsubfp v13,v0,v12,v13
 	ctx.fpscr.enableFlushModeUnconditional();
 	simde_mm_store_ps(v13.f32, REX_VNMSUBFP(simde_mm_load_ps(v0.f32), simde_mm_load_ps(v12.f32), simde_mm_load_ps(v13.f32)));
 	// fmadds f0,f11,f10,f0
 	ctx.fpscr.disableFlushModeUnconditional();
-	ctx.f0.f64 = double(float(std::fma(ctx.f11.f64, ctx.f10.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f11.f64, ctx.f10.f64, ctx.f0.f64)));
 	// vmaddfp v0,v0,v13,v0
 	ctx.fpscr.enableFlushModeUnconditional();
 	simde_mm_store_ps(v0.f32, REX_VMADDFP(simde_mm_load_ps(v0.f32), simde_mm_load_ps(v13.f32), simde_mm_load_ps(v0.f32)));
@@ -49083,7 +49040,7 @@ loc_82896B7C:
 	// fmuls f0,f0,f0
 	ctx.f0.f64 = double(float(ctx.f0.f64 * ctx.f0.f64));
 	// fmadds f13,f13,f13,f0
-	ctx.f13.f64 = double(float(std::fma(ctx.f13.f64, ctx.f13.f64, ctx.f0.f64)));
+	ctx.f13.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f13.f64, ctx.f0.f64)));
 	// lfs f0,3400(r11)
 	temp.u32 = REX_LOAD_U32(ctx.r11.u32 + 3400);
 	ctx.f0.f64 = double(temp.f32);
@@ -49131,7 +49088,7 @@ loc_82896BB0:
 	temp.u32 = REX_LOAD_U32(r29.u32 + 424);
 	ctx.f13.f64 = double(temp.f32);
 	// fmadds f13,f0,f9,f13
-	ctx.f13.f64 = double(float(std::fma(ctx.f0.f64, ctx.f9.f64, ctx.f13.f64)));
+	ctx.f13.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f9.f64, ctx.f13.f64)));
 	// stfs f13,356(r29)
 	temp.f32 = float(ctx.f13.f64);
 	REX_STORE_U32(r29.u32 + 356, temp.u32);
@@ -49139,7 +49096,7 @@ loc_82896BB0:
 	temp.u32 = REX_LOAD_U32(r29.u32 + 432);
 	ctx.f13.f64 = double(temp.f32);
 	// fmadds f0,f0,f10,f13
-	ctx.f0.f64 = double(float(std::fma(ctx.f0.f64, ctx.f10.f64, ctx.f13.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f10.f64, ctx.f13.f64)));
 	// stfs f0,360(r29)
 	temp.f32 = float(ctx.f0.f64);
 	REX_STORE_U32(r29.u32 + 360, temp.u32);
@@ -49313,9 +49270,9 @@ DEFINE_REX_FUNC(sub_82896C70) {
 	simde_mm_store_ps(v0.f32, simde_mm_sub_ps(simde_mm_load_ps(v126.f32), simde_mm_load_ps(v0.f32)));
 	// fmadds f0,f0,f0,f13
 	ctx.fpscr.disableFlushModeUnconditional();
-	ctx.f0.f64 = double(float(std::fma(ctx.f0.f64, ctx.f0.f64, ctx.f13.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f0.f64, ctx.f13.f64)));
 	// fmadds f0,f12,f12,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f12.f64, ctx.f12.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f12.f64, ctx.f12.f64, ctx.f0.f64)));
 	// fsqrts f0,f0
 	ctx.f0.f64 = double(float(sqrt(ctx.f0.f64)));
 	// stfs f0,80(r1)
@@ -49443,9 +49400,9 @@ DEFINE_REX_FUNC(sub_82896C70) {
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 104);
 	ctx.f10.f64 = double(temp.f32);
 	// fmadds f0,f0,f11,f12
-	ctx.f0.f64 = double(float(std::fma(ctx.f0.f64, ctx.f11.f64, ctx.f12.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f11.f64, ctx.f12.f64)));
 	// fmadds f0,f10,f13,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f10.f64, ctx.f13.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f10.f64, ctx.f13.f64, ctx.f0.f64)));
 	// stfs f0,80(r1)
 	temp.f32 = float(ctx.f0.f64);
 	REX_STORE_U32(ctx.r1.u32 + 80, temp.u32);
@@ -50089,12 +50046,12 @@ loc_82897188:
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 160);
 	ctx.f11.f64 = double(temp.f32);
 	// fmadds f13,f13,f10,f12
-	ctx.f13.f64 = double(float(std::fma(ctx.f13.f64, ctx.f10.f64, ctx.f12.f64)));
+	ctx.f13.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f10.f64, ctx.f12.f64)));
 	// lfs f12,96(r1)
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 96);
 	ctx.f12.f64 = double(temp.f32);
 	// fmadds f13,f11,f12,f13
-	ctx.f13.f64 = double(float(std::fma(ctx.f11.f64, ctx.f12.f64, ctx.f13.f64)));
+	ctx.f13.f64 = double(float(REX_FMA(ctx.f11.f64, ctx.f12.f64, ctx.f13.f64)));
 	// fcmpu cr6,f13,f0
 	cr6.compare(ctx.f13.f64, ctx.f0.f64);
 	// ble cr6,0x8289721c
@@ -50156,12 +50113,12 @@ loc_8289721C:
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 144);
 	ctx.f11.f64 = double(temp.f32);
 	// fmadds f0,f0,f10,f12
-	ctx.f0.f64 = double(float(std::fma(ctx.f0.f64, ctx.f10.f64, ctx.f12.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f10.f64, ctx.f12.f64)));
 	// lfs f12,96(r1)
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 96);
 	ctx.f12.f64 = double(temp.f32);
 	// fmadds f0,f11,f12,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f11.f64, ctx.f12.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f11.f64, ctx.f12.f64, ctx.f0.f64)));
 	// fcmpu cr6,f0,f13
 	cr6.compare(ctx.f0.f64, ctx.f13.f64);
 	// ble cr6,0x82897268
@@ -50334,9 +50291,9 @@ loc_8289730C:
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 176);
 	ctx.f10.f64 = double(temp.f32);
 	// fmadds f0,f12,f0,f11
-	ctx.f0.f64 = double(float(std::fma(ctx.f12.f64, ctx.f0.f64, ctx.f11.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f12.f64, ctx.f0.f64, ctx.f11.f64)));
 	// fmadds f31,f10,f13,f0
-	f31.f64 = double(float(std::fma(ctx.f10.f64, ctx.f13.f64, ctx.f0.f64)));
+	f31.f64 = double(float(REX_FMA(ctx.f10.f64, ctx.f13.f64, ctx.f0.f64)));
 	// mtctr r11
 	ctr.u64 = ctx.r11.u64;
 	// bctrl 
@@ -53116,7 +53073,7 @@ loc_828983C0:
 	// vspltw v0,v0,0
 	simde_mm_store_si128((simde__m128i*)v0.u32, simde_mm_shuffle_epi32(simde_mm_load_si128((simde__m128i*)v0.u32), 0xFF));
 	// fmadds f0,f12,f0,f13
-	ctx.f0.f64 = double(float(std::fma(ctx.f12.f64, ctx.f0.f64, ctx.f13.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f12.f64, ctx.f0.f64, ctx.f13.f64)));
 	// stfs f0,188(r31)
 	temp.f32 = float(ctx.f0.f64);
 	REX_STORE_U32(r31.u32 + 188, temp.u32);
@@ -53169,9 +53126,9 @@ loc_828983C0:
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 112);
 	ctx.f10.f64 = double(temp.f32);
 	// fmadds f0,f13,f11,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f13.f64, ctx.f11.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f11.f64, ctx.f0.f64)));
 	// fmadds f0,f10,f12,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f10.f64, ctx.f12.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f10.f64, ctx.f12.f64, ctx.f0.f64)));
 	// stfs f0,164(r31)
 	temp.f32 = float(ctx.f0.f64);
 	REX_STORE_U32(r31.u32 + 164, temp.u32);
@@ -53244,9 +53201,9 @@ loc_828983C0:
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 112);
 	ctx.f13.f64 = double(temp.f32);
 	// fmadds f0,f0,f0,f12
-	ctx.f0.f64 = double(float(std::fma(ctx.f0.f64, ctx.f0.f64, ctx.f12.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f0.f64, ctx.f12.f64)));
 	// fmadds f0,f13,f13,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f13.f64, ctx.f13.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f13.f64, ctx.f0.f64)));
 	// fsqrts f0,f0
 	ctx.f0.f64 = double(float(sqrt(ctx.f0.f64)));
 	// stfs f0,168(r31)
@@ -53353,9 +53310,9 @@ loc_828983C0:
 	temp.u32 = REX_LOAD_U32(r30.u32 + 0);
 	ctx.f10.f64 = double(temp.f32);
 	// fmadds f0,f13,f12,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f13.f64, ctx.f12.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f12.f64, ctx.f0.f64)));
 	// fmadds f0,f11,f10,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f11.f64, ctx.f10.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f11.f64, ctx.f10.f64, ctx.f0.f64)));
 	// stfs f0,448(r31)
 	temp.f32 = float(ctx.f0.f64);
 	REX_STORE_U32(r31.u32 + 448, temp.u32);
@@ -53392,9 +53349,9 @@ loc_828983C0:
 	// stw r28,468(r31)
 	REX_STORE_U32(r31.u32 + 468, r28.u32);
 	// fmadds f0,f13,f12,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f13.f64, ctx.f12.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f12.f64, ctx.f0.f64)));
 	// fmadds f0,f11,f10,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f11.f64, ctx.f10.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f11.f64, ctx.f10.f64, ctx.f0.f64)));
 	// stfs f0,452(r31)
 	temp.f32 = float(ctx.f0.f64);
 	REX_STORE_U32(r31.u32 + 452, temp.u32);
@@ -53926,9 +53883,9 @@ DEFINE_REX_FUNC(sub_828987D0) {
 	ea = (ctx.r11.u32) & ~0xF;
 	simde_mm_store_si128((simde__m128i*)v13.u8, simde_mm_shuffle_epi8(simde_mm_load_si128((simde__m128i*)REX_RAW_ADDR(ea)), simde_mm_load_si128((simde__m128i*)VectorMaskL)));
 	// fmadds f0,f13,f12,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f13.f64, ctx.f12.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f12.f64, ctx.f0.f64)));
 	// fnmadds f0,f11,f10,f0
-	ctx.f0.f64 = double(float(-std::fma(ctx.f11.f64, ctx.f10.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(-REX_FMA(ctx.f11.f64, ctx.f10.f64, ctx.f0.f64)));
 	// stfs f0,80(r1)
 	temp.f32 = float(ctx.f0.f64);
 	REX_STORE_U32(ctx.r1.u32 + 80, temp.u32);
@@ -54444,9 +54401,9 @@ loc_82898CD0:
 	temp.u32 = REX_LOAD_U32(ctx.r11.u32 + 8);
 	ctx.f12.f64 = double(temp.f32);
 	// fmadds f0,f0,f0,f13
-	ctx.f0.f64 = double(float(std::fma(ctx.f0.f64, ctx.f0.f64, ctx.f13.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f0.f64, ctx.f13.f64)));
 	// fmadds f13,f12,f12,f0
-	ctx.f13.f64 = double(float(std::fma(ctx.f12.f64, ctx.f12.f64, ctx.f0.f64)));
+	ctx.f13.f64 = double(float(REX_FMA(ctx.f12.f64, ctx.f12.f64, ctx.f0.f64)));
 	// lfs f0,-27016(r10)
 	temp.u32 = REX_LOAD_U32(ctx.r10.u32 + -27016);
 	ctx.f0.f64 = double(temp.f32);
@@ -54498,9 +54455,9 @@ loc_82898D64:
 	temp.u32 = REX_LOAD_U32(ctx.r11.u32 + 8);
 	ctx.f12.f64 = double(temp.f32);
 	// fmadds f0,f0,f0,f13
-	ctx.f0.f64 = double(float(std::fma(ctx.f0.f64, ctx.f0.f64, ctx.f13.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f0.f64, ctx.f13.f64)));
 	// fmadds f13,f12,f12,f0
-	ctx.f13.f64 = double(float(std::fma(ctx.f12.f64, ctx.f12.f64, ctx.f0.f64)));
+	ctx.f13.f64 = double(float(REX_FMA(ctx.f12.f64, ctx.f12.f64, ctx.f0.f64)));
 	// lfs f0,-27016(r10)
 	temp.u32 = REX_LOAD_U32(ctx.r10.u32 + -27016);
 	ctx.f0.f64 = double(temp.f32);
@@ -54910,7 +54867,7 @@ DEFINE_REX_FUNC(sub_82898F70) {
 	temp.u32 = REX_LOAD_U32(r31.u32 + 8);
 	ctx.f5.f64 = double(temp.f32);
 	// fmadds f11,f5,f11,f7
-	ctx.f11.f64 = double(float(std::fma(ctx.f5.f64, ctx.f11.f64, ctx.f7.f64)));
+	ctx.f11.f64 = double(float(REX_FMA(ctx.f5.f64, ctx.f11.f64, ctx.f7.f64)));
 	// lfs f9,116(r1)
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 116);
 	ctx.f9.f64 = double(temp.f32);
@@ -54927,9 +54884,9 @@ DEFINE_REX_FUNC(sub_82898F70) {
 	// fmr f7,f3
 	ctx.f7.f64 = ctx.f3.f64;
 	// fmadds f9,f4,f9,f6
-	ctx.f9.f64 = double(float(std::fma(ctx.f4.f64, ctx.f9.f64, ctx.f6.f64)));
+	ctx.f9.f64 = double(float(REX_FMA(ctx.f4.f64, ctx.f9.f64, ctx.f6.f64)));
 	// fnmadds f11,f3,f10,f11
-	ctx.f11.f64 = double(float(-std::fma(ctx.f3.f64, ctx.f10.f64, ctx.f11.f64)));
+	ctx.f11.f64 = double(float(-REX_FMA(ctx.f3.f64, ctx.f10.f64, ctx.f11.f64)));
 	// stfs f11,80(r1)
 	temp.f32 = float(ctx.f11.f64);
 	REX_STORE_U32(ctx.r1.u32 + 80, temp.u32);
@@ -54955,7 +54912,7 @@ DEFINE_REX_FUNC(sub_82898F70) {
 	simde_mm_store_ps(v0.f32, REX_VMADDFP(simde_mm_load_ps(v12.f32), simde_mm_load_ps(v10.f32), simde_mm_load_ps(v0.f32)));
 	// fnmadds f11,f2,f8,f9
 	ctx.fpscr.disableFlushModeUnconditional();
-	ctx.f11.f64 = double(float(-std::fma(ctx.f2.f64, ctx.f8.f64, ctx.f9.f64)));
+	ctx.f11.f64 = double(float(-REX_FMA(ctx.f2.f64, ctx.f8.f64, ctx.f9.f64)));
 	// stfs f11,80(r1)
 	temp.f32 = float(ctx.f11.f64);
 	REX_STORE_U32(ctx.r1.u32 + 80, temp.u32);
@@ -54965,9 +54922,9 @@ DEFINE_REX_FUNC(sub_82898F70) {
 	// vspltw v9,v9,0
 	simde_mm_store_si128((simde__m128i*)v9.u32, simde_mm_shuffle_epi32(simde_mm_load_si128((simde__m128i*)v9.u32), 0xFF));
 	// fmadds f0,f31,f0,f1
-	ctx.f0.f64 = double(float(std::fma(f31.f64, ctx.f0.f64, ctx.f1.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(f31.f64, ctx.f0.f64, ctx.f1.f64)));
 	// fmadds f9,f6,f12,f5
-	ctx.f9.f64 = double(float(std::fma(ctx.f6.f64, ctx.f12.f64, ctx.f5.f64)));
+	ctx.f9.f64 = double(float(REX_FMA(ctx.f6.f64, ctx.f12.f64, ctx.f5.f64)));
 	// vmaddfp v13,v11,v9,v13
 	ctx.fpscr.enableFlushModeUnconditional();
 	simde_mm_store_ps(v13.f32, REX_VMADDFP(simde_mm_load_ps(v11.f32), simde_mm_load_ps(v9.f32), simde_mm_load_ps(v13.f32)));
@@ -54983,7 +54940,7 @@ DEFINE_REX_FUNC(sub_82898F70) {
 	// fmuls f8,f12,f12
 	ctx.f8.f64 = double(float(ctx.f12.f64 * ctx.f12.f64));
 	// fmadds f0,f7,f13,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f7.f64, ctx.f13.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f7.f64, ctx.f13.f64, ctx.f0.f64)));
 	// lfs f13,96(r1)
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 96);
 	ctx.f13.f64 = double(temp.f32);
@@ -54999,7 +54956,7 @@ DEFINE_REX_FUNC(sub_82898F70) {
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 112);
 	ctx.f12.f64 = double(temp.f32);
 	// fmadds f13,f13,f13,f8
-	ctx.f13.f64 = double(float(std::fma(ctx.f13.f64, ctx.f13.f64, ctx.f8.f64)));
+	ctx.f13.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f13.f64, ctx.f8.f64)));
 	// lfs f11,104(r1)
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 104);
 	ctx.f11.f64 = double(temp.f32);
@@ -55007,11 +54964,11 @@ DEFINE_REX_FUNC(sub_82898F70) {
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 120);
 	ctx.f10.f64 = double(temp.f32);
 	// fmadds f12,f12,f12,f7
-	ctx.f12.f64 = double(float(std::fma(ctx.f12.f64, ctx.f12.f64, ctx.f7.f64)));
+	ctx.f12.f64 = double(float(REX_FMA(ctx.f12.f64, ctx.f12.f64, ctx.f7.f64)));
 	// fmadds f13,f11,f11,f13
-	ctx.f13.f64 = double(float(std::fma(ctx.f11.f64, ctx.f11.f64, ctx.f13.f64)));
+	ctx.f13.f64 = double(float(REX_FMA(ctx.f11.f64, ctx.f11.f64, ctx.f13.f64)));
 	// fmadds f12,f10,f10,f12
-	ctx.f12.f64 = double(float(std::fma(ctx.f10.f64, ctx.f10.f64, ctx.f12.f64)));
+	ctx.f12.f64 = double(float(REX_FMA(ctx.f10.f64, ctx.f10.f64, ctx.f12.f64)));
 	// fsqrts f13,f13
 	ctx.f13.f64 = double(float(sqrt(ctx.f13.f64)));
 	// fsqrts f12,f12
@@ -55053,7 +55010,7 @@ DEFINE_REX_FUNC(sub_82898F70) {
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 144);
 	ctx.f12.f64 = double(temp.f32);
 	// fmadds f12,f12,f4,f9
-	ctx.f12.f64 = double(float(std::fma(ctx.f12.f64, ctx.f4.f64, ctx.f9.f64)));
+	ctx.f12.f64 = double(float(REX_FMA(ctx.f12.f64, ctx.f4.f64, ctx.f9.f64)));
 	// stvx128 v127,r0,r10
 	ea = (ctx.r10.u32) & ~0xF;
 	simde_mm_store_si128((simde__m128i*)REX_RAW_ADDR(ea), simde_mm_shuffle_epi8(simde_mm_load_si128((simde__m128i*)v127.u8), simde_mm_load_si128((simde__m128i*)VectorMaskL)));
@@ -55087,9 +55044,9 @@ DEFINE_REX_FUNC(sub_82898F70) {
 	// fsel f0,f2,f12,f0
 	ctx.f0.f64 = ctx.f2.f64 >= 0.0 ? ctx.f12.f64 : ctx.f0.f64;
 	// fmadds f7,f5,f6,f7
-	ctx.f7.f64 = double(float(std::fma(ctx.f5.f64, ctx.f6.f64, ctx.f7.f64)));
+	ctx.f7.f64 = double(float(REX_FMA(ctx.f5.f64, ctx.f6.f64, ctx.f7.f64)));
 	// fmadds f12,f3,f4,f7
-	ctx.f12.f64 = double(float(std::fma(ctx.f3.f64, ctx.f4.f64, ctx.f7.f64)));
+	ctx.f12.f64 = double(float(REX_FMA(ctx.f3.f64, ctx.f4.f64, ctx.f7.f64)));
 	// fsubs f31,f12,f0
 	f31.f64 = double(float(ctx.f12.f64 - ctx.f0.f64));
 	// lfs f12,120(r1)
@@ -55106,9 +55063,9 @@ DEFINE_REX_FUNC(sub_82898F70) {
 	// fmuls f11,f11,f31
 	ctx.f11.f64 = double(float(ctx.f11.f64 * f31.f64));
 	// fmadds f0,f9,f0,f12
-	ctx.f0.f64 = double(float(std::fma(ctx.f9.f64, ctx.f0.f64, ctx.f12.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f9.f64, ctx.f0.f64, ctx.f12.f64)));
 	// fnmadds f0,f8,f10,f0
-	ctx.f0.f64 = double(float(-std::fma(ctx.f8.f64, ctx.f10.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(-REX_FMA(ctx.f8.f64, ctx.f10.f64, ctx.f0.f64)));
 	// stfs f0,80(r1)
 	temp.f32 = float(ctx.f0.f64);
 	REX_STORE_U32(ctx.r1.u32 + 80, temp.u32);
@@ -55136,9 +55093,9 @@ DEFINE_REX_FUNC(sub_82898F70) {
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 120);
 	ctx.f12.f64 = double(temp.f32);
 	// fmadds f0,f0,f0,f10
-	ctx.f0.f64 = double(float(std::fma(ctx.f0.f64, ctx.f0.f64, ctx.f10.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f0.f64, ctx.f10.f64)));
 	// fmadds f0,f12,f12,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f12.f64, ctx.f12.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f12.f64, ctx.f12.f64, ctx.f0.f64)));
 	// fsqrts f0,f0
 	ctx.f0.f64 = double(float(sqrt(ctx.f0.f64)));
 	// fsubs f12,f13,f0
@@ -55380,9 +55337,9 @@ loc_82899240:
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 132);
 	ctx.f8.f64 = double(temp.f32);
 	// fmadds f0,f13,f10,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f13.f64, ctx.f10.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f10.f64, ctx.f0.f64)));
 	// fnmadds f0,f9,f12,f0
-	ctx.f0.f64 = double(float(-std::fma(ctx.f9.f64, ctx.f12.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(-REX_FMA(ctx.f9.f64, ctx.f12.f64, ctx.f0.f64)));
 	// stfs f0,84(r1)
 	temp.f32 = float(ctx.f0.f64);
 	REX_STORE_U32(ctx.r1.u32 + 84, temp.u32);
@@ -55422,12 +55379,12 @@ loc_82899240:
 	// vspltw v13,v13,0
 	simde_mm_store_si128((simde__m128i*)v13.u32, simde_mm_shuffle_epi32(simde_mm_load_si128((simde__m128i*)v13.u32), 0xFF));
 	// fmadds f0,f0,f0,f12
-	ctx.f0.f64 = double(float(std::fma(ctx.f0.f64, ctx.f0.f64, ctx.f12.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f0.f64, ctx.f12.f64)));
 	// lfs f12,136(r1)
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 136);
 	ctx.f12.f64 = double(temp.f32);
 	// fmadds f0,f13,f13,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f13.f64, ctx.f13.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f13.f64, ctx.f0.f64)));
 	// lfs f13,8(r31)
 	temp.u32 = REX_LOAD_U32(r31.u32 + 8);
 	ctx.f13.f64 = double(temp.f32);
@@ -55452,7 +55409,7 @@ loc_82899240:
 	// fmuls f6,f31,f13
 	ctx.f6.f64 = double(float(f31.f64 * ctx.f13.f64));
 	// fmadds f13,f11,f8,f10
-	ctx.f13.f64 = double(float(std::fma(ctx.f11.f64, ctx.f8.f64, ctx.f10.f64)));
+	ctx.f13.f64 = double(float(REX_FMA(ctx.f11.f64, ctx.f8.f64, ctx.f10.f64)));
 	// fmr f10,f11
 	ctx.f10.f64 = ctx.f11.f64;
 	// vsubfp v0,v0,v13
@@ -55460,7 +55417,7 @@ loc_82899240:
 	simde_mm_store_ps(v0.f32, simde_mm_sub_ps(simde_mm_load_ps(v0.f32), simde_mm_load_ps(v13.f32)));
 	// fnmadds f13,f9,f7,f13
 	ctx.fpscr.disableFlushModeUnconditional();
-	ctx.f13.f64 = double(float(-std::fma(ctx.f9.f64, ctx.f7.f64, ctx.f13.f64)));
+	ctx.f13.f64 = double(float(-REX_FMA(ctx.f9.f64, ctx.f7.f64, ctx.f13.f64)));
 	// stfs f13,84(r1)
 	temp.f32 = float(ctx.f13.f64);
 	REX_STORE_U32(ctx.r1.u32 + 84, temp.u32);
@@ -55503,7 +55460,7 @@ loc_82899240:
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 136);
 	ctx.f11.f64 = double(temp.f32);
 	// fmadds f10,f10,f8,f7
-	ctx.f10.f64 = double(float(std::fma(ctx.f10.f64, ctx.f8.f64, ctx.f7.f64)));
+	ctx.f10.f64 = double(float(REX_FMA(ctx.f10.f64, ctx.f8.f64, ctx.f7.f64)));
 	// fmuls f4,f11,f11
 	ctx.f4.f64 = double(float(ctx.f11.f64 * ctx.f11.f64));
 	// lfs f13,132(r1)
@@ -55515,7 +55472,7 @@ loc_82899240:
 	// addi r11,r1,112
 	ctx.r11.s64 = ctx.r1.s64 + 112;
 	// fnmadds f10,f9,f5,f10
-	ctx.f10.f64 = double(float(-std::fma(ctx.f9.f64, ctx.f5.f64, ctx.f10.f64)));
+	ctx.f10.f64 = double(float(-REX_FMA(ctx.f9.f64, ctx.f5.f64, ctx.f10.f64)));
 	// stfs f10,96(r1)
 	temp.f32 = float(ctx.f10.f64);
 	REX_STORE_U32(ctx.r1.u32 + 96, temp.u32);
@@ -55523,7 +55480,7 @@ loc_82899240:
 	temp.u32 = ctx.r8.u32;
 	simde_mm_store_si128((simde__m128i*)v12.u8, simde_mm_shuffle_epi8(simde_mm_load_si128((simde__m128i*)REX_RAW_ADDR(temp.u32 & ~0xF)), simde_mm_load_si128((simde__m128i*)&VectorMaskL[(temp.u32 & 0xF) * 16])));
 	// fmadds f13,f13,f13,f4
-	ctx.f13.f64 = double(float(std::fma(ctx.f13.f64, ctx.f13.f64, ctx.f4.f64)));
+	ctx.f13.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f13.f64, ctx.f4.f64)));
 	// vspltw v12,v12,0
 	simde_mm_store_si128((simde__m128i*)v12.u32, simde_mm_shuffle_epi32(simde_mm_load_si128((simde__m128i*)v12.u32), 0xFF));
 	// vmaddfp v0,v13,v12,v0
@@ -55531,7 +55488,7 @@ loc_82899240:
 	simde_mm_store_ps(v0.f32, REX_VMADDFP(simde_mm_load_ps(v13.f32), simde_mm_load_ps(v12.f32), simde_mm_load_ps(v0.f32)));
 	// fmadds f13,f11,f11,f13
 	ctx.fpscr.disableFlushModeUnconditional();
-	ctx.f13.f64 = double(float(std::fma(ctx.f11.f64, ctx.f11.f64, ctx.f13.f64)));
+	ctx.f13.f64 = double(float(REX_FMA(ctx.f11.f64, ctx.f11.f64, ctx.f13.f64)));
 	// stvx128 v0,r0,r11
 	ea = (ctx.r11.u32) & ~0xF;
 	simde_mm_store_si128((simde__m128i*)REX_RAW_ADDR(ea), simde_mm_shuffle_epi8(simde_mm_load_si128((simde__m128i*)v0.u8), simde_mm_load_si128((simde__m128i*)VectorMaskL)));
@@ -55551,11 +55508,11 @@ loc_82899240:
 	// fsubs f8,f13,f0
 	ctx.f8.f64 = double(float(ctx.f13.f64 - ctx.f0.f64));
 	// fmadds f11,f11,f11,f9
-	ctx.f11.f64 = double(float(std::fma(ctx.f11.f64, ctx.f11.f64, ctx.f9.f64)));
+	ctx.f11.f64 = double(float(REX_FMA(ctx.f11.f64, ctx.f11.f64, ctx.f9.f64)));
 	// fsel f0,f8,f0,f13
 	ctx.f0.f64 = ctx.f8.f64 >= 0.0 ? ctx.f0.f64 : ctx.f13.f64;
 	// fmadds f13,f10,f10,f11
-	ctx.f13.f64 = double(float(std::fma(ctx.f10.f64, ctx.f10.f64, ctx.f11.f64)));
+	ctx.f13.f64 = double(float(REX_FMA(ctx.f10.f64, ctx.f10.f64, ctx.f11.f64)));
 	// fsqrts f13,f13
 	ctx.f13.f64 = double(float(sqrt(ctx.f13.f64)));
 	// fsubs f11,f0,f13
@@ -55576,7 +55533,7 @@ loc_82899240:
 	temp.u32 = REX_LOAD_U32(ctx.r11.u32 + -27020);
 	ctx.f0.f64 = double(temp.f32);
 	// fmadds f0,f13,f0,f12
-	ctx.f0.f64 = double(float(std::fma(ctx.f13.f64, ctx.f0.f64, ctx.f12.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f0.f64, ctx.f12.f64)));
 loc_82899468:
 	// fmr f13,f0
 	ctx.fpscr.disableFlushMode();
@@ -55762,15 +55719,11 @@ DEFINE_REX_FUNC(sub_82899568) {
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3560(ctx, base);
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r3,r31
 	ctx.r3.u64 = r31.u64;
@@ -56345,13 +56298,13 @@ loc_828998D8:
 	// lis r11,-32244
 	ctx.r11.s64 = -2113142784;
 	// fmsubs f0,f12,f0,f30
-	ctx.f0.f64 = double(float(std::fma(ctx.f12.f64, ctx.f0.f64, -f30.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f12.f64, ctx.f0.f64, -f30.f64)));
 	// lfd f31,-4840(r11)
 	f31.u64 = REX_LOAD_U64(ctx.r11.u32 + -4840);
 	// lis r11,-32255
 	ctx.r11.s64 = -2113863680;
 	// fmadds f0,f0,f13,f30
-	ctx.f0.f64 = double(float(std::fma(ctx.f0.f64, ctx.f13.f64, f30.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f13.f64, f30.f64)));
 	// fsubs f13,f0,f30
 	ctx.f13.f64 = double(float(ctx.f0.f64 - f30.f64));
 	// fsel f12,f13,f0,f31
@@ -56487,7 +56440,7 @@ loc_8289999C:
 	// fsubs f0,f0,f28
 	ctx.f0.f64 = double(float(ctx.f0.f64 - f28.f64));
 	// fnmsubs f0,f0,f27,f30
-	ctx.f0.f64 = double(float(-std::fma(ctx.f0.f64, f27.f64, -f30.f64)));
+	ctx.f0.f64 = double(float(-REX_FMA(ctx.f0.f64, f27.f64, -f30.f64)));
 	// fsubs f13,f0,f26
 	ctx.f13.f64 = double(float(ctx.f0.f64 - f26.f64));
 	// fsel f12,f13,f0,f29
@@ -56593,7 +56546,7 @@ loc_82899A78:
 	// fsubs f0,f0,f28
 	ctx.f0.f64 = double(float(ctx.f0.f64 - f28.f64));
 	// fnmsubs f0,f0,f27,f30
-	ctx.f0.f64 = double(float(-std::fma(ctx.f0.f64, f27.f64, -f30.f64)));
+	ctx.f0.f64 = double(float(-REX_FMA(ctx.f0.f64, f27.f64, -f30.f64)));
 	// fsubs f13,f0,f26
 	ctx.f13.f64 = double(float(ctx.f0.f64 - f26.f64));
 	// fsel f12,f13,f0,f29
@@ -56692,11 +56645,11 @@ loc_82899B28:
 	// lwz r11,0(r3)
 	ctx.r11.u64 = REX_LOAD_U32(ctx.r3.u32 + 0);
 	// fmadds f0,f13,f12,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f13.f64, ctx.f12.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f12.f64, ctx.f0.f64)));
 	// lwz r11,88(r11)
 	ctx.r11.u64 = REX_LOAD_U32(ctx.r11.u32 + 88);
 	// fmadds f0,f11,f10,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f11.f64, ctx.f10.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f11.f64, ctx.f10.f64, ctx.f0.f64)));
 	// fmuls f0,f0,f0
 	ctx.f0.f64 = double(float(ctx.f0.f64 * ctx.f0.f64));
 	// fmuls f1,f0,f24
@@ -56734,11 +56687,11 @@ loc_82899B28:
 	// lwz r11,0(r3)
 	ctx.r11.u64 = REX_LOAD_U32(ctx.r3.u32 + 0);
 	// fmadds f0,f13,f12,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f13.f64, ctx.f12.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f12.f64, ctx.f0.f64)));
 	// lwz r11,88(r11)
 	ctx.r11.u64 = REX_LOAD_U32(ctx.r11.u32 + 88);
 	// fmadds f0,f11,f10,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f11.f64, ctx.f10.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f11.f64, ctx.f10.f64, ctx.f0.f64)));
 	// fmuls f0,f0,f0
 	ctx.f0.f64 = double(float(ctx.f0.f64 * ctx.f0.f64));
 	// fmuls f1,f0,f24
@@ -57076,23 +57029,23 @@ DEFINE_REX_FUNC(sub_82899CA8) {
 	// vor v9,v0,v0
 	simde_mm_store_si128((simde__m128i*)v9.u8, simde_mm_load_si128((simde__m128i*)v0.u8));
 	// fmadds f13,f4,f13,f5
-	ctx.f13.f64 = double(float(std::fma(ctx.f4.f64, ctx.f13.f64, ctx.f5.f64)));
+	ctx.f13.f64 = double(float(REX_FMA(ctx.f4.f64, ctx.f13.f64, ctx.f5.f64)));
 	// fmadds f0,f3,f0,f6
-	ctx.f0.f64 = double(float(std::fma(ctx.f3.f64, ctx.f0.f64, ctx.f6.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f3.f64, ctx.f0.f64, ctx.f6.f64)));
 	// fmr f6,f31
 	ctx.f6.f64 = f31.f64;
 	// fmadds f11,f29,f11,f2
-	ctx.f11.f64 = double(float(std::fma(f29.f64, ctx.f11.f64, ctx.f2.f64)));
+	ctx.f11.f64 = double(float(REX_FMA(f29.f64, ctx.f11.f64, ctx.f2.f64)));
 	// fmadds f8,f28,f8,f1
-	ctx.f8.f64 = double(float(std::fma(f28.f64, ctx.f8.f64, ctx.f1.f64)));
+	ctx.f8.f64 = double(float(REX_FMA(f28.f64, ctx.f8.f64, ctx.f1.f64)));
 	// fmadds f13,f31,f12,f13
-	ctx.f13.f64 = double(float(std::fma(f31.f64, ctx.f12.f64, ctx.f13.f64)));
+	ctx.f13.f64 = double(float(REX_FMA(f31.f64, ctx.f12.f64, ctx.f13.f64)));
 	// fmadds f0,f30,f9,f0
-	ctx.f0.f64 = double(float(std::fma(f30.f64, ctx.f9.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(f30.f64, ctx.f9.f64, ctx.f0.f64)));
 	// fmadds f12,f27,f10,f11
-	ctx.f12.f64 = double(float(std::fma(f27.f64, ctx.f10.f64, ctx.f11.f64)));
+	ctx.f12.f64 = double(float(REX_FMA(f27.f64, ctx.f10.f64, ctx.f11.f64)));
 	// fmadds f11,f7,f6,f8
-	ctx.f11.f64 = double(float(std::fma(ctx.f7.f64, ctx.f6.f64, ctx.f8.f64)));
+	ctx.f11.f64 = double(float(REX_FMA(ctx.f7.f64, ctx.f6.f64, ctx.f8.f64)));
 	// fsubs f0,f13,f0
 	ctx.f0.f64 = double(float(ctx.f13.f64 - ctx.f0.f64));
 	// stfs f0,84(r1)
@@ -57846,8 +57799,6 @@ loc_8289A2AC:
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
 		const auto s_v126 = ctx.v126; ctx.v126 = v126;
 		const auto s_v127 = ctx.v127; ctx.v127 = v127;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; ctx.v8 = v8; ctx.v9 = v9; ctx.v10 = v10; ctx.v11 = v11; ctx.v12 = v12; ctx.v13 = v13; sub_821B3560(ctx, base); v0 = ctx.v0; v8 = ctx.v8; v9 = ctx.v9; v10 = ctx.v10; v11 = ctx.v11; v12 = ctx.v12; v13 = ctx.v13; }
 		r26 = ctx.r26;
 		ctx.r26 = s_r26;
@@ -57875,8 +57826,6 @@ loc_8289A2AC:
 		ctx.v126 = s_v126;
 		v127 = ctx.v127;
 		ctx.v127 = s_v127;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 loc_8289A2C4:
 	// addi r3,r30,-276
@@ -58861,7 +58810,7 @@ DEFINE_REX_FUNC(sub_8289A878) {
 	temp.u32 = REX_LOAD_U32(ctx.r10.u32 + -22844);
 	ctx.f12.f64 = double(temp.f32);
 	// fmsubs f0,f11,f0,f12
-	ctx.f0.f64 = double(float(std::fma(ctx.f11.f64, ctx.f0.f64, -ctx.f12.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f11.f64, ctx.f0.f64, -ctx.f12.f64)));
 	// stfs f0,36(r3)
 	temp.f32 = float(ctx.f0.f64);
 	REX_STORE_U32(ctx.r3.u32 + 36, temp.u32);
@@ -58937,7 +58886,7 @@ DEFINE_REX_FUNC(sub_8289A878) {
 	temp.u32 = REX_LOAD_U32(ctx.r11.u32 + -4624);
 	ctx.f0.f64 = double(temp.f32);
 	// fmadds f0,f12,f13,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f12.f64, ctx.f13.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f12.f64, ctx.f13.f64, ctx.f0.f64)));
 	// stfs f0,44(r3)
 	temp.f32 = float(ctx.f0.f64);
 	REX_STORE_U32(ctx.r3.u32 + 44, temp.u32);
@@ -59075,9 +59024,9 @@ DEFINE_REX_FUNC(sub_8289A9A0) {
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 116);
 	ctx.f12.f64 = double(temp.f32);
 	// fmadds f13,f13,f13,f11
-	ctx.f13.f64 = double(float(std::fma(ctx.f13.f64, ctx.f13.f64, ctx.f11.f64)));
+	ctx.f13.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f13.f64, ctx.f11.f64)));
 	// fmadds f12,f12,f12,f13
-	ctx.f12.f64 = double(float(std::fma(ctx.f12.f64, ctx.f12.f64, ctx.f13.f64)));
+	ctx.f12.f64 = double(float(REX_FMA(ctx.f12.f64, ctx.f12.f64, ctx.f13.f64)));
 	// lfs f13,-2480(r10)
 	temp.u32 = REX_LOAD_U32(ctx.r10.u32 + -2480);
 	ctx.f13.f64 = double(temp.f32);
@@ -59184,7 +59133,7 @@ loc_8289AA94:
 	ctx.fpscr.disableFlushModeUnconditional();
 	ctx.f0.f64 = double(float(ctx.f0.f64));
 	// fmadds f0,f0,f11,f29
-	ctx.f0.f64 = double(float(std::fma(ctx.f0.f64, ctx.f11.f64, f29.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f11.f64, f29.f64)));
 	// stfs f0,84(r1)
 	temp.f32 = float(ctx.f0.f64);
 	REX_STORE_U32(ctx.r1.u32 + 84, temp.u32);
@@ -59485,7 +59434,7 @@ loc_8289ACD0:
 	temp.u32 = REX_LOAD_U32(ctx.r11.u32 + 84);
 	ctx.f12.f64 = double(temp.f32);
 	// fnmsubs f13,f12,f31,f13
-	ctx.f13.f64 = double(float(-std::fma(ctx.f12.f64, f31.f64, -ctx.f13.f64)));
+	ctx.f13.f64 = double(float(-REX_FMA(ctx.f12.f64, f31.f64, -ctx.f13.f64)));
 	// lfs f0,76(r11)
 	temp.u32 = REX_LOAD_U32(ctx.r11.u32 + 76);
 	ctx.f0.f64 = double(temp.f32);
@@ -59501,7 +59450,7 @@ loc_8289AD10:
 	// lis r11,-32254
 	ctx.r11.s64 = -2113798144;
 	// fmadds f13,f31,f28,f13
-	ctx.f13.f64 = double(float(std::fma(f31.f64, f28.f64, ctx.f13.f64)));
+	ctx.f13.f64 = double(float(REX_FMA(f31.f64, f28.f64, ctx.f13.f64)));
 	// lfs f0,-26300(r11)
 	temp.u32 = REX_LOAD_U32(ctx.r11.u32 + -26300);
 	ctx.f0.f64 = double(temp.f32);
@@ -59625,9 +59574,9 @@ loc_8289ADA8:
 	temp.u32 = REX_LOAD_U32(ctx.r11.u32 + 64);
 	ctx.f13.f64 = double(temp.f32);
 	// fmadds f0,f0,f0,f11
-	ctx.f0.f64 = double(float(std::fma(ctx.f0.f64, ctx.f0.f64, ctx.f11.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f0.f64, ctx.f11.f64)));
 	// fmadds f0,f12,f12,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f12.f64, ctx.f12.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f12.f64, ctx.f12.f64, ctx.f0.f64)));
 	// fsqrts f0,f0
 	ctx.f0.f64 = double(float(sqrt(ctx.f0.f64)));
 	// fcmpu cr6,f0,f13
@@ -60468,7 +60417,7 @@ loc_8289B2F0:
 	// frsp f12,f12
 	ctx.f12.f64 = double(float(ctx.f12.f64));
 	// fmadds f12,f12,f0,f31
-	ctx.f12.f64 = double(float(std::fma(ctx.f12.f64, ctx.f0.f64, f31.f64)));
+	ctx.f12.f64 = double(float(REX_FMA(ctx.f12.f64, ctx.f0.f64, f31.f64)));
 	// stfs f12,92(r31)
 	temp.f32 = float(ctx.f12.f64);
 	REX_STORE_U32(r31.u32 + 92, temp.u32);
@@ -60503,7 +60452,7 @@ loc_8289B2F0:
 	// frsp f12,f12
 	ctx.f12.f64 = double(float(ctx.f12.f64));
 	// fmadds f0,f12,f0,f31
-	ctx.f0.f64 = double(float(std::fma(ctx.f12.f64, ctx.f0.f64, f31.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f12.f64, ctx.f0.f64, f31.f64)));
 	// stfs f0,96(r31)
 	temp.f32 = float(ctx.f0.f64);
 	REX_STORE_U32(r31.u32 + 96, temp.u32);
@@ -60541,7 +60490,7 @@ loc_8289B2F0:
 	temp.u32 = REX_LOAD_U32(ctx.r11.u32 + -27016);
 	ctx.f0.f64 = double(temp.f32);
 	// fmsubs f0,f12,f13,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f12.f64, ctx.f13.f64, -ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f12.f64, ctx.f13.f64, -ctx.f0.f64)));
 	// stfs f0,100(r31)
 	temp.f32 = float(ctx.f0.f64);
 	REX_STORE_U32(r31.u32 + 100, temp.u32);
@@ -61032,13 +60981,13 @@ loc_8289B688:
 	// fsqrts f12,f12
 	ctx.f12.f64 = double(float(sqrt(ctx.f12.f64)));
 	// fmsubs f12,f12,f22,f0
-	ctx.f12.f64 = double(float(std::fma(ctx.f12.f64, f22.f64, -ctx.f0.f64)));
+	ctx.f12.f64 = double(float(REX_FMA(ctx.f12.f64, f22.f64, -ctx.f0.f64)));
 	// fcmpu cr6,f30,f31
 	cr6.compare(f30.f64, f31.f64);
 	// fmuls f12,f12,f20
 	ctx.f12.f64 = double(float(ctx.f12.f64 * f20.f64));
 	// fmadds f0,f12,f13,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f12.f64, ctx.f13.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f12.f64, ctx.f13.f64, ctx.f0.f64)));
 	// lfd f12,6768(r11)
 	ctx.f12.u64 = REX_LOAD_U64(ctx.r11.u32 + 6768);
 	// lis r11,-32244
@@ -61427,11 +61376,11 @@ loc_8289B7B8:
 	ea = (ctx.r10.u32) & ~0xF;
 	simde_mm_store_si128((simde__m128i*)v13.u8, simde_mm_shuffle_epi8(simde_mm_load_si128((simde__m128i*)REX_RAW_ADDR(ea)), simde_mm_load_si128((simde__m128i*)VectorMaskL)));
 	// fmadds f9,f6,f9,f7
-	ctx.f9.f64 = double(float(std::fma(ctx.f6.f64, ctx.f9.f64, ctx.f7.f64)));
+	ctx.f9.f64 = double(float(REX_FMA(ctx.f6.f64, ctx.f9.f64, ctx.f7.f64)));
 	// fmadds f9,f8,f5,f9
-	ctx.f9.f64 = double(float(std::fma(ctx.f8.f64, ctx.f5.f64, ctx.f9.f64)));
+	ctx.f9.f64 = double(float(REX_FMA(ctx.f8.f64, ctx.f5.f64, ctx.f9.f64)));
 	// fnmsubs f0,f13,f0,f9
-	ctx.f0.f64 = double(float(-std::fma(ctx.f13.f64, ctx.f0.f64, -ctx.f9.f64)));
+	ctx.f0.f64 = double(float(-REX_FMA(ctx.f13.f64, ctx.f0.f64, -ctx.f9.f64)));
 	// lfs f13,4(r10)
 	temp.u32 = REX_LOAD_U32(ctx.r10.u32 + 4);
 	ctx.f13.f64 = double(temp.f32);
@@ -61446,9 +61395,9 @@ loc_8289B7B8:
 	// li r10,144
 	ctx.r10.s64 = 144;
 	// fmadds f13,f12,f11,f13
-	ctx.f13.f64 = double(float(std::fma(ctx.f12.f64, ctx.f11.f64, ctx.f13.f64)));
+	ctx.f13.f64 = double(float(REX_FMA(ctx.f12.f64, ctx.f11.f64, ctx.f13.f64)));
 	// fmadds f13,f9,f10,f13
-	ctx.f13.f64 = double(float(std::fma(ctx.f9.f64, ctx.f10.f64, ctx.f13.f64)));
+	ctx.f13.f64 = double(float(REX_FMA(ctx.f9.f64, ctx.f10.f64, ctx.f13.f64)));
 	// fsubs f0,f0,f13
 	ctx.f0.f64 = double(float(ctx.f0.f64 - ctx.f13.f64));
 	// stfs f0,80(r1)
@@ -61537,9 +61486,9 @@ loc_8289B7B8:
 	temp.u32 = REX_LOAD_U32(ctx.r11.u32 + 48);
 	ctx.f10.f64 = double(temp.f32);
 	// fmadds f0,f11,f13,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f11.f64, ctx.f13.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f11.f64, ctx.f13.f64, ctx.f0.f64)));
 	// fnmadds f0,f12,f10,f0
-	ctx.f0.f64 = double(float(-std::fma(ctx.f12.f64, ctx.f10.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(-REX_FMA(ctx.f12.f64, ctx.f10.f64, ctx.f0.f64)));
 	// stfs f0,72(r31)
 	temp.f32 = float(ctx.f0.f64);
 	REX_STORE_U32(r31.u32 + 72, temp.u32);
@@ -61606,7 +61555,7 @@ loc_8289B7B8:
 	// lis r11,-32244
 	ctx.r11.s64 = -2113142784;
 	// fmadds f9,f9,f5,f7
-	ctx.f9.f64 = double(float(std::fma(ctx.f9.f64, ctx.f5.f64, ctx.f7.f64)));
+	ctx.f9.f64 = double(float(REX_FMA(ctx.f9.f64, ctx.f5.f64, ctx.f7.f64)));
 	// lfs f7,116(r1)
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 116);
 	ctx.f7.f64 = double(temp.f32);
@@ -61614,7 +61563,7 @@ loc_8289B7B8:
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 132);
 	ctx.f5.f64 = double(temp.f32);
 	// fnmadds f9,f4,f6,f9
-	ctx.f9.f64 = double(float(-std::fma(ctx.f4.f64, ctx.f6.f64, ctx.f9.f64)));
+	ctx.f9.f64 = double(float(-REX_FMA(ctx.f4.f64, ctx.f6.f64, ctx.f9.f64)));
 	// lfs f6,120(r1)
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 120);
 	ctx.f6.f64 = double(temp.f32);
@@ -61632,15 +61581,15 @@ loc_8289B7B8:
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 128);
 	ctx.f4.f64 = double(temp.f32);
 	// fmadds f0,f13,f7,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f13.f64, ctx.f7.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f7.f64, ctx.f0.f64)));
 	// fmadds f11,f10,f5,f11
-	ctx.f11.f64 = double(float(std::fma(ctx.f10.f64, ctx.f5.f64, ctx.f11.f64)));
+	ctx.f11.f64 = double(float(REX_FMA(ctx.f10.f64, ctx.f5.f64, ctx.f11.f64)));
 	// fmadds f13,f6,f12,f0
-	ctx.f13.f64 = double(float(std::fma(ctx.f6.f64, ctx.f12.f64, ctx.f0.f64)));
+	ctx.f13.f64 = double(float(REX_FMA(ctx.f6.f64, ctx.f12.f64, ctx.f0.f64)));
 	// lfd f0,-4848(r11)
 	ctx.f0.u64 = REX_LOAD_U64(ctx.r11.u32 + -4848);
 	// fmadds f12,f8,f4,f11
-	ctx.f12.f64 = double(float(std::fma(ctx.f8.f64, ctx.f4.f64, ctx.f11.f64)));
+	ctx.f12.f64 = double(float(REX_FMA(ctx.f8.f64, ctx.f4.f64, ctx.f11.f64)));
 	// fsel f11,f13,f13,f0
 	ctx.f11.f64 = ctx.f13.f64 >= 0.0 ? ctx.f13.f64 : ctx.f0.f64;
 	// fsel f13,f13,f13,f0
@@ -61742,7 +61691,7 @@ loc_8289BB44:
 	// frsp f13,f13
 	ctx.f13.f64 = double(float(ctx.f13.f64));
 	// fmsubs f13,f13,f11,f12
-	ctx.f13.f64 = double(float(std::fma(ctx.f13.f64, ctx.f11.f64, -ctx.f12.f64)));
+	ctx.f13.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f11.f64, -ctx.f12.f64)));
 	// fsel f12,f13,f13,f0
 	ctx.f12.f64 = ctx.f13.f64 >= 0.0 ? ctx.f13.f64 : ctx.f0.f64;
 	// fsel f0,f13,f13,f0
@@ -61929,7 +61878,7 @@ loc_8289BC98:
 	// lwz r11,4(r10)
 	ctx.r11.u64 = REX_LOAD_U32(ctx.r10.u32 + 4);
 	// fmadds f0,f20,f0,f29
-	ctx.f0.f64 = double(float(std::fma(f20.f64, ctx.f0.f64, f29.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(f20.f64, ctx.f0.f64, f29.f64)));
 	// lbz r10,232(r11)
 	ctx.r10.u64 = REX_LOAD_U8(ctx.r11.u32 + 232);
 	// rlwinm r10,r10,0,26,26
@@ -62105,7 +62054,7 @@ loc_8289BDD8:
 	// lbz r10,232(r11)
 	ctx.r10.u64 = REX_LOAD_U8(ctx.r11.u32 + 232);
 	// fmsubs f0,f0,f25,f23
-	ctx.f0.f64 = double(float(std::fma(ctx.f0.f64, f25.f64, -f23.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f0.f64, f25.f64, -f23.f64)));
 	// rlwinm r10,r10,0,26,26
 	ctx.r10.u64 = __builtin_rotateleft64(ctx.r10.u32 | (ctx.r10.u64 << 32), 0) & 0x20;
 	// cmplwi cr6,r10,0

@@ -105,6 +105,20 @@ extern PPCFuncMapping PPCFuncMappings[];
 #endif
 
 //=============================================================================
+// Scalar Multiply-Add
+//=============================================================================
+
+// fmadd/fmsub/fnmadd/fnmsub (and their single forms). The console fuses them;
+// std::fma does too, in one instruction with FMA3. The PS4's Jaguar has none,
+// so std::fma there is libm's software routine (the hottest code of the game's
+// threads in a profile). Multiply then add, as Xenia does without FMA.
+#if defined(REX_PLATFORM_PS4) && REX_PLATFORM_PS4 && !defined(__FMA__)
+#define REX_FMA(a, b, c) ((a) * (b) + (c))
+#else
+#define REX_FMA(a, b, c) std::fma((a), (b), (c))
+#endif
+
+//=============================================================================
 // Vector Multiply-Add
 //=============================================================================
 
@@ -154,25 +168,62 @@ extern PPCFuncMapping PPCFuncMappings[];
 // Memory Access
 //=============================================================================
 
+#if REX_PLATFORM_PS4
+void GTA4_Ps4GuestMemoryTrace(uint32_t address, const char* operation);
+bool GTA4_Ps4GuestMemoryWriteAllowed(uint32_t address, const char* operation);
+// Bring-up tracing of a few guest address ranges, checked on every load and
+// store of the recompiled code (three compares each, LXXXVII: the game's
+// render thread is 100% busy and half of it is guest code). Off unless
+// REX_PS4_GUEST_MEMORY_TRACE is defined; the executable-page write guard
+// below stays.
+#if defined(REX_PS4_GUEST_MEMORY_TRACE)
+#define REX_PS4_TRACE_GUEST_ADDRESS(addr) \
+  ((u32)(addr) < 0x10000u || ((u32)(addr) >= 0x64617000u && (u32)(addr) < 0x64618000u) || ((u32)(addr) >= 0x10a96000u && (u32)(addr) < 0x10a97000u))
+#else
+#define REX_PS4_TRACE_GUEST_ADDRESS(addr) false
+#endif
+#define REX_TRACE_GUEST_ADDR(addr) \
+  (REX_PS4_TRACE_GUEST_ADDRESS(addr) ? GTA4_Ps4GuestMemoryTrace((u32)(addr), "raw") : (void)0)
+#define REX_TRACE_GUEST_ADDR_OP(addr, op) \
+  (REX_PS4_TRACE_GUEST_ADDRESS(addr) ? GTA4_Ps4GuestMemoryTrace((u32)(addr), op) : (void)0)
+#else
+#define REX_TRACE_GUEST_ADDR(addr) ((void)0)
+#define REX_TRACE_GUEST_ADDR_OP(addr, op) ((void)0)
+#endif
+
 #if REX_PLATFORM_WIN32 || REX_PLATFORM_MAC || REX_PLATFORM_PS5
 #define REX_PHYS_HOST_OFFSET(addr) (((u32)(addr) >= 0xE0000000u) ? 0x1000u : 0u)
 #else
 #define REX_PHYS_HOST_OFFSET(addr) 0u
 #endif
 
-#define REX_RAW_ADDR(x) (base + (u32)(x) + REX_PHYS_HOST_OFFSET(x))
+#define REX_RAW_ADDR(x) (REX_TRACE_GUEST_ADDR(x), base + (u32)(x) + REX_PHYS_HOST_OFFSET(x))
 
-#define REX_LOAD_U8(x) (*(volatile u8*)(base + (u32)(x) + REX_PHYS_HOST_OFFSET(x)))
-#define REX_LOAD_U16(x) __builtin_bswap16(*(volatile u16*)(base + (u32)(x) + REX_PHYS_HOST_OFFSET(x)))
-#define REX_LOAD_U32(x) __builtin_bswap32(*(volatile u32*)(base + (u32)(x) + REX_PHYS_HOST_OFFSET(x)))
-#define REX_LOAD_U64(x) __builtin_bswap64(*(volatile u64*)(base + (u32)(x) + REX_PHYS_HOST_OFFSET(x)))
+#define REX_LOAD_U8(x) (REX_TRACE_GUEST_ADDR_OP(x, "read8"), *(volatile u8*)(base + (u32)(x) + REX_PHYS_HOST_OFFSET(x)))
+#define REX_LOAD_U16(x) (REX_TRACE_GUEST_ADDR_OP(x, "read16"), __builtin_bswap16(*(volatile u16*)(base + (u32)(x) + REX_PHYS_HOST_OFFSET(x))))
+#define REX_LOAD_U32(x) (REX_TRACE_GUEST_ADDR_OP(x, "read32"), __builtin_bswap32(*(volatile u32*)(base + (u32)(x) + REX_PHYS_HOST_OFFSET(x))))
+#define REX_LOAD_U64(x) (REX_TRACE_GUEST_ADDR_OP(x, "read64"), __builtin_bswap64(*(volatile u64*)(base + (u32)(x) + REX_PHYS_HOST_OFFSET(x))))
 #define REX_LOAD_STRING(x, len) \
-  std::string_view(reinterpret_cast<const char*>(base + (u32)(x) + REX_PHYS_HOST_OFFSET(x)), (len))
+  (REX_TRACE_GUEST_ADDR(x), std::string_view(reinterpret_cast<const char*>(base + (u32)(x) + REX_PHYS_HOST_OFFSET(x)), (len)))
 
-#define REX_STORE_U8(x, y)  (*(volatile u8*)(base + (u32)(x) + REX_PHYS_HOST_OFFSET(x)) = (y))
-#define REX_STORE_U16(x, y) (*(volatile u16*)(base + (u32)(x) + REX_PHYS_HOST_OFFSET(x)) = __builtin_bswap16(y))
-#define REX_STORE_U32(x, y) (*(volatile u32*)(base + (u32)(x) + REX_PHYS_HOST_OFFSET(x)) = __builtin_bswap32(y))
-#define REX_STORE_U64(x, y) (*(volatile u64*)(base + (u32)(x) + REX_PHYS_HOST_OFFSET(x)) = __builtin_bswap64(y))
+// PS4: the executable-page write guard (two address-range compares on every
+// guest store) is off unless REX_PS4_STORE_GUARD is defined. Both ranges are
+// read-only text on the PS4, so a stray write there still faults, as on every
+// other platform; the guard only turned it into a logged, skipped write, and
+// never fired in play (XCVIII).
+#if REX_PLATFORM_PS4 && defined(REX_PS4_STORE_GUARD)
+// (The stored value is not read back: a volatile assignment used as the
+// conditional's value made every guest store a store and a reload.)
+#define REX_STORE_U8(x, y)  (((((u32)(x) >= 0x8285e000u && (u32)(x) < 0x82860000u) || ((u32)(x) >= 0x82513000u && (u32)(x) < 0x82514000u))) ? (GTA4_Ps4GuestMemoryWriteAllowed((u32)(x), "write8"), (u8)0) : (REX_TRACE_GUEST_ADDR_OP(x, "write8"), (void)(*(volatile u8*)(base + (u32)(x) + REX_PHYS_HOST_OFFSET(x)) = (y)), (u8)0))
+#define REX_STORE_U16(x, y) (((((u32)(x) >= 0x8285e000u && (u32)(x) < 0x82860000u) || ((u32)(x) >= 0x82513000u && (u32)(x) < 0x82514000u))) ? (GTA4_Ps4GuestMemoryWriteAllowed((u32)(x), "write16"), (u16)0) : (REX_TRACE_GUEST_ADDR_OP(x, "write16"), (void)(*(volatile u16*)(base + (u32)(x) + REX_PHYS_HOST_OFFSET(x)) = __builtin_bswap16(y)), (u16)0))
+#define REX_STORE_U32(x, y) (((((u32)(x) >= 0x8285e000u && (u32)(x) < 0x82860000u) || ((u32)(x) >= 0x82513000u && (u32)(x) < 0x82514000u))) ? (GTA4_Ps4GuestMemoryWriteAllowed((u32)(x), "write32"), (u32)0) : (REX_TRACE_GUEST_ADDR_OP(x, "write32"), (void)(*(volatile u32*)(base + (u32)(x) + REX_PHYS_HOST_OFFSET(x)) = __builtin_bswap32(y)), (u32)0))
+#define REX_STORE_U64(x, y) (((((u32)(x) >= 0x8285e000u && (u32)(x) < 0x82860000u) || ((u32)(x) >= 0x82513000u && (u32)(x) < 0x82514000u))) ? (GTA4_Ps4GuestMemoryWriteAllowed((u32)(x), "write64"), (u64)0) : (REX_TRACE_GUEST_ADDR_OP(x, "write64"), (void)(*(volatile u64*)(base + (u32)(x) + REX_PHYS_HOST_OFFSET(x)) = __builtin_bswap64(y)), (u64)0))
+#else
+#define REX_STORE_U8(x, y)  (REX_TRACE_GUEST_ADDR_OP(x, "write8"), *(volatile u8*)(base + (u32)(x) + REX_PHYS_HOST_OFFSET(x)) = (y))
+#define REX_STORE_U16(x, y) (REX_TRACE_GUEST_ADDR_OP(x, "write16"), *(volatile u16*)(base + (u32)(x) + REX_PHYS_HOST_OFFSET(x)) = __builtin_bswap16(y))
+#define REX_STORE_U32(x, y) (REX_TRACE_GUEST_ADDR_OP(x, "write32"), *(volatile u32*)(base + (u32)(x) + REX_PHYS_HOST_OFFSET(x)) = __builtin_bswap32(y))
+#define REX_STORE_U64(x, y) (REX_TRACE_GUEST_ADDR_OP(x, "write64"), *(volatile u64*)(base + (u32)(x) + REX_PHYS_HOST_OFFSET(x)) = __builtin_bswap64(y))
+#endif
 
 #define REX_MEMORY_SIZE 0x100000000ull
 

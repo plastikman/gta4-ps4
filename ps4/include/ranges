@@ -1,0 +1,66 @@
+#pragma once
+// Minimal range algorithm subset used by ReXGlue; the Orbis SDK libc++ does
+// not ship <ranges>.
+#include <algorithm>
+#include <functional>
+#include <iterator>
+
+namespace std::ranges {
+struct identity {
+  template <class T> constexpr T&& operator()(T&& value) const noexcept { return std::forward<T>(value); }
+};
+struct less {
+  template <class A, class B> constexpr bool operator()(A&& a, B&& b) const { return a < b; }
+};
+struct equal_to {
+  template <class A, class B> constexpr bool operator()(A&& a, B&& b) const { return a == b; }
+};
+template <class R, class Pred, class Proj = identity>
+constexpr bool any_of(R&& range, Pred pred, Proj proj = {}) {
+  return std::any_of(std::begin(range), std::end(range), [&](auto&& value) { return pred(std::invoke(proj, value)); });
+}
+template <class R, class Pred, class Proj = identity>
+constexpr bool none_of(R&& range, Pred pred, Proj proj = {}) {
+  return !any_of(std::forward<R>(range), pred, proj);
+}
+template <class R, class Pred, class Proj = identity>
+constexpr bool all_of(R&& range, Pred pred, Proj proj = {}) {
+  return std::all_of(std::begin(range), std::end(range), [&](auto&& value) { return pred(std::invoke(proj, value)); });
+}
+template <class R, class T, class Proj = identity>
+constexpr auto find(R&& range, const T& value, Proj proj = {}) {
+  return std::find_if(std::begin(range), std::end(range), [&](auto&& item) { return std::invoke(proj, item) == value; });
+}
+template <class R, class Out>
+constexpr Out copy(R&& range, Out output) { return std::copy(std::begin(range), std::end(range), output); }
+template <class R, class Out, class UnaryOp>
+constexpr auto transform(R&& range, Out output, UnaryOp operation) {
+  return std::transform(std::begin(range), std::end(range), output, operation);
+}
+template <class R, class T>
+constexpr void fill(R&& range, const T& value) { std::fill(std::begin(range), std::end(range), value); }
+template <class R, class Pred, class Proj = identity>
+constexpr auto find_if(R&& range, Pred pred, Proj proj = {}) {
+  return std::find_if(std::begin(range), std::end(range), [&](auto&& item) { return pred(std::invoke(proj, item)); });
+}
+template <class R, class Pred, class Proj = identity>
+constexpr auto count_if(R&& range, Pred pred, Proj proj = {}) {
+  return std::count_if(std::begin(range), std::end(range), [&](auto&& item) { return pred(std::invoke(proj, item)); });
+}
+template <class R, class T, class Proj = identity>
+constexpr auto count(R&& range, const T& value, Proj proj = {}) {
+  return std::count_if(std::begin(range), std::end(range), [&](auto&& item) { return std::invoke(proj, item) == value; });
+}
+template <class R, class Comp = less, class Proj = identity>
+constexpr void sort(R&& range, Comp comp = {}, Proj proj = {}) {
+  std::sort(std::begin(range), std::end(range), [&](auto&& a, auto&& b) { return comp(std::invoke(proj, a), std::invoke(proj, b)); });
+}
+template <class R1, class R2, class Pred = equal_to>
+constexpr bool equal(R1&& left, R2&& right, Pred pred = {}) {
+  return std::equal(std::begin(left), std::end(left), std::begin(right), std::end(right), pred);
+}
+template <class R, class Comp = less, class Proj = identity>
+constexpr auto min_element(R&& range, Comp comp = {}, Proj proj = {}) {
+  return std::min_element(std::begin(range), std::end(range), [&](auto&& a, auto&& b) { return comp(std::invoke(proj, a), std::invoke(proj, b)); });
+}
+}  // namespace std::ranges

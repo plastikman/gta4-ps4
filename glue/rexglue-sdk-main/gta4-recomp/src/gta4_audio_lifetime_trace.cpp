@@ -14,6 +14,7 @@
 #include <rex/thread.h>
 
 #include "gta4_init.h"
+#include "gta4_ps4_crash_trace.h"
 
 namespace {
 
@@ -888,16 +889,29 @@ extern "C" void sub_8219A6F8(PPCContext& ctx, uint8_t* base) {
 }
 
 extern "C" void sub_821B3608(PPCContext& ctx, uint8_t* base) {
+  const uint32_t requested_size = ctx.r3.u32;
+  const uint32_t flags = ctx.r4.u32;
+  const uint32_t caller = ctx.lr;
+  const bool device_scratch_allocation = caller == 0x82A50868;
+  if (device_scratch_allocation) {
+    GTA4_Ps4DeviceCreateTrace("scratch-alloc-entry", requested_size, flags,
+                              0, 0, 0, 0, caller);
+  }
   // Disabled diagnostics must not scan records or read guest snapshots.
   // The source-publication lock above, when present, remains unconditional.
   if (!IsAudioLifetimeTraceLoggingEnabled()) {
     __imp__sub_821B3608(ctx, base);
+    if (device_scratch_allocation) {
+      GTA4_Ps4DeviceCreateTrace("scratch-alloc-return", requested_size, flags,
+                                0, 0, ctx.r3.u32, ctx.r3.u32, caller);
+    }
     return;
   }
-  const uint32_t requested_size = ctx.r3.u32;
-  const uint32_t flags = ctx.r4.u32;
-  const uint32_t caller = ctx.lr;
   __imp__sub_821B3608(ctx, base);
+  if (device_scratch_allocation) {
+    GTA4_Ps4DeviceCreateTrace("scratch-alloc-return", requested_size, flags,
+                              0, 0, ctx.r3.u32, ctx.r3.u32, caller);
+  }
   LogHeapReuse("aggregate-alloc-reuse", 0x821B3608, caller, base, ctx.r3.u32, requested_size);
   (void)flags;
 }

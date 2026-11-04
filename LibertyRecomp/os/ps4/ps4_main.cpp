@@ -14,6 +14,7 @@
 #include "savedata_ps4.h"
 #include <user/paths.h>
 
+
 // Forward declarations
 extern "C" int  user_malloc_init(void);
 extern "C" int  user_malloc_finalize(void);
@@ -23,6 +24,7 @@ extern     int  main(int argc, char* argv[]);
 int32_t g_ps4_user_id   = 0;
 int32_t g_np_context    = 0;
 int32_t g_np_handle     = 0;
+
 
 // ── Sysmodule loading ─────────────────────────────────────────────────────────
 // Internal modules needed for audio, pad, video, networking.

@@ -32,8 +32,13 @@
 #include <new>
 #include <atomic>
 #include <chrono>
+#include <cstdio>
+#include <string_view>
 #if defined(__ANDROID__)
 #include <android/log.h>
+#endif
+#if REX_PLATFORM_PS4
+#include <orbis/libkernel.h>
 #endif
 
 namespace {
@@ -45,6 +50,34 @@ struct ReadTelemetry {
   std::atomic<int64_t> last_report_ns{0};
 };
 ReadTelemetry g_read_telemetry;
+void TracePs4FileIoFailure(const char* operation, std::string_view path,
+                           rex::X_STATUS status, uint64_t offset,
+                           uint32_t requested, uint32_t transferred) {
+#if REX_PLATFORM_PS4
+  static std::atomic<uint32_t> count{0};
+  const uint32_t n = count.fetch_add(1, std::memory_order_relaxed);
+  const auto caller = reinterpret_cast<uintptr_t>(__builtin_return_address(0));
+  char line[768];
+  std::snprintf(line, sizeof(line),
+                "[PS4 file I/O failure] n=%u op=%s status=%08x path=\"%.512s\" offset=%llu requested=%u transferred=%u caller=%p\n",
+                n, operation, static_cast<uint32_t>(status), path.data(),
+                static_cast<unsigned long long>(offset), requested, transferred,
+                reinterpret_cast<void*>(caller));
+  if (FILE* log = std::fopen("/data/LibertyRecomp/logs/gta4-guest-trace.txt", "a")) {
+    std::fputs(line, log);
+    std::fflush(log);
+    std::fclose(log);
+  }
+  sceKernelDebugOutText(0, line);
+#else
+  (void)operation;
+  (void)path;
+  (void)status;
+  (void)offset;
+  (void)requested;
+  (void)transferred;
+#endif
+}
 int64_t TelemetryNowNs() {
   return std::chrono::duration_cast<std::chrono::nanoseconds>(
              std::chrono::steady_clock::now().time_since_epoch()).count();
@@ -157,6 +190,8 @@ struct FileReadCompletion {
   uint32_t io_status_block = 0;
   uint32_t apc_routine = 0;
   uint32_t apc_context = 0;
+  uint64_t byte_offset = file_io::kUseCurrentPosition;
+  uint32_t requested = 0;
 
   void PrepareWaitObject() const {
     // A supplied per-request event replaces FileHandle as the wait object.
@@ -177,6 +212,10 @@ struct FileReadCompletion {
       auto* iosb = file->memory()->TranslateVirtual<X_IO_STATUS_BLOCK*>(io_status_block);
       iosb->status = status;
       iosb->information = bytes_transferred;
+    }
+    if (XFAILED(status) && file && file->entry()) {
+      TracePs4FileIoFailure("read", file->entry()->absolute_path(), status,
+                            byte_offset, requested, bytes_transferred);
     }
     file->NotifyIOCompletion(status, bytes_transferred, apc_context);
     if (apc_routine && requesting_thread) {
@@ -251,6 +290,8 @@ u32 NtCreateFile_entry(mapped_u32 handle_out, u32 desired_access,
 
   // Enforce that the path is ASCII.
   if (!IsValidPath(target_path, false)) {
+    TracePs4FileIoFailure("open-invalid-path", target_path,
+                          X_STATUS_OBJECT_NAME_INVALID, 0, 0, 0);
     return X_STATUS_OBJECT_NAME_INVALID;
   }
 
@@ -290,6 +331,7 @@ u32 NtCreateFile_entry(mapped_u32 handle_out, u32 desired_access,
 
   *handle_out = handle;
   if (XFAILED(result)) {
+    TracePs4FileIoFailure("open", target_path, result, 0, 0, 0);
     REXKRNL_IMPORT_FAIL("NtCreateFile", "path='{}' -> {:#x}", target_path, result);
   } else {
     REXKRNL_IMPORT_RESULT("NtCreateFile", "{:#x} handle={:#x}", result, handle);
@@ -345,7 +387,9 @@ u32 NtReadFile_entry(u32 file_handle, u32 event_handle, mapped_void apc_routine_
                                 retain_object(current_thread),
                                 io_status_block.guest_address(),
                                 apc_routine,
-                                apc_context.guest_address()};
+                                apc_context.guest_address(),
+                                byte_offset,
+                                buffer_length};
 
   const bool has_completion_port = file->HasIOCompletionPorts();
   const bool inline_completion = file_io::IsInlineCompletionEligible(
@@ -438,7 +482,9 @@ u32 NtReadFileScatter_entry(u32 file_handle, u32 event_handle, mapped_void apc_r
                                 retain_object(XThread::GetCurrentThread()),
                                 io_status_block.guest_address(),
                                 apc_routine,
-                                apc_context.guest_address()};
+                                apc_context.guest_address(),
+                                byte_offset,
+                                length};
 
   const bool has_completion_port = file->HasIOCompletionPorts();
   const bool inline_completion = file_io::IsInlineCompletionEligible(

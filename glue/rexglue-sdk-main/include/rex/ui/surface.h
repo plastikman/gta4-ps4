@@ -39,6 +39,8 @@ class Surface {
     kTypeIndex_SDLMetalView,
     // [ps5 port] PS5: the whole TV, a VK_KHR_display plane surface.
     kTypeIndex_Ps5Display,
+    // PS4: RADV's VK_EXT_headless_surface presents directly through VideoOut.
+    kTypeIndex_Ps4Headless,
   };
   using TypeFlags = uint32_t;
   enum : TypeFlags {
@@ -47,6 +49,7 @@ class Surface {
     kTypeFlag_Win32Hwnd = TypeFlags(1) << kTypeIndex_Win32Hwnd,
     kTypeFlag_CAMetalLayer = TypeFlags(1) << kTypeIndex_CAMetalLayer,
     kTypeFlag_Ps5Display = TypeFlags(1) << kTypeIndex_Ps5Display,  // [ps5 port]
+    kTypeFlag_Ps4Headless = TypeFlags(1) << kTypeIndex_Ps4Headless,
   };
 
   Surface(const Surface& surface) = delete;

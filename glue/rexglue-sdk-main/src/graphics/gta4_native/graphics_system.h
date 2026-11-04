@@ -421,6 +421,9 @@ class Gta4NativeGraphicsSystem final : public system::IGraphicsSystem {
     // source, what the game's render thread reads per use: the first line.
     mutable bool dropped = false;
     uint64_t content_hash = 0;
+    // [ps4 port] Hash of the raw guest spans on the CPU-detile path (0: none),
+    // so a dirty recheck of unchanged bytes skips the conversion.
+    uint64_t raw_content_hash = 0;
     uint64_t generation = 0;
     std::shared_ptr<const NativeTextureResource> packed_depth_source;
     xenos::xe_gpu_texture_fetch_t fetch{};
@@ -3066,12 +3069,16 @@ class Gta4NativeGraphicsSystem final : public system::IGraphicsSystem {
   };
   BufferCaptureStats buffer_capture_stats_;
   SingleWriterCounter texture_capture_stats_front_hits_, texture_capture_stats_lookups_;
+  // [ps4 port] CPU texture conversions (count, time, converted bytes) and the
+  // dirty rechecks the raw hash answered without one.
+  std::atomic<uint64_t> texture_cpu_converts_{0}, texture_cpu_convert_us_{0},
+      texture_cpu_convert_bytes_{0}, texture_raw_hash_reuses_{0};
   // Commands the game submitted, and how many were state folded into the next.
   SingleWriterCounter title_commands_submitted_, title_commands_coalesced_;
   std::atomic<uint32_t> buffer_full_validation_count_{0};
   NativePeriodicWorkSchedule buffer_cache_poll_schedule_{kNativeBufferCachePollPhaseFrames};
   bool buffer_cache_reclamation_pending_ = false;
-#if REX_PLATFORM_PS5
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
   // [ps5 port] Out-of-memory handling (NotePs5MemoryShort).
   uint32_t ps5_persistent_block_retry_frame_ = 0;
   // The Renderer Threads mask each thread last applied (FollowRendererCpuMask).

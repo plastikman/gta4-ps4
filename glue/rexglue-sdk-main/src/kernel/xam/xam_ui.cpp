@@ -18,6 +18,11 @@
 
 #include <imgui.h>
 
+#if REX_PLATFORM_PS4
+#include <cstdio>
+#include <orbis/libkernel.h>
+#endif
+
 REXCVAR_DEFINE_BOOL(headless, false, "Kernel",
                     "Don't display any UI, using defaults for prompts as needed");
 #include <rex/kernel/xam/private.h>
@@ -1063,6 +1068,18 @@ u32 XamShowDeviceSelectorUI_entry(u32 user_index, u32 content_type, u32 content_
 }
 
 void XamShowDirtyDiscErrorUI_entry(u32 user_index) {
+  char ps4_line[160];
+  std::snprintf(ps4_line, sizeof(ps4_line),
+                "[PS4 dirty-disc dialog] user_index=%08x host_caller=%p\n",
+                uint32_t(user_index), __builtin_return_address(0));
+#if REX_PLATFORM_PS4
+  sceKernelDebugOutText(0, ps4_line);
+  if (FILE* trace = std::fopen("/data/LibertyRecomp/logs/gta4-guest-trace.txt", "a")) {
+    std::fputs(ps4_line, trace);
+    std::fflush(trace);
+    std::fclose(trace);
+  }
+#endif
   REXKRNL_ERROR("XamShowDirtyDiscErrorUI called! user_index={}", uint32_t(user_index));
   REXKRNL_ERROR("This indicates a disc/file read error - check that all game files exist");
 

@@ -9,7 +9,7 @@
 #include <rex/platform.h>
 #include <rex/thread.h>
 
-static_assert(REX_PLATFORM_LINUX || REX_PLATFORM_MAC, "This file is POSIX-only");
+static_assert(REX_PLATFORM_LINUX || REX_PLATFORM_MAC || REX_PLATFORM_PS4, "This file is POSIX-only");
 
 #include <signal.h>
 
@@ -18,16 +18,22 @@ static_assert(REX_PLATFORM_LINUX || REX_PLATFORM_MAC, "This file is POSIX-only")
 #include <array>
 #include <cerrno>
 #include <cstddef>
+#include <cstdio>
 #include <ctime>
 #include <deque>
 #include <limits>
 #include <memory>
+#include <system_error>
+#include <thread>
 
 #include <pthread.h>
+#if REX_PLATFORM_PS4
+#include <orbis/libkernel.h>
+#endif
 #if REX_PLATFORM_ANDROID
 #include <android/log.h>
 #endif
-#if REX_PLATFORM_PS5
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
 #include <rex/ps5_diag.h>
 #endif
 #include <semaphore.h>
@@ -48,6 +54,12 @@ static_assert(REX_PLATFORM_LINUX || REX_PLATFORM_MAC, "This file is POSIX-only")
 #include <rex/thread/timer_queue.h>
 
 #include <sched.h>
+
+#if REX_PLATFORM_PS4
+static void Ps4ThreadTrace(const char* message) {
+  sceKernelDebugOutText(0, message);
+}
+#endif
 
 #if REX_PLATFORM_ANDROID
 #include <dlfcn.h>
@@ -142,7 +154,16 @@ static inline pid_t rex_system_tid() { return pid_t(syscall(SYS_gettid)); }
 #define REX_HAS_SIGEV_THREAD_ID 0
 #endif
 
-#if REX_PLATFORM_PS5
+#if REX_PLATFORM_PS4
+// (40 like every other wait: the audio threads share their core, ps4_audio_core,
+// and one spinning holds the core the other needs)
+REXCVAR_DEFINE_INT32(ps4_audio_wait_spin_us, 40, "PS4",
+                     "How long the audio threads' waits watch for a signal before they sleep (us)");
+REXCVAR_DEFINE_BOOL(ps4_multiwait_events, true, "PS4",
+                    "Untimed waits on several objects sleep until one is signalled instead of "
+                    "polling every 1 ms");
+#endif
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
 REXCVAR_DEFINE_INT32(ps5_wait_spin_us, 40, "PS5",
                      "Kernel object waits spin this long (us) for a signal before they sleep (0 = never spin)");
 #endif
@@ -247,7 +268,11 @@ void EnableAffinityConfiguration() {}
 // uint64_t ticks() { return mach_absolute_time(); }
 
 uint32_t current_thread_system_id() {
+#if REX_PLATFORM_PS4
+  return static_cast<uint32_t>(scePthreadGetthreadid());
+#else
   return static_cast<uint32_t>(rex_system_tid());
+#endif
 }
 
 void MaybeYield() {
@@ -260,7 +285,7 @@ void SyncMemory() {
 }
 
 void Sleep(std::chrono::microseconds duration) {
-#if REX_PLATFORM_PS5
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
   const rex::frame_stats::TitleWaitScope title_wait;
 #endif
   timespec rqtp = DurationToTimeSpec(duration);
@@ -339,6 +364,15 @@ class PosixConditionBase {
   virtual bool Signal() = 0;
 
   WaitResult Wait(std::chrono::milliseconds timeout) {
+#if REX_PLATFORM_PS4
+    static std::atomic<uint64_t> ps4_condition_wait_trace_count{0};
+    const uint64_t ps4_condition_wait_trace_index =
+        ps4_condition_wait_trace_count.fetch_add(1, std::memory_order_relaxed);
+    const bool ps4_trace_condition_wait = ps4_condition_wait_trace_index < 8 ||
+                                          (ps4_condition_wait_trace_index & 0x3FF) == 0;
+    if (ps4_trace_condition_wait)
+      sceKernelDebugOutText(0, "[PS4 semwait] condition Wait entry\n");
+#endif
     bool executed;
     auto predicate = [this] { return this->signaled(); };
 #if REX_PLATFORM_LINUX && !REX_PLATFORM_ANDROID && !REX_PLATFORM_PS5  // Bionic/PS5 have no robust mutexes
@@ -351,9 +385,17 @@ class PosixConditionBase {
     }
     std::unique_lock<std::mutex> lock(mutex_, std::adopt_lock);
 #else
+#if REX_PLATFORM_PS4
+    if (ps4_trace_condition_wait)
+      sceKernelDebugOutText(0, "[PS4 semwait] before mutex lock\n");
+#endif
     std::unique_lock<std::mutex> lock(mutex_);
 #endif
-#if REX_PLATFORM_PS5
+#if REX_PLATFORM_PS4
+    if (ps4_trace_condition_wait)
+      sceKernelDebugOutText(0, "[PS4 semwait] mutex acquired\n");
+#endif
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
     if (!predicate() && timeout.count() > 0) {
       SpinForSignal(lock);
     }
@@ -362,10 +404,38 @@ class PosixConditionBase {
       executed = true;
     } else {
       if (timeout == std::chrono::milliseconds::max()) {
+#if REX_PLATFORM_PS4
+        if (ps4_trace_condition_wait)
+          sceKernelDebugOutText(0, "[PS4 semwait] before cond wait\n");
+#endif
         cond_.wait(lock, predicate);
+#if REX_PLATFORM_PS4
+        if (ps4_trace_condition_wait)
+          sceKernelDebugOutText(0, "[PS4 semwait] cond wait returned\n");
+#endif
         executed = true;  // Did not time out;
       } else {
-        executed = cond_.wait_for(lock, timeout, predicate);
+        try {
+          executed = cond_.wait_for(lock, timeout, predicate);
+        } catch (const std::system_error& error) {
+#if REX_PLATFORM_PS4
+          char trace[256];
+          std::snprintf(trace, sizeof(trace),
+                        "[PS4 cv trace] wait_for error=%d: %s; treating as timeout\n",
+                        error.code().value(), error.what());
+          Ps4ThreadTrace(trace);
+          executed = predicate();
+#else
+          throw;
+#endif
+        } catch (...) {
+#if REX_PLATFORM_PS4
+          Ps4ThreadTrace("[PS4 cv trace] wait_for catch-all; treating as timeout\n");
+          executed = predicate();
+#else
+          throw;
+#endif
+        }
       }
     }
     if (executed) {
@@ -385,6 +455,82 @@ class PosixConditionBase {
       auto result = handles[0]->Wait(timeout);
       return std::make_pair(result, 0);
     }
+
+#if REX_PLATFORM_PS4
+    // [ps4 port] An untimed wait needs no timed condition-variable wait, so it
+    // takes the event-driven path below; the polling loop's 1 ms sleeps are
+    // 1-2 ms on the PS4 (a 1 us nanosleep measured 983 us), and the game's
+    // audio mixer callback waits this way every 5.3 ms frame (CIII: ~1.2 ms
+    // of hand-off per frame, the sound behind real time).
+    if (!(REXCVAR_GET(ps4_multiwait_events) && timeout == std::chrono::milliseconds::max()))
+    {
+    // Orbis' libc++ timed condition-variable wait throws system_error on
+    // ordinary timeout, and unwinding bypasses the local handlers above.
+    // Use the PS4 implementation's bounded polling loop for multiwaits so
+    // audio worker timeouts remain normal WaitResult::kTimeout results.
+    const auto end_time = timeout == std::chrono::milliseconds::max()
+                              ? std::chrono::steady_clock::time_point::max()
+                              : std::chrono::steady_clock::now() + timeout;
+    while (true) {
+      bool all_locked = true;
+      std::vector<std::unique_lock<std::mutex>> locks;
+      locks.reserve(handles.size());
+      for (auto* handle : handles) {
+        locks.emplace_back(handle->mutex_, std::try_to_lock);
+        if (!locks.back().owns_lock()) {
+          all_locked = false;
+          break;
+        }
+      }
+      if (!all_locked) {
+        locks.clear();
+        std::this_thread::yield();
+        continue;
+      }
+
+      size_t first_signaled = std::numeric_limits<size_t>::max();
+      bool condition_met = false;
+      if (wait_all) {
+        condition_met = true;
+        for (size_t i = 0; i < handles.size(); ++i) {
+          if (!handles[i]->signaled()) {
+            condition_met = false;
+            break;
+          }
+          if (first_signaled == std::numeric_limits<size_t>::max()) first_signaled = i;
+        }
+      } else {
+        for (size_t i = 0; i < handles.size(); ++i) {
+          if (handles[i]->signaled()) {
+            first_signaled = i;
+            condition_met = true;
+            break;
+          }
+        }
+      }
+      if (condition_met) {
+        if (wait_all) {
+          for (auto* handle : handles) handle->post_execution();
+        } else {
+          handles[first_signaled]->post_execution();
+        }
+        return std::make_pair(WaitResult::kSuccess, first_signaled);
+      }
+
+      locks.clear();
+      const auto now = std::chrono::steady_clock::now();
+      if (now >= end_time) {
+        return std::make_pair<WaitResult, size_t>(WaitResult::kTimeout, 0);
+      }
+      const auto sleep_time = timeout == std::chrono::milliseconds::max()
+                                  ? std::chrono::milliseconds(1)
+                                  : std::min(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                                 end_time - now),
+                                             std::chrono::milliseconds(1));
+      std::this_thread::sleep_for(sleep_time);
+    }
+    }
+#endif
 
     // Every handle wakes this waiter on Signal, so the thread sleeps until a
     // handle changes instead of polling (polling burned whole cores on
@@ -467,9 +613,33 @@ class PosixConditionBase {
       }
       if (infinite) {
         waiter.cond.wait(lock, [&] { return waiter.generation != generation; });
-      } else if (!waiter.cond.wait_until(lock, end_time,
-                                         [&] { return waiter.generation != generation; })) {
-        return std::make_pair<WaitResult, size_t>(WaitResult::kTimeout, 0);
+      } else {
+        bool changed = false;
+        try {
+          changed = waiter.cond.wait_until(lock, end_time,
+                                           [&] { return waiter.generation != generation; });
+        } catch (const std::system_error& error) {
+#if REX_PLATFORM_PS4
+          char trace[256];
+          std::snprintf(trace, sizeof(trace),
+                        "[PS4 cv trace] wait_until error=%d: %s; treating as timeout\n",
+                        error.code().value(), error.what());
+          Ps4ThreadTrace(trace);
+          changed = waiter.generation != generation;
+#else
+          throw;
+#endif
+        } catch (...) {
+#if REX_PLATFORM_PS4
+          Ps4ThreadTrace("[PS4 cv trace] wait_until catch-all; treating as timeout\n");
+          changed = waiter.generation != generation;
+#else
+          throw;
+#endif
+        }
+        if (!changed) {
+          return std::make_pair<WaitResult, size_t>(WaitResult::kTimeout, 0);
+        }
       }
     }
   }
@@ -483,7 +653,7 @@ class PosixConditionBase {
   // Callers hold mutex_. Wakes every WaitMultiple currently including this
   // handle; lock order is always handle mutex_ then waiter mutex.
   void NotifyExternalWaiters() {
-#if REX_PLATFORM_PS5
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
     signal_generation_.fetch_add(1, std::memory_order_release);
 #endif
     for (ExternalWaiter* waiter : external_waiters_) {
@@ -504,13 +674,24 @@ class PosixConditionBase {
   std::mutex mutex_;
   std::vector<ExternalWaiter*> external_waiters_;  // guarded by mutex_
 
-#if REX_PLATFORM_PS5
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
   // [ps5 port] Before a wait sleeps, it watches the object's signal count for
   // ps5_wait_spin_us without holding its lock: PS5 thread wake-ups are slow,
   // and the game hands work between its threads constantly. Returns with the
   // lock held.
   void SpinForSignal(std::unique_lock<std::mutex>& lock) {
+#if REX_PLATFORM_PS4
+    // (the audio threads watch longer: the mixer's hand-offs are every 5.3 ms
+    // and a PS4 wake-up costs a good part of a millisecond)
+    const uintptr_t self = reinterpret_cast<uintptr_t>(pthread_self());
+    const int32_t spin_us =
+        self == rex::frame_stats::g_audio_mix_thread.load(std::memory_order_relaxed) ||
+                self == rex::frame_stats::g_audio_worker_thread.load(std::memory_order_relaxed)
+            ? REXCVAR_GET(ps4_audio_wait_spin_us)
+            : REXCVAR_GET(ps5_wait_spin_us);
+#else
     const int32_t spin_us = REXCVAR_GET(ps5_wait_spin_us);
+#endif
     if (spin_us <= 0) {
       return;
     }
@@ -756,9 +937,20 @@ class PosixCondition<Thread> : public PosixConditionBase {
 #endif
   }
   bool Initialize(Thread::CreationParameters params, ThreadStartData* start_data) {
+#if REX_PLATFORM_PS4
+    char trace[160];
+    std::snprintf(trace, sizeof(trace), "[PS4 thread trace] Initialize stack=%zu suspended=%d\n",
+                  params.stack_size, params.create_suspended);
+    Ps4ThreadTrace(trace);
+#endif
     start_data->create_suspended = params.create_suspended;
     pthread_attr_t attr;
-    if (pthread_attr_init(&attr) != 0)
+    int attr_status = pthread_attr_init(&attr);
+#if REX_PLATFORM_PS4
+    std::snprintf(trace, sizeof(trace), "[PS4 thread trace] pthread_attr_init=%d\n", attr_status);
+    Ps4ThreadTrace(trace);
+#endif
+    if (attr_status != 0)
       return false;
 #if REX_PLATFORM_PS5
     if (params.stack_size > 2 * 1024 * 1024 && Ps5StackAlloc(params.stack_size, &ps5_stack_)) {
@@ -773,12 +965,18 @@ class PosixCondition<Thread> : public PosixConditionBase {
       return false;
     }
 #else
-    if (pthread_attr_setstacksize(&attr, params.stack_size) != 0) {
+    int stack_status = pthread_attr_setstacksize(&attr, params.stack_size);
+#if REX_PLATFORM_PS4
+    std::snprintf(trace, sizeof(trace), "[PS4 thread trace] pthread_attr_setstacksize=%d\n", stack_status);
+    Ps4ThreadTrace(trace);
+#endif
+    if (stack_status != 0) {
       pthread_attr_destroy(&attr);
       return false;
     }
 #endif
-    if (params.initial_priority != 0) {
+    // (PS4: no real-time FIFO threads either; see set_priority.)
+    if (params.initial_priority != 0 && !REX_PLATFORM_PS4) {
       sched_param sched{};
       sched.sched_priority = params.initial_priority + 1;
       if (pthread_attr_setschedpolicy(&attr, SCHED_FIFO) != 0) {
@@ -791,6 +989,10 @@ class PosixCondition<Thread> : public PosixConditionBase {
       }
     }
     if (int err = pthread_create(&thread_, &attr, ThreadStartRoutine, start_data); err != 0) {
+#if REX_PLATFORM_PS4
+      std::snprintf(trace, sizeof(trace), "[PS4 thread trace] pthread_create returned=%d\n", err);
+      Ps4ThreadTrace(trace);
+#endif
 #if REX_PLATFORM_PS5
       REXLOG_ERROR("ps5: pthread_create failed: error {} (stack {} KB, {})", err, params.stack_size / 1024,
                    ps5_stack_.base ? "direct memory" : "libkernel's");
@@ -800,6 +1002,9 @@ class PosixCondition<Thread> : public PosixConditionBase {
       pthread_attr_destroy(&attr);
       return false;
     }
+#if REX_PLATFORM_PS4
+    Ps4ThreadTrace("[PS4 thread trace] pthread_create succeeded\n");
+#endif
     pthread_attr_destroy(&attr);
     return true;
   }
@@ -843,6 +1048,8 @@ class PosixCondition<Thread> : public PosixConditionBase {
         std::lock_guard<std::mutex> lock(android_pre_api_26_name_mutex_);
         rex::string::copy_truncating(result.data(), android_pre_api_26_name_, result.size());
       }
+#elif REX_PLATFORM_PS4
+      // Orbis does not expose pthread thread-name queries.
 #elif REX_PLATFORM_PS5
       pthread_get_name_np(thread_, result.data(), result.size() - 1);
 #else
@@ -858,7 +1065,9 @@ class PosixCondition<Thread> : public PosixConditionBase {
     WaitStarted();
     std::unique_lock<std::mutex> lock(state_mutex_);
     if (state_ != State::kUninitialized && state_ != State::kFinished) {
-#if REX_PLATFORM_PS5
+#if REX_PLATFORM_PS4
+      (void)name;
+#elif REX_PLATFORM_PS5
       pthread_set_name_np(thread_, std::string(name).c_str());
 #else
       pthread_setname_np(thread_, std::string(name).c_str());
@@ -891,8 +1100,8 @@ class PosixCondition<Thread> : public PosixConditionBase {
 #endif
 
   uint64_t affinity_mask() {
-#if REX_PLATFORM_PS5
-    // [ps5 port] no Linux-style affinity masks: report every logical processor.
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
+    // No Linux-style affinity masks: report every logical processor.
     WaitStarted();
     auto ps5_cpu_count = std::min<uint32_t>(logical_processor_count(), 64);
     if (ps5_cpu_count == 64) {
@@ -922,7 +1131,7 @@ class PosixCondition<Thread> : public PosixConditionBase {
   }
 
   void set_affinity_mask(uint64_t mask) {
-#if REX_PLATFORM_PS5  // [ps5 port] leave scheduling to the PS5
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4  // leave scheduling to the platform
     (void)mask;
 #else
     WaitStarted();
@@ -959,11 +1168,14 @@ class PosixCondition<Thread> : public PosixConditionBase {
 
   void set_priority(int new_priority) {
     WaitStarted();
-#if REX_PLATFORM_PS5
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
     // [ps5 port] Only the guest's creation flags get here (other priorities
     // are ignored, ignore_thread_priorities). SCHED_FIFO with Linux's 0/1
     // means nothing sensible on the PS5, whose priorities run 256 (highest)
     // to 767: leave every thread at the default.
+    // [ps4 port] The same on the PS4, where it made every guest thread
+    // real-time FIFO: spinning waiters starved the threads they waited for
+    // and a frame took ~1 s (LXXVIII: a 10 ms sampler thread woke ~30 s late).
     (void)new_priority;
     return;
 #endif
@@ -1013,7 +1225,7 @@ class PosixCondition<Thread> : public PosixConditionBase {
 #if REX_PLATFORM_ANDROID
     int result = sigqueue(pthread_gettid_np(thread_),
                           GetSystemSignal(SignalType::kThreadUserCallback), value);
-#elif REX_PLATFORM_PS5  // [ps5 port] no pthread_sigqueue
+#elif REX_PLATFORM_PS5 || REX_PLATFORM_PS4  // reduced pthread API
     (void)value;
     int result = pthread_kill(thread_, GetSystemSignal(SignalType::kThreadUserCallback));
 #else
@@ -1304,15 +1516,46 @@ PosixWaitHandle* AsPosixWaitHandle(WaitHandle* handle) {
 }  // namespace
 
 WaitResult Wait(WaitHandle* wait_handle, bool is_alertable, std::chrono::milliseconds timeout) {
-#if REX_PLATFORM_PS5
+#if REX_PLATFORM_PS4
+  static std::atomic<uint64_t> ps4_wait_trace_count{0};
+  const uint64_t ps4_wait_trace_index =
+      ps4_wait_trace_count.fetch_add(1, std::memory_order_relaxed);
+  const bool ps4_trace_wait = ps4_wait_trace_index < 8 ||
+                              (ps4_wait_trace_index & 0x3FF) == 0;
+  if (ps4_trace_wait) sceKernelDebugOutText(0, "[PS4 semwait] rex Wait entry\n");
+#endif
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
   const rex::frame_stats::TitleWaitScope title_wait;
 #endif
   auto posix_wait_handle = AsPosixWaitHandle(wait_handle);
   if (posix_wait_handle == nullptr) {
+#if REX_PLATFORM_PS4
+    sceKernelDebugOutText(0, "[PS4 semwait] platform wait handle missing\n");
+#endif
     return WaitResult::kFailed;
   }
   if (!is_alertable) {
-    return posix_wait_handle->condition().Wait(timeout);
+#if REX_PLATFORM_PS4
+    char trace[192];
+    if (ps4_trace_wait) {
+      std::snprintf(trace, sizeof(trace),
+                    "[PS4 semwait] dispatch wait_handle=%p platform=%p vtable=%p\n",
+                    static_cast<void*>(wait_handle), static_cast<void*>(posix_wait_handle),
+                    *reinterpret_cast<void**>(posix_wait_handle));
+      sceKernelDebugOutText(0, trace);
+      sceKernelDebugOutText(0, "[PS4 semwait] before virtual condition()\n");
+    }
+#endif
+    auto& condition = posix_wait_handle->condition();
+#if REX_PLATFORM_PS4
+    if (ps4_trace_wait) {
+      std::snprintf(trace, sizeof(trace), "[PS4 semwait] condition() returned %p vtable=%p\n",
+                    static_cast<void*>(&condition), *reinterpret_cast<void**>(&condition));
+      sceKernelDebugOutText(0, trace);
+      sceKernelDebugOutText(0, "[PS4 semwait] before condition Wait\n");
+    }
+#endif
+    return condition.Wait(timeout);
   }
 
   ScopedAlertableState alertable_state_guard(true);
@@ -1334,7 +1577,7 @@ WaitResult Wait(WaitHandle* wait_handle, bool is_alertable, std::chrono::millise
 
 WaitResult SignalAndWait(WaitHandle* wait_handle_to_signal, WaitHandle* wait_handle_to_wait_on,
                          bool is_alertable, std::chrono::milliseconds timeout) {
-#if REX_PLATFORM_PS5
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
   const rex::frame_stats::TitleWaitScope title_wait;
 #endif
   auto result = WaitResult::kFailed;
@@ -1370,7 +1613,7 @@ WaitResult SignalAndWait(WaitHandle* wait_handle_to_signal, WaitHandle* wait_han
 std::pair<WaitResult, size_t> WaitMultiple(WaitHandle* wait_handles[], size_t wait_handle_count,
                                            bool wait_all, bool is_alertable,
                                            std::chrono::milliseconds timeout) {
-#if REX_PLATFORM_PS5
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
   const rex::frame_stats::TitleWaitScope title_wait;
 #endif
   std::vector<PosixConditionBase*> conditions;
@@ -1579,7 +1822,7 @@ void* PosixCondition<Thread>::ThreadStartRoutine(void* parameter) {
   current_thread_ = thread;
   current_thread_condition_ = &thread->handle_;
   thread->handle_.tid_.store(rex_system_tid(), std::memory_order_release);
-#if REX_PLATFORM_PS5
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
   rex::ps5diag::RegisterThread("rex");
 #endif
   {
@@ -1593,7 +1836,28 @@ void* PosixCondition<Thread>::ThreadStartRoutine(void* parameter) {
     }
   }
 
+  int thread_exit_code = 0;
+#if REX_PLATFORM_PS4
+  try {
+    start_routine();
+  } catch (const std::exception& error) {
+    char trace[384];
+    std::snprintf(trace, sizeof(trace),
+                  "[PS4 thread exception] tid=%d type=std::exception what=%s\n",
+                  static_cast<int>(rex_system_tid()), error.what());
+    Ps4ThreadTrace(trace);
+    thread_exit_code = -1;
+  } catch (...) {
+    char trace[192];
+    std::snprintf(trace, sizeof(trace),
+                  "[PS4 thread exception] tid=%d type=unknown\n",
+                  static_cast<int>(rex_system_tid()));
+    Ps4ThreadTrace(trace);
+    thread_exit_code = -1;
+  }
+#else
   start_routine();
+#endif
 #if REX_PLATFORM_PS5
   rex::ps5diag::UnregisterThread();
 #endif
@@ -1605,7 +1869,7 @@ void* PosixCondition<Thread>::ThreadStartRoutine(void* parameter) {
 
   {
     std::unique_lock<std::mutex> lock(thread->handle_.mutex_);
-    thread->handle_.exit_code_ = 0;
+    thread->handle_.exit_code_ = thread_exit_code;
     thread->handle_.signaled_ = true;
     thread->handle_.cond_.notify_all();
     thread->handle_.NotifyExternalWaiters();
@@ -1618,8 +1882,14 @@ void* PosixCondition<Thread>::ThreadStartRoutine(void* parameter) {
 
 std::unique_ptr<Thread> Thread::Create(CreationParameters params,
                                        std::function<void()> start_routine) {
+#if REX_PLATFORM_PS4
+  Ps4ThreadTrace("[PS4 thread trace] Thread::Create begin\n");
+#endif
   install_signal_handler(SignalType::kThreadSuspend);
   install_signal_handler(SignalType::kThreadUserCallback);
+#if REX_PLATFORM_PS4
+  Ps4ThreadTrace("[PS4 thread trace] signal setup returned\n");
+#endif
 #if REX_PLATFORM_ANDROID
   install_signal_handler(SignalType::kThreadTerminate);
 #endif
@@ -1671,6 +1941,8 @@ void Thread::Exit(int exit_code) {
 void set_current_thread_name(const std::string_view name) {
 #if REX_PLATFORM_PS5
   pthread_set_name_np(pthread_self(), std::string(name).c_str());
+#elif REX_PLATFORM_PS4
+  (void)name;
 #else
   pthread_setname_np(pthread_self(), std::string(name).c_str());
 #endif

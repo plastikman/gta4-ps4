@@ -10,13 +10,23 @@
  */
 
 #include <cfloat>
+#include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <map>
 
+#if REX_PLATFORM_PS4
+#include <orbis/libkernel.h>
+#endif
+
 #include <rex/assert.h>
 #include <rex/chrono/clock.h>
 #include <rex/logging.h>
+#if REX_PLATFORM_PS4
+#include <rex/input/input.h>
+#include <rex/input/input_system.h>
+#include <rex/runtime.h>
+#endif
 #include <rex/ui/imgui_dialog.h>
 #include <rex/ui/imgui_drawer.h>
 #include <rex/ui/ui_event.h>
@@ -114,6 +124,9 @@ void ImGuiDrawer::Initialize() {
   io.IniFilename = nullptr;
   io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
   io.BackendFlags |= ImGuiBackendFlags_HasGamepad;
+#if REX_PLATFORM_PS4
+  io.MouseDrawCursor = true;
+#endif
 
   // Setup the font glyphs.
   ImFontConfig font_config;
@@ -424,6 +437,106 @@ void ImGuiDrawer::Draw(UIDrawContext& ui_draw_context) {
   io.DisplaySize.x = window_->GetActualPhysicalWidth() * physical_to_logical;
   io.DisplaySize.y = window_->GetActualPhysicalHeight() * physical_to_logical;
 
+#if REX_PLATFORM_PS4
+  // SDL has no PS4 controller backend in this build. Poll the native pad
+  // driver's UI state and feed ImGui directly so setup dialogs remain usable.
+  uint32_t gamepad_keys = 0;
+  auto* runtime = rex::Runtime::instance();
+  auto* input_system = input_system_;
+  if (!input_system && runtime) {
+    input_system = dynamic_cast<rex::input::InputSystem*>(runtime->input_system());
+  }
+  rex::input::X_INPUT_GAMEPAD gamepad = {};
+  uint16_t buttons = 0;
+  ps4_ui_pad_available_ = input_system && input_system->GetUiGamepadState(&gamepad);
+  // Leave a low-rate end-to-end input breadcrumb in klog while the PS4 setup
+  // UI is active. This distinguishes a pad/backend mapping failure from a
+  // cursor or ImGui event-routing issue without flooding the console log.
+  static uint32_t ps4_ui_input_trace_frames = 0;
+  if ((++ps4_ui_input_trace_frames % 120) == 0) {
+    char trace[192];
+    std::snprintf(trace, sizeof(trace),
+                  "[PS4 UI pad] available=%d buttons=0x%04X axes=(%d,%d)/(%d,%d)\n",
+                  ps4_ui_pad_available_ ? 1 : 0,
+                  static_cast<uint16_t>(gamepad.buttons),
+                  static_cast<int16_t>(gamepad.thumb_lx),
+                  static_cast<int16_t>(gamepad.thumb_ly),
+                  static_cast<int16_t>(gamepad.thumb_rx),
+                  static_cast<int16_t>(gamepad.thumb_ry));
+    sceKernelDebugOutText(0, trace);
+  }
+  if (ps4_ui_pad_available_) {
+    buttons = static_cast<uint16_t>(gamepad.buttons);
+    if (buttons & rex::input::X_INPUT_GAMEPAD_DPAD_UP) gamepad_keys |= 1u << 0;
+    if (buttons & rex::input::X_INPUT_GAMEPAD_DPAD_DOWN) gamepad_keys |= 1u << 1;
+    if (buttons & rex::input::X_INPUT_GAMEPAD_DPAD_LEFT) gamepad_keys |= 1u << 2;
+    if (buttons & rex::input::X_INPUT_GAMEPAD_DPAD_RIGHT) gamepad_keys |= 1u << 3;
+    if (buttons & rex::input::X_INPUT_GAMEPAD_START) gamepad_keys |= 1u << 8;
+    if (buttons & rex::input::X_INPUT_GAMEPAD_BACK) gamepad_keys |= 1u << 9;
+    if (gamepad.thumb_ly > 16000) gamepad_keys |= 1u << 0;
+    if (gamepad.thumb_ly < -16000) gamepad_keys |= 1u << 1;
+    if (gamepad.thumb_lx < -16000) gamepad_keys |= 1u << 2;
+    if (gamepad.thumb_lx > 16000) gamepad_keys |= 1u << 3;
+  }
+  ps4_ui_pad_lx_ = gamepad.thumb_lx;
+  ps4_ui_pad_ly_ = gamepad.thumb_ly;
+  ps4_ui_pad_rx_ = gamepad.thumb_rx;
+  ps4_ui_pad_ry_ = gamepad.thumb_ry;
+  ps4_ui_pad_buttons_ = buttons;
+  static constexpr ImGuiKey ps4_gamepad_keys[] = {
+      ImGuiKey_GamepadDpadUp, ImGuiKey_GamepadDpadDown,
+      ImGuiKey_GamepadDpadLeft, ImGuiKey_GamepadDpadRight,
+      ImGuiKey_GamepadFaceDown, ImGuiKey_GamepadFaceRight,
+      ImGuiKey_GamepadFaceLeft, ImGuiKey_GamepadFaceUp,
+      ImGuiKey_GamepadStart, ImGuiKey_GamepadBack,
+  };
+  for (uint32_t i = 0; i < std::size(ps4_gamepad_keys); ++i) {
+    const uint32_t bit = 1u << i;
+    if ((gamepad_keys ^ ps4_ui_gamepad_key_mask_) & bit) {
+      io.AddKeyEvent(ps4_gamepad_keys[i], (gamepad_keys & bit) != 0);
+    }
+  }
+  ps4_ui_gamepad_key_mask_ = gamepad_keys;
+
+  // Keep a visible software cursor on screen even if the pad read fails once;
+  // Cross clicks at its current location, and the left stick moves it.
+  if (ps4_cursor_x_ < 0.0f || ps4_cursor_y_ < 0.0f) {
+    ps4_cursor_x_ = io.DisplaySize.x * 0.5f;
+    ps4_cursor_y_ = io.DisplaySize.y * 0.5f;
+  }
+  const float cursor_speed = 600.0f * io.DeltaTime;
+  constexpr int kCursorDeadzone = 9000;
+  int16_t cursor_x_axis = gamepad.thumb_lx;
+  int16_t cursor_y_axis = gamepad.thumb_ly;
+  // Accept either stick: right-stick pointing is often more intuitive for a
+  // mouse cursor, while left-stick navigation is conventional in menus.
+  if (std::max(std::abs(static_cast<int>(cursor_x_axis)),
+               std::abs(static_cast<int>(cursor_y_axis))) < kCursorDeadzone) {
+    cursor_x_axis = gamepad.thumb_rx;
+    cursor_y_axis = gamepad.thumb_ry;
+  }
+  const auto apply_deadzone = [](int16_t value) {
+    const int axis = static_cast<int>(value);
+    const int magnitude = std::abs(axis);
+    if (magnitude <= kCursorDeadzone) return 0.0f;
+    const float scaled = static_cast<float>(magnitude - kCursorDeadzone) /
+                         static_cast<float>(32767 - kCursorDeadzone);
+    return axis < 0 ? -scaled : scaled;
+  };
+  float cursor_dx = apply_deadzone(cursor_x_axis);
+  float cursor_dy = -apply_deadzone(cursor_y_axis);
+  if (buttons & rex::input::X_INPUT_GAMEPAD_DPAD_LEFT) cursor_dx = -1.0f;
+  if (buttons & rex::input::X_INPUT_GAMEPAD_DPAD_RIGHT) cursor_dx = 1.0f;
+  if (buttons & rex::input::X_INPUT_GAMEPAD_DPAD_UP) cursor_dy = -1.0f;
+  if (buttons & rex::input::X_INPUT_GAMEPAD_DPAD_DOWN) cursor_dy = 1.0f;
+  ps4_cursor_x_ += cursor_dx * cursor_speed;
+  ps4_cursor_y_ += cursor_dy * cursor_speed;
+  ps4_cursor_x_ = std::clamp(ps4_cursor_x_, 0.0f, std::max(0.0f, io.DisplaySize.x - 1.0f));
+  ps4_cursor_y_ = std::clamp(ps4_cursor_y_, 0.0f, std::max(0.0f, io.DisplaySize.y - 1.0f));
+  io.AddMousePosEvent(ps4_cursor_x_, ps4_cursor_y_);
+  io.AddMouseButtonEvent(0, (buttons & rex::input::X_INPUT_GAMEPAD_A) != 0);
+#endif
+
   ImGui::NewFrame();
   input_capture_snapshot_->store(io.WantCaptureMouse || io.WantCaptureKeyboard || io.WantTextInput,
                                  std::memory_order_release);
@@ -434,6 +547,38 @@ void ImGuiDrawer::Draw(UIDrawContext& ui_draw_context) {
     dialogs_[dialog_loop_next_index_++]->Draw();
   }
   dialog_loop_next_index_ = SIZE_MAX;
+
+#if REX_PLATFORM_PS4
+  // The software cursor and the pad line are for the setup dialogs. In game
+  // only non-interactive windows (toasts) are up: hide both there.
+  bool ps4_interactive = false;
+  for (const ImGuiWindow* window : GImGui->Windows) {
+    if (window->Active && !window->Hidden && !window->IsFallbackWindow &&
+        !(window->Flags & (ImGuiWindowFlags_NoMouseInputs | ImGuiWindowFlags_Tooltip))) {
+      ps4_interactive = true;
+      break;
+    }
+  }
+  io.MouseDrawCursor = ps4_interactive;
+  char pad_status[128];
+  std::snprintf(pad_status, sizeof(pad_status), "PS4 pad: %s  L(%d,%d) R(%d,%d) buttons=%04X",
+                ps4_ui_pad_available_ ? "connected" : "NO STATE", ps4_ui_pad_lx_,
+                ps4_ui_pad_ly_, ps4_ui_pad_rx_, ps4_ui_pad_ry_, ps4_ui_pad_buttons_);
+  constexpr ImGuiWindowFlags kPadStatusFlags = ImGuiWindowFlags_NoDecoration |
+                                               ImGuiWindowFlags_NoInputs |
+                                               ImGuiWindowFlags_NoSavedSettings |
+                                               ImGuiWindowFlags_NoFocusOnAppearing |
+                                               ImGuiWindowFlags_AlwaysAutoResize;
+  if (ps4_interactive) {
+    ImGui::SetNextWindowPos(ImVec2(16.0f, std::max(16.0f, io.DisplaySize.y - 52.0f)),
+                            ImGuiCond_Always);
+    ImGui::SetNextWindowBgAlpha(0.0f);
+    if (ImGui::Begin("##PS4PadStatus", nullptr, kPadStatusFlags)) {
+      ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f), "%s", pad_status);
+    }
+    ImGui::End();
+  }
+#endif
 
   ImGui::Render();
   ImDrawData* draw_data = ImGui::GetDrawData();
@@ -465,6 +610,14 @@ void ImGuiDrawer::Draw(UIDrawContext& ui_draw_context) {
       presenter_->RequestUIPaintFromUIThread();
     }
   }
+#if REX_PLATFORM_PS4
+  // There is no SDL PS4 controller event source to wake the UI when a stick
+  // moves. The native pad is polled from Draw() above, so keep active dialogs
+  // painting and polling even when their widgets request on-demand repaint.
+  if (presenter_ && !dialogs_.empty()) {
+    presenter_->RequestUIPaintFromUIThread();
+  }
+#endif
 }
 
 void ImGuiDrawer::RenderDrawLists(ImDrawData* data, UIDrawContext& ui_draw_context) {

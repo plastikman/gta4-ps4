@@ -1,0 +1,50 @@
+#pragma once
+#include <cstddef>
+#include <memory>
+#include <new>
+#include <type_traits>
+#include <utility>
+
+namespace std::pmr {
+class memory_resource {
+ public:
+  virtual ~memory_resource() = default;
+  void* allocate(size_t bytes, size_t alignment = alignof(max_align_t)) {
+    return do_allocate(bytes, alignment);
+  }
+  void deallocate(void* p, size_t bytes, size_t alignment = alignof(max_align_t)) {
+    do_deallocate(p, bytes, alignment);
+  }
+  bool is_equal(const memory_resource& other) const noexcept { return do_is_equal(other); }
+ private:
+  virtual void* do_allocate(size_t, size_t) = 0;
+  virtual void do_deallocate(void*, size_t, size_t) = 0;
+  virtual bool do_is_equal(const memory_resource&) const noexcept = 0;
+};
+class polymorphic_allocator_base {};
+template <class T = byte> class polymorphic_allocator {
+ public:
+  using value_type = T;
+  using size_type = size_t;
+  using difference_type = ptrdiff_t;
+  template <class U> struct rebind { using other = polymorphic_allocator<U>; };
+  polymorphic_allocator() noexcept : resource_(nullptr) {}
+  explicit polymorphic_allocator(memory_resource* resource) noexcept : resource_(resource) {}
+  template <class U> polymorphic_allocator(const polymorphic_allocator<U>& other) noexcept : resource_(other.resource()) {}
+  T* allocate(size_t count) {
+    if (count > size_t(-1) / sizeof(T)) throw bad_alloc();
+    return static_cast<T*>(resource_ ? resource_->allocate(count * sizeof(T), alignof(T)) : ::operator new(count * sizeof(T)));
+  }
+  void deallocate(T* p, size_t count) {
+    if (resource_) resource_->deallocate(p, count * sizeof(T), alignof(T)); else ::operator delete(p);
+  }
+  template <class U, class... Args> void construct(U* p, Args&&... args) { ::new ((void*)p) U(std::forward<Args>(args)...); }
+  template <class U> void destroy(U* p) { p->~U(); }
+  memory_resource* resource() const noexcept { return resource_; }
+  template <class U> bool operator==(const polymorphic_allocator<U>& other) const noexcept { return resource_ == other.resource(); }
+  template <class U> bool operator!=(const polymorphic_allocator<U>& other) const noexcept { return !(*this == other); }
+ private:
+  template <class> friend class polymorphic_allocator;
+  memory_resource* resource_;
+};
+}  // namespace std::pmr

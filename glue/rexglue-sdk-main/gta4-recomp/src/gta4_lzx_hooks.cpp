@@ -1,3 +1,5 @@
+#include <cstdio>
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -185,8 +187,50 @@ bool ValidateArguments(const DecodeArguments& args) {
          IsGuestRange(args.bytes_written, sizeof(uint32_t));
 }
 
+// Streamed resource records that later overflow `new T*[count]` hold identical
+// foreign bytes. If decoding is skipped (invalid args, or a decoder entry that
+// has latched `failed`), the output buffer is never written and keeps whatever
+// it held. Log decodes into the window those records occupy, and every first
+// transition of a decoder to failed, with the reason. Bounded.
+void LzxProbe(uint8_t* base, const char* tag, const DecodeArguments& args, bool force,
+              bool dump = true) {
+  constexpr uint32_t kWindowLo = 0xCAD00000u, kWindowHi = 0xCAE00000u;
+  const bool in_window = args.output < kWindowHi && args.output + args.expected_output > kWindowLo;
+  if (!in_window && !force) return;
+  // Separate budgets: frequent early failures must not use up the lines that
+  // the window decodes - the ones that matter - need later in the run.
+  static std::atomic<uint32_t> window_logged{0};
+  static std::atomic<uint32_t> forced_logged{0};
+  auto& budget = in_window ? window_logged : forced_logged;
+  if (budget.fetch_add(1, std::memory_order_relaxed) >= (in_window ? 1500u : 200u)) return;
+  char in16[16 * 3 + 1] = "-", out16[16 * 3 + 1] = "-";
+  // Only dump bytes for arguments that ValidateArguments accepted: an invalid
+  // address here would fault, and a fault in this path is the very retry loop
+  // being chased.
+  if (dump) {
+    auto hex16 = [&](uint32_t guest, char* out) {
+      const uint8_t* p = REX_RAW_ADDR(guest);
+      for (int k = 0; k < 16; ++k) std::snprintf(out + k * 3, 4, "%02x ", p[k]);
+    };
+    hex16(args.input, in16);
+    hex16(args.output, out16);
+  }
+  char line[512];
+  std::snprintf(line, sizeof(line),
+                "[PS4 lzx] %s%s decoder=%08x in=%08x csize=0x%x out=%08x osize=0x%x "
+                "in16=%s out16=%s",
+                tag, in_window ? " WINDOW" : "", args.decoder, args.input, args.compressed_size,
+                args.output, args.expected_output, in16, out16);
+  if (FILE* log = std::fopen("/data/LibertyRecomp/logs/gta4-guest-trace.txt", "a")) {
+    std::fputs(line, log);
+    std::fputc('\n', log);
+    std::fclose(log);
+  }
+}
+
 void DecodeFrame(PPCContext& ctx, uint8_t* base, const DecodeArguments& args) {
   if (!ValidateArguments(args)) {
+    LzxProbe(base, "invalid-args", args, true, /*dump=*/false);
     if (IsGuestRange(args.decoder, kDecoderSpan) &&
         REX_LOAD_U32(args.decoder + kWindowSizeOffset) == kRetailWindowSize) {
       if (const auto entry = GetOrCreateEntry(args.decoder, kRetailWindowSize)) {
@@ -203,6 +247,7 @@ void DecodeFrame(PPCContext& ctx, uint8_t* base, const DecodeArguments& args) {
 
   const auto entry = GetOrCreateEntry(args.decoder, kRetailWindowSize);
   if (!entry) {
+    LzxProbe(base, "no-entry", args, true);
     SetRetailDecodeBookkeeping(ctx, base, args.decoder, args.input, args.compressed_size,
                                args.output);
     CompleteDecode(ctx, base, args.decoder, args.bytes_written, false, 0);
@@ -217,9 +262,11 @@ void DecodeFrame(PPCContext& ctx, uint8_t* base, const DecodeArguments& args) {
   if (REX_LOAD_U32(args.decoder + kWindowSizeOffset) != kRetailWindowSize ||
       static_cast<uint32_t>(entry->decoder->total_output_bytes()) !=
           REX_LOAD_U32(args.decoder + kTotalOutputOffset)) {
+    if (!entry->failed) LzxProbe(base, "latched-failed(window/total mismatch)", args, true);
     entry->failed = true;
   }
   if (entry->failed) {
+    LzxProbe(base, "skipped(failed)", args, false);
     CompleteDecode(ctx, base, args.decoder, args.bytes_written, false, 0);
     return;
   }
@@ -229,7 +276,10 @@ void DecodeFrame(PPCContext& ctx, uint8_t* base, const DecodeArguments& args) {
       std::span<const uint8_t>(entry->input_snapshot.get(), readable_input_size),
       std::span<uint8_t>(REX_RAW_ADDR(args.output), args.expected_output));
   if (!result) {
+    LzxProbe(base, "decode-failed", args, true);
     entry->failed = true;
+  } else {
+    LzxProbe(base, "decoded", args, false);
   }
 
   CompleteDecode(ctx, base, args.decoder, args.bytes_written, static_cast<bool>(result),

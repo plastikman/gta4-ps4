@@ -11,11 +11,22 @@
 
 #include <rex/ui/windowed_app_context_sdl.h>
 
+#include <cstdio>
+#include <chrono>
 #include <cstdlib>
+#include <atomic>
+#include <thread>
 #include <vector>
 
 
 #include <SDL3/SDL.h>
+#include <rex/platform.h>
+#include <rex/diagnostics/gpu_flight_recorder.h>
+#if REX_PLATFORM_PS4
+#include <orbis/libkernel.h>
+extern "C" int32_t sceGnmSubmitDone(void);
+extern "C" int32_t sceGnmAreSubmitsAllowed(void);
+#endif
 
 #include <rex/logging.h>
 #include <rex/platform.h>
@@ -111,7 +122,55 @@ void SDLWindowedAppContext::PlatformQuitFromUIThread() {
 }
 
 int SDLWindowedAppContext::RunMainMessageLoop() {
-#if REX_PLATFORM_ANDROID
+#if REX_PLATFORM_PS4
+  // Do not tie the Shell's submit-done heartbeat to SDL's event loop. The SDL
+  // wait can stop returning during a guest/render stall, which leaves the
+  // suspend path without its required GNM notification. Keep this lightweight
+  // caller independent of the UI and guest rendering threads.
+  std::atomic<bool> stop_submit_done{false};
+  std::thread submit_done_thread([&stop_submit_done] {
+    unsigned submit_done_count = 0;
+    while (!stop_submit_done.load(std::memory_order_acquire)) {
+      const int32_t allowed = sceGnmAreSubmitsAllowed();
+      const auto begin = std::chrono::steady_clock::now();
+      const int32_t result = sceGnmSubmitDone();
+      const int64_t elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
+          std::chrono::steady_clock::now() - begin).count();
+      ++submit_done_count;
+      if (submit_done_count == 1 || submit_done_count % 100 == 0 || result != 0 ||
+          elapsed > 100000) {
+        char line[192];
+        const int length = std::snprintf(
+            line, sizeof(line),
+            "[PS4 GNM heartbeat] count=%u allowed=%d result=%d us=%lld\n",
+            submit_done_count, allowed, result, static_cast<long long>(elapsed));
+        if (length > 0) sceKernelDebugOutText(0, line);
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+  });
+  unsigned sdl_event_count = 0;
+  while (!HasQuitFromUIThread()) {
+    SDL_Event event;
+    if (SDL_WaitEvent(&event)) {
+      ++sdl_event_count;
+      char event_line[128];
+      const int event_length = std::snprintf(
+          event_line, sizeof(event_line),
+          "[PS4 SDL event enter] count=%u type=%u\n", sdl_event_count,
+          static_cast<unsigned>(event.type));
+      if (event_length > 0) sceKernelDebugOutText(0, event_line);
+      ProcessEvent(event);
+    }
+  }
+  stop_submit_done.store(true, std::memory_order_release);
+  submit_done_thread.join();
+  const int32_t exit_result = sceGnmSubmitDone();
+  char exit_line[96];
+  const int exit_length = std::snprintf(
+      exit_line, sizeof(exit_line), "[PS4 GNM loop-exit] result=%d\n", exit_result);
+  if (exit_length > 0) sceKernelDebugOutText(0, exit_line);
+#elif REX_PLATFORM_ANDROID
   // SDL_WaitEvent never sleeps on Android here: its lifecycle wait is woken
   // again on every pump, so it re-polls joysticks back to back and burns a
   // whole core (and the event-queue lock the render threads push into).
@@ -239,6 +298,17 @@ void SDLWindowedAppContext::ProcessEvent(SDL_Event& event) {
     case SDL_EVENT_WILL_ENTER_BACKGROUND:
     case SDL_EVENT_DID_ENTER_BACKGROUND:
     case SDL_EVENT_DID_ENTER_FOREGROUND: {
+#if REX_PLATFORM_PS4
+      // Keep the recorder live during startup and the stalled display period.
+      // Freeze it only as the title is backgrounded, preserving the recent
+      // Vulkan submit/fence history for post-run inspection.
+      if (event.type == SDL_EVENT_WILL_ENTER_BACKGROUND &&
+          rex::diagnostics::gpu_flight::IsEnabled()) {
+        sceKernelDebugOutText(0, "[PS4 GNM lifecycle] dumping GPU flight trace before background\n");
+        rex::diagnostics::gpu_flight::Dump("app-will-enter-background");
+        sceKernelDebugOutText(0, "[PS4 GNM lifecycle] GPU flight trace dump complete\n");
+      }
+#endif
       for (const auto& [window_id, window] : windows_) {
         (void)window_id;
         if (window) {

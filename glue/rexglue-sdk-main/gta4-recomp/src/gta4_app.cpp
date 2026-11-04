@@ -12,6 +12,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <mutex>
+#include <system_error>
 #include <unordered_set>
 #include <vector>
 
@@ -258,6 +259,23 @@ REXCVAR_DEFINE_UINT32(gta4_drawable_reference_limit, 20000, "GTA IV/Graphics/LOD
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 
 namespace {
+
+template <typename Condition, typename Lock, typename Duration, typename Predicate>
+bool WaitForCommunitySync(Condition& condition, Lock& lock, Duration duration,
+                          Predicate predicate, const char* site) {
+#if REX_PLATFORM_PS4
+  try {
+    return condition.wait_for(lock, duration, predicate);
+  } catch (const std::system_error& error) {
+    REXLOG_ERROR("PS4 community sync timed wait failed at {} ({}): {}", site,
+                 error.code().value(), error.what());
+    return predicate();
+  }
+#else
+  (void)site;
+  return condition.wait_for(lock, duration, predicate);
+#endif
+}
 
 std::mutex g_anti_aliasing_controller_mutex;
 std::atomic<bool> g_anti_aliasing_controller_initialized{false};
@@ -1065,6 +1083,18 @@ void StartLiveCvarWatcher(std::filesystem::path path) {
 #endif
 
 void GTA4App::OnPostSetup() {
+#if REX_PLATFORM_PS4
+  // The PS4 installer extracts audio.rpf into game:/audio, while GTA IV's
+  // Xbox 360 runtime requests these config files through game:/xbox360/audio.
+  // Keep the Xbox 360 SFX tree intact and redirect only its config subtree.
+  if (auto* file_system = runtime()->file_system()) {
+    file_system->RegisterSymbolicLink("game:\\xbox360\\audio\\config",
+                                      "game:\\audio\\config");
+    file_system->RegisterSymbolicLink("d:\\xbox360\\audio\\config",
+                                      "game:\\audio\\config");
+    REXLOG_INFO("GTA4 PS4: mapped Xbox 360 audio config paths to extracted audio.rpf files");
+  }
+#endif
 #if REX_PLATFORM_PS5
   gta4ps5::OnGameSetUp(imgui_drawer(), runtime(), user_data_root());
 #endif
@@ -1234,9 +1264,9 @@ void GTA4App::AchievementSyncWorkerMain() {
     {
       std::unique_lock lock(sync_state->mutex);
       if (sync_state->pending_uploads.empty()) {
-        sync_state->condition.wait_for(lock, kRetryDelay, [&] {
+        WaitForCommunitySync(sync_state->condition, lock, kRetryDelay, [&] {
           return sync_state->stopping || !sync_state->pending_uploads.empty();
-        });
+        }, "achievement pending");
       }
       if (sync_state->stopping)
         return;
@@ -1253,7 +1283,8 @@ void GTA4App::AchievementSyncWorkerMain() {
 
     std::unique_lock lock(sync_state->mutex);
     sync_state->pending_uploads.insert(pending.begin(), pending.end());
-    sync_state->condition.wait_for(lock, kRetryDelay, [&] { return sync_state->stopping; });
+    WaitForCommunitySync(sync_state->condition, lock, kRetryDelay,
+                         [&] { return sync_state->stopping; }, "achievement retry");
     if (sync_state->stopping)
       return;
   }
@@ -1273,7 +1304,8 @@ void GTA4App::TitleProfileSyncWorkerMain() {
 
   auto wait_for_retry = [&] {
     std::unique_lock lock(state->mutex);
-    state->condition.wait_for(lock, kRetryDelay, [&] { return state->stopping; });
+    WaitForCommunitySync(state->condition, lock, kRetryDelay,
+                         [&] { return state->stopping; }, "profile retry");
     return state->stopping;
   };
 
@@ -1369,9 +1401,9 @@ void GTA4App::TitleProfileSyncWorkerMain() {
     REXLOG_WARN("GTA IV community title-profile upload failed; retrying");
     {
       std::unique_lock lock(state->mutex);
-      state->condition.wait_for(lock, kRetryDelay, [&] {
+      WaitForCommunitySync(state->condition, lock, kRetryDelay, [&] {
         return state->stopping || state->pending_generation != generation;
-      });
+      }, "profile upload retry");
       if (state->stopping)
         return;
     }

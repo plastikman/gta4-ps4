@@ -33,6 +33,9 @@ struct ImGuiIO;
 enum ImGuiKey : int;
 
 namespace rex {
+namespace input {
+class InputSystem;
+}
 namespace ui {
 
 class ImGuiDialog;
@@ -63,6 +66,7 @@ class ImGuiDrawer : public WindowInputListener, public UIDrawer {
     SetPresenter(new_presenter);
     SetImmediateDrawer(new_immediate_drawer);
   }
+  void SetInputSystem(rex::input::InputSystem* input_system) { input_system_ = input_system; }
 
   void Draw(UIDrawContext& ui_draw_context) override;
 
@@ -122,6 +126,7 @@ class ImGuiDrawer : public WindowInputListener, public UIDrawer {
   size_t dialog_loop_next_index_ = SIZE_MAX;
 
   Presenter* presenter_ = nullptr;
+  rex::input::InputSystem* input_system_ = nullptr;
 
   ImmediateDrawer* immediate_drawer_ = nullptr;
   // Resources specific to an immediate drawer - must be destroyed before
@@ -141,6 +146,17 @@ class ImGuiDrawer : public WindowInputListener, public UIDrawer {
 
   double frame_time_tick_frequency_;
   uint64_t last_frame_time_ticks_;
+#if REX_PLATFORM_PS4
+  uint32_t ps4_ui_gamepad_key_mask_ = 0;
+  float ps4_cursor_x_ = -1.0f;
+  float ps4_cursor_y_ = -1.0f;
+  bool ps4_ui_pad_available_ = false;
+  int16_t ps4_ui_pad_lx_ = 0;
+  int16_t ps4_ui_pad_ly_ = 0;
+  int16_t ps4_ui_pad_rx_ = 0;
+  int16_t ps4_ui_pad_ry_ = 0;
+  uint16_t ps4_ui_pad_buttons_ = 0;
+#endif
 };
 
 }  // namespace ui

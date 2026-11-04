@@ -15,6 +15,7 @@
 
 #include <rex/assert.h>
 #include <rex/cvar.h>
+#include <rex/diagnostics/gpu_flight_recorder.h>
 #include <rex/ui/flags.h>
 #include <rex/kernel/crt/heap.h>
 #include <rex/filesystem.h>
@@ -28,6 +29,8 @@
 #include <rex/audio/audio_system.h>
 #if REX_PLATFORM_MAC && !REX_PLATFORM_IOS
 #include <rex/audio/coreaudio/coreaudio_audio_system.h>
+#elif REX_PLATFORM_PS4
+#include <rex/audio/orbis/orbis_audio_system.h>
 #else
 #include <rex/audio/sdl/sdl_audio_system.h>
 #endif
@@ -47,6 +50,12 @@
 #if REX_PLATFORM_ANDROID
 #include <SDL3/SDL_messagebox.h>
 #endif
+#if REX_PLATFORM_PS4
+#include <cstdio>
+#include <orbis/libkernel.h>
+#include <rex/frame_stats.h>
+#include <sys/stat.h>
+#endif
 #include <imgui.h>
 
 #include <algorithm>
@@ -58,12 +67,69 @@ REXCVAR_DEFINE_BOOL(ps5_save_logs, true, "PS5", "Write the log to /app0/logs");
 REXCVAR_DEFINE_BOOL(ps5_perf_capture, false, "PS5",
                     "Profile the renderer for a few minutes (read at startup, see windowed_app_main_sdl.cpp)");
 #endif
+#if REX_PLATFORM_PS4
+REXCVAR_DEFINE_BOOL(ps4_fps_counter, false, "PS4",
+                    "Show the game's frame rate and frame time in the top left corner");
+
+namespace {
+// The game's frames a second over half-second windows, and the last frame's
+// time. No inputs, so it neither shows the cursor nor holds the pad.
+class Ps4FpsCounterDialog final : public rex::ui::ImGuiDialog {
+ public:
+  explicit Ps4FpsCounterDialog(rex::ui::ImGuiDrawer* drawer) : ImGuiDialog(drawer) {}
+
+ protected:
+  void OnDraw(ImGuiIO& io) override {
+    (void)io;
+    const int64_t now = rex::frame_stats::NowNs();
+    const uint64_t presents = rex::frame_stats::g_presents.load(std::memory_order_acquire);
+    if (!window_start_ns_) {
+      window_start_ns_ = now;
+      window_presents_ = presents;
+    } else if (now - window_start_ns_ >= 500'000'000) {
+      fps_ = double(presents - window_presents_) * 1e9 / double(now - window_start_ns_);
+      window_start_ns_ = now;
+      window_presents_ = presents;
+    }
+    const double frame_ms =
+        rex::frame_stats::g_last_frame_us.load(std::memory_order_relaxed) / 1000.0;
+    ImGui::SetNextWindowPos(ImVec2(16.0f, 16.0f), ImGuiCond_Always);
+    ImGui::SetNextWindowBgAlpha(0.45f);
+    constexpr ImGuiWindowFlags kFlags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs |
+                                        ImGuiWindowFlags_NoSavedSettings |
+                                        ImGuiWindowFlags_NoFocusOnAppearing |
+                                        ImGuiWindowFlags_AlwaysAutoResize;
+    if (ImGui::Begin("##PS4FpsCounter", nullptr, kFlags)) {
+      ImGui::SetWindowFontScale(2.0f);
+      ImGui::Text("%.1f FPS  %.0f ms", fps_, frame_ms);
+    }
+    ImGui::End();
+  }
+
+ private:
+  int64_t window_start_ns_ = 0;
+  uint64_t window_presents_ = 0;
+  double fps_ = 0.0;
+};
+}  // namespace
+#endif
+
 REXCVAR_DEFINE_STRING(gpu_plugin, "", "GPU",
                       "Graphics plugin to load at startup (for example, 'xenos'); empty lets "
                       "the title choose; changes take effect after restart")
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 
 namespace rex {
+
+#if REX_PLATFORM_PS4
+namespace {
+void Ps4ReXAppStartupLog(const char* message) {
+  char line[256];
+  std::snprintf(line, sizeof(line), "[GTA4 PS4 init] %s\n", message);
+  sceKernelDebugOutText(0, line);
+}
+}  // namespace
+#endif
 
 // --- ReXApp ---
 
@@ -96,10 +162,33 @@ system::AchievementManager& ReXApp::achievements() const {
 }
 
 bool ReXApp::OnInitialize() {
-  if (!SetupEnvironment())
+#if REX_PLATFORM_PS4
+  mkdir("/data/LibertyRecomp/logs", 0777);
+  setenv("REX_GPU_FLIGHT_TRACE_PATH",
+         "/data/LibertyRecomp/logs/gta4-gpu-flight-20261028-GV.jsonl", 1);
+  Ps4ReXAppStartupLog("BUILD_MARKER ps4-paths-record-focus-20261031-XXXVI");
+  Ps4ReXAppStartupLog(diagnostics::gpu_flight::IsEnabled()
+                          ? "GPU flight trace file opened"
+                          : "GPU flight trace file unavailable");
+#endif
+  if (!SetupEnvironment()) {
+#if REX_PLATFORM_PS4
+    Ps4ReXAppStartupLog("SetupEnvironment failed");
+#endif
     return false;
-  if (!SetupPresentation())
+  }
+#if REX_PLATFORM_PS4
+  Ps4ReXAppStartupLog("SetupEnvironment complete; SetupPresentation begin");
+#endif
+  if (!SetupPresentation()) {
+#if REX_PLATFORM_PS4
+    Ps4ReXAppStartupLog("SetupPresentation failed");
+#endif
     return false;
+  }
+#if REX_PLATFORM_PS4
+  Ps4ReXAppStartupLog("SetupPresentation complete; finalizing paths");
+#endif
 
   auto paths = OnFinalizePaths(resolved_defaults_, MakeResumeCallback());
   if (!paths) {
@@ -108,8 +197,15 @@ bool ReXApp::OnInitialize() {
     return true;
   }
 
-  if (!ConstructRuntime(*paths))
+  if (!ConstructRuntime(*paths)) {
+#if REX_PLATFORM_PS4
+    Ps4ReXAppStartupLog("ConstructRuntime failed");
+#endif
     return false;
+  }
+#if REX_PLATFORM_PS4
+  Ps4ReXAppStartupLog("ConstructRuntime complete; launching module");
+#endif
   LaunchModule();
   return true;
 }
@@ -202,7 +298,7 @@ bool ReXApp::SetupEnvironment() {
 #endif
   if (log_file_cvar.empty()) {
     log_config.app_name = std::string(GetName());
-#if REX_PLATFORM_MAC || defined(__ANDROID__)
+#if REX_PLATFORM_MAC || REX_PLATFORM_PS4 || defined(__ANDROID__)
     // Android's library directory is read-only.
     // A macOS bundle's Contents/MacOS directory is code-signing territory.
     // Runtime logs placed there make a subsequent incremental build fail to
@@ -214,7 +310,7 @@ bool ReXApp::SetupEnvironment() {
 #endif
   }
 
-#if REX_PLATFORM_PS5
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
   // [ps5 port] The log file is written every 2 s, not after every line: each
   // line was a write to the drive by whichever thread logged it, sometimes one
   // holding a lock the game's render thread then waited on (a beta tester's
@@ -225,7 +321,7 @@ bool ReXApp::SetupEnvironment() {
   log_config.flush_level = spdlog::level::critical;
 #endif
   rex::InitLogging(log_config);
-#if REX_PLATFORM_PS5
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
   if (REXCVAR_GET(log_flush_interval) <= 0) spdlog::flush_every(std::chrono::seconds(2));
 #endif
   rex::RegisterLogLevelCallback();
@@ -264,12 +360,22 @@ bool ReXApp::SetupEnvironment() {
 
 bool ReXApp::ConstructRuntime(const PathConfig& paths) {
   if (paths.game_data_root.empty()) {
+#if REX_PLATFORM_PS4
+    Ps4ReXAppStartupLog("ConstructRuntime: game data root is empty");
+#endif
     auto msg = std::string("--game_data_root was not provided.");
     REXLOG_ERROR("{}", msg);
     rex::ShowSimpleMessageBox(rex::SimpleMessageBoxType::Error, msg);
     return false;
   }
   if (!std::filesystem::is_directory(paths.game_data_root)) {
+#if REX_PLATFORM_PS4
+    char startup_message[256];
+    std::snprintf(startup_message, sizeof(startup_message),
+                  "ConstructRuntime: game data root is not a directory: %s",
+                  paths.game_data_root.string().c_str());
+    Ps4ReXAppStartupLog(startup_message);
+#endif
     auto msg = fmt::format("--game_data_root does not exist: {}", paths.game_data_root.string());
     REXLOG_ERROR("{}", msg);
     rex::ShowSimpleMessageBox(rex::SimpleMessageBoxType::Error, msg);
@@ -298,8 +404,17 @@ bool ReXApp::ConstructRuntime(const PathConfig& paths) {
     runtime_->set_imgui_drawer(imgui_drawer_.get());
   }
 
+ #if REX_PLATFORM_PS4
+  Ps4ReXAppStartupLog("Runtime::Setup begin");
+#endif
   auto status = runtime_->Setup(ppc_info_, std::move(config_));
   if (XFAILED(status)) {
+#if REX_PLATFORM_PS4
+    char startup_message[128];
+    std::snprintf(startup_message, sizeof(startup_message),
+                  "Runtime::Setup failed: status=0x%08X", uint32_t(status));
+    Ps4ReXAppStartupLog(startup_message);
+#endif
     REXLOG_ERROR("Runtime setup failed: {:08X}", status);
 #if REX_PLATFORM_ANDROID
     // Say so instead of closing silently, then leave without tearing down the
@@ -318,7 +433,6 @@ bool ReXApp::ConstructRuntime(const PathConfig& paths) {
 #endif
     return false;
   }
-
   if (window_ && runtime_->input_system()) {
     static_cast<rex::input::InputSystem*>(runtime_->input_system())->AttachWindow(window_.get());
   }
@@ -404,6 +518,8 @@ bool ReXApp::SetupPresentation() {
   config_.gpu_plugin = REXCVAR_GET(gpu_plugin);
 #if REX_PLATFORM_MAC && !REX_PLATFORM_IOS
   config_.audio_factory = REX_AUDIO_BACKEND(rex::audio::coreaudio::CoreAudioAudioSystem);
+#elif REX_PLATFORM_PS4
+  config_.audio_factory = REX_AUDIO_BACKEND(rex::audio::orbis::OrbisAudioSystem);
 #else
   config_.audio_factory = REX_AUDIO_BACKEND(rex::audio::sdl::SDLAudioSystem);
 #endif
@@ -411,6 +527,20 @@ bool ReXApp::SetupPresentation() {
   config_.kernel_init = rex::kernel::InitializeKernel;
 
   OnPreSetup(config_);
+
+#if REX_PLATFORM_PS4
+  // The install dialog is shown before Runtime exists, so its ImGui drawer
+  // needs a live input system of its own. Transfer this exact system into the
+  // Runtime later to avoid initializing scePad twice.
+  pre_runtime_input_system_ = rex::input::CreateDefaultInputSystem(false);
+  config_.input_factory = [this](bool tool_mode)
+      -> std::unique_ptr<rex::system::IInputSystem> {
+    if (!tool_mode && pre_runtime_input_system_) {
+      return std::move(pre_runtime_input_system_);
+    }
+    return rex::input::CreateDefaultInputSystem(tool_mode);
+  };
+#endif
 
   if (!config_.graphics && !config_.gpu_plugin.empty()) {
     config_.graphics = rex::system::LoadGpuPlugin(config_.gpu_plugin);
@@ -484,6 +614,9 @@ bool ReXApp::SetupPresentation() {
 void ReXApp::SetupOverlays(rex::ui::Presenter* presenter, rex::ui::ImmediateDrawer* drawer) {
   imgui_drawer_ = std::make_unique<rex::ui::ImGuiDrawer>(
       window_.get(), 64, [this](ImFontAtlas* atlas) { OnConfigureFonts(atlas); });
+#if REX_PLATFORM_PS4
+  imgui_drawer_->SetInputSystem(pre_runtime_input_system_.get());
+#endif
   // presenter is nullptr in detached mode; ImGuiDrawer tolerates that and the
   // gated eager font upload in SetImmediateDrawer is skipped (font uploads
   // lazily on the first Draw instead).
@@ -522,6 +655,11 @@ void ReXApp::SetupOverlays(rex::ui::Presenter* presenter, rex::ui::ImmediateDraw
     PublishInputOverlayState();
   });
 
+#if REX_PLATFORM_PS4
+  if (REXCVAR_GET(ps4_fps_counter)) {
+    ps4_fps_counter_ = std::make_unique<Ps4FpsCounterDialog>(imgui_drawer_.get());
+  }
+#endif
   OnCreateDialogs(imgui_drawer_.get());
 }
 
@@ -531,7 +669,13 @@ void ReXApp::PublishInputOverlayState() {
 }
 
 void ReXApp::LaunchModule() {
+#if REX_PLATFORM_PS4
+  Ps4ReXAppStartupLog("LaunchModule: schedule deferred startup");
+#endif
   app_context().CallInUIThreadDeferred([this]() {
+#if REX_PLATFORM_PS4
+    Ps4ReXAppStartupLog("LaunchModule: deferred startup begin");
+#endif
     // Register the achievement notification callback now that the runtime and
     // KernelState are guaranteed to exist. Done here (not OnCreateDialogs)
     // because KernelState is null during SetupPresentation.
@@ -550,7 +694,14 @@ void ReXApp::LaunchModule() {
           });
     }
 
+    #if REX_PLATFORM_PS4
+    Ps4ReXAppStartupLog("LaunchModule: OnPreLaunchModule begin");
+#endif
     OnPreLaunchModule();
+#if REX_PLATFORM_PS4
+    Ps4ReXAppStartupLog("LaunchModule: OnPreLaunchModule complete");
+    Ps4ReXAppStartupLog("LaunchModule: PrepareModuleLaunch begin");
+#endif
 
     auto main_thread = runtime_->PrepareModuleLaunch();
     if (!main_thread) {
@@ -558,20 +709,45 @@ void ReXApp::LaunchModule() {
       app_context().QuitFromUIThread();
       return;
     }
+#if REX_PLATFORM_PS4
+    Ps4ReXAppStartupLog("LaunchModule: PrepareModuleLaunch complete");
+#endif
 
     auto* graphics_system = runtime_->graphics_system();
     if (graphics_system && !runtime_->cache_root().empty()) {
       uint32_t title_id = runtime_->kernel_state()->title_id();
       if (title_id != 0) {
+#if REX_PLATFORM_PS4
+        Ps4ReXAppStartupLog("LaunchModule: shader storage initialization begin");
+#endif
         REXLOG_INFO("Initializing shader storage for title {:08X}...", title_id);
         graphics_system->InitializeShaderStorage(runtime_->cache_root(), title_id, true);
+#if REX_PLATFORM_PS4
+        Ps4ReXAppStartupLog("LaunchModule: shader storage initialization complete");
+#endif
       }
     }
 
+#if REX_PLATFORM_PS4
+    Ps4ReXAppStartupLog("LaunchModule: OnPostLaunchModule begin");
+#endif
     OnPostLaunchModule(main_thread.get());
+#if REX_PLATFORM_PS4
+    Ps4ReXAppStartupLog("LaunchModule: OnPostLaunchModule complete");
+#endif
+#if REX_PLATFORM_PS4
+    Ps4ReXAppStartupLog("LaunchModule: resume guest thread begin");
+#endif
     const X_STATUS resume_status = RequiresSynchronizedInitialThreadResume()
                                        ? main_thread->ResumeFromInitialSuspension()
                                        : main_thread->Resume();
+#if REX_PLATFORM_PS4
+    char resume_message[128];
+    std::snprintf(resume_message, sizeof(resume_message),
+                  "LaunchModule: resume guest thread result=0x%08X",
+                  uint32_t(resume_status));
+    Ps4ReXAppStartupLog(resume_message);
+#endif
     if (XFAILED(resume_status)) {
       REXLOG_ERROR("Failed to resume the main guest thread: {:08X}", resume_status);
       app_context().QuitFromUIThread();
@@ -579,7 +755,13 @@ void ReXApp::LaunchModule() {
     }
 
     module_thread_ = std::thread([this, main_thread = std::move(main_thread)]() mutable {
+#if REX_PLATFORM_PS4
+      Ps4ReXAppStartupLog("LaunchModule: guest thread wait begin");
+#endif
       main_thread->Wait(0, 0, 0, nullptr);
+#if REX_PLATFORM_PS4
+      Ps4ReXAppStartupLog("LaunchModule: guest thread wait complete");
+#endif
       OnGuestThreadExit(main_thread.get());
       REXLOG_INFO("Execution complete");
       if (!shutting_down_.load(std::memory_order_acquire)) {
@@ -700,6 +882,9 @@ void ReXApp::OnDestroy() {
   settings_overlay_.reset();
   console_overlay_.reset();
   debug_overlay_.reset();
+#if REX_PLATFORM_PS4
+  ps4_fps_counter_.reset();
+#endif
   if (imgui_drawer_) {
     imgui_drawer_->SetPresenterAndImmediateDrawer(nullptr, nullptr);
     imgui_drawer_.reset();

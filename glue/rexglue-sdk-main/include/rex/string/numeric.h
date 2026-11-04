@@ -29,7 +29,7 @@ namespace rex::string::detail_float {
 // [ps5 port] The PS5's libc++ 18 has no floating-point std::from_chars.
 template <typename T>
 inline std::from_chars_result FloatFromChars(const char* first, const char* last, T& value) {
-#if defined(__PROSPERO__)
+#if defined(__PROSPERO__) || defined(__ORBIS__)
   std::string text(first, last);
   char* end = nullptr;
   errno = 0;

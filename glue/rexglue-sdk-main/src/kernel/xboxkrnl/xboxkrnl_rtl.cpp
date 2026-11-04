@@ -17,7 +17,7 @@
 #include <rex/frame_stats.h>
 #include <rex/cvar.h>
 #include <rex/platform.h>
-#if REX_PLATFORM_PS5
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
 #include <rex/ps5_diag.h>
 #endif
 #include <algorithm>
@@ -39,10 +39,17 @@
 #include <rex/thread.h>
 #include <rex/thread/atomic.h>
 
-#if REX_PLATFORM_PS5
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
 REXCVAR_DEFINE_INT32(ps5_cs_spin_us, 40, "PS5",
                      "Contended critical sections spin this long (us) for the owner to leave before "
                      "they wait (0 = never spin)");
+#endif
+
+#if REX_PLATFORM_PS4
+namespace rex::system {
+void Ps4NoteAudioWait(uint32_t lr, uint32_t kind, uint64_t us);  // (xobject.cpp)
+bool Ps4IsAudioThread();
+}
 #endif
 
 namespace rex::kernel::xboxkrnl {
@@ -353,7 +360,7 @@ struct X_RTL_CRITICAL_SECTION {
 static_assert_size(X_RTL_CRITICAL_SECTION, 28);
 
 void xeRtlInitializeCriticalSection(X_RTL_CRITICAL_SECTION* cs, uint32_t cs_ptr) {
-#if REX_PLATFORM_PS5
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
   {
     auto* ct = XThread::GetCurrentThread();
     rex::ps5diag::NoteCriticalSectionInit(
@@ -430,7 +437,7 @@ void EnterCs(ppc_ptr_t<X_RTL_CRITICAL_SECTION> cs, uint32_t cur_thread) {
 
   // Spin loop
   while (spin_count--) {
-#if REX_PLATFORM_PS5
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
     // [ps5 port] Look before the compare-exchange: a locked instruction every
     // turn kept taking the lock's cache line from the thread holding it. (A
     // pause each turn too, for the other thread on this core.)
@@ -447,12 +454,26 @@ void EnterCs(ppc_ptr_t<X_RTL_CRITICAL_SECTION> cs, uint32_t cur_thread) {
     }
   }
 
-#if REX_PLATFORM_PS5
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
   // [ps5 port] Keep watching the lock a little longer before queueing up as
   // a waiter: the holders mostly let go within microseconds, and a waiter is
   // woken through a kernel event (several microseconds on the PS5).
   if (const int32_t spin_us = REXCVAR_GET(ps5_cs_spin_us); spin_us > 0) {
     const rex::frame_stats::TitleWaitScope title_wait;
+#if REX_PLATFORM_PS4
+    // (the audio worker's spin time, by the guest caller, for the waits report)
+    struct AudioSpinNote {
+      int64_t begin = 0;
+      ~AudioSpinNote() {
+        if (!begin) return;
+        auto* ct = XThread::GetCurrentThread();
+        rex::system::Ps4NoteAudioWait(
+            ct && ct->thread_state() && ct->thread_state()->context() ? uint32_t(ct->thread_state()->context()->lr) : 0,
+            0xF0, uint64_t(rex::frame_stats::NowNs() - begin) / 1000);
+      }
+    } audio_spin_note;
+    if (rex::system::Ps4IsAudioThread()) audio_spin_note.begin = rex::frame_stats::NowNs();
+#endif
     // The TSC: a steady_clock read is a system call on the PS5, and the game
     // thread spent ~5% of its time in them here.
     const uint64_t end = rex::chrono::Clock::QueryHostTickCount() +
@@ -473,7 +494,7 @@ void EnterCs(ppc_ptr_t<X_RTL_CRITICAL_SECTION> cs, uint32_t cur_thread) {
 
   if (rex::thread::atomic_inc(&cs->lock_count) != 0) {
     // Create a full waiter.
-#if REX_PLATFORM_PS5
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
     auto* ps5_slot = rex::ps5diag::CurrentWaitSlot();
     if (ps5_slot) {
       ps5_slot->critical_section = cs.host_address();
@@ -484,7 +505,7 @@ void EnterCs(ppc_ptr_t<X_RTL_CRITICAL_SECTION> cs, uint32_t cur_thread) {
     }
 #endif
     xeKeWaitForSingleObject(reinterpret_cast<void*>(cs.host_address()), 8, 0, 0, nullptr);
-#if REX_PLATFORM_PS5
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
     if (ps5_slot) ps5_slot->critical_section = nullptr;
 #endif
   }

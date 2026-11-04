@@ -302,7 +302,7 @@ set(SDL_DUMMYAUDIO OFF CACHE BOOL "" FORCE)
 set(SDL_DUMMYVIDEO OFF CACHE BOOL "" FORCE)
 
 # Linux audio backends
-if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT PS5)
+if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT PS5 AND NOT PS4)
     set(SDL_ALSA              ON  CACHE BOOL "" FORCE)
     set(SDL_ALSA_SHARED       ON  CACHE BOOL "" FORCE)
     set(SDL_PULSEAUDIO        ON  CACHE BOOL "" FORCE)
@@ -311,7 +311,51 @@ if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT PS5)
     set(SDL_PIPEWIRE_SHARED   ON  CACHE BOOL "" FORCE)
 endif()
 
+# PS4 uses SDL's event loop and timer support with dummy video/audio devices;
+# actual presentation and audio output are handled by the Orbis backends.
+if(PS4)
+    set(SDL_DUMMYVIDEO ON CACHE BOOL "" FORCE)
+    set(SDL_DUMMYAUDIO ON CACHE BOOL "" FORCE)
+    set(SDL_PTHREADS ON CACHE BOOL "" FORCE)
+    set(SDL_PTHREADS_SEM ON CACHE BOOL "" FORCE)
+    set(SDL_CLOCK_GETTIME ON CACHE BOOL "" FORCE)
+    set(SDL_X11 OFF CACHE BOOL "" FORCE)
+    set(SDL_WAYLAND OFF CACHE BOOL "" FORCE)
+    set(SDL_KMSDRM OFF CACHE BOOL "" FORCE)
+    set(SDL_OPENGL OFF CACHE BOOL "" FORCE)
+    set(SDL_OPENGLES OFF CACHE BOOL "" FORCE)
+    set(SDL_VULKAN OFF CACHE BOOL "" FORCE)
+    set(SDL_DIALOG OFF CACHE BOOL "" FORCE)
+    set(SDL_HIDAPI OFF CACHE BOOL "" FORCE)
+    set(SDL_HIDAPI_LIBUSB OFF CACHE BOOL "" FORCE)
+    set(SDL_HIDAPI_LIBUSB_SHARED OFF CACHE BOOL "" FORCE)
+    set(SDL_HIDAPI_JOYSTICK OFF CACHE BOOL "" FORCE)
+    set(SDL_HIDAPI_GAMECUBE OFF CACHE BOOL "" FORCE)
+    set(SDL_JACK OFF CACHE BOOL "" FORCE)
+    set(SDL_OSS OFF CACHE BOOL "" FORCE)
+    set(SDL_ALSA OFF CACHE BOOL "" FORCE)
+    set(SDL_PULSEAUDIO OFF CACHE BOOL "" FORCE)
+    set(SDL_PIPEWIRE OFF CACHE BOOL "" FORCE)
+    set(SDL_SNDIO OFF CACHE BOOL "" FORCE)
+    set(SDL_DBUS OFF CACHE BOOL "" FORCE)
+    set(SDL_IBUS OFF CACHE BOOL "" FORCE)
+    set(SDL_LIBUDEV OFF CACHE BOOL "" FORCE)
+endif()
+
+if(PS4)
+    # Orbis uses a FreeBSD-derived libc and pthreads. SDL has no Orbis
+    # platform case. Set its FreeBSD/POSIX feature flags after SDL's project()
+    # command initializes the system; the rest of the project keeps the SDK's
+    # Generic platform identity.
+    set(_REXGLUE_SDL_ORIGINAL_PROJECT_INCLUDE "${CMAKE_PROJECT_INCLUDE}")
+    set(CMAKE_PROJECT_INCLUDE
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../../ps4/cmake/sdl-platform.cmake")
+endif()
 add_subdirectory(sdl3)
+if(PS4)
+    set(CMAKE_PROJECT_INCLUDE "${_REXGLUE_SDL_ORIGINAL_PROJECT_INCLUDE}")
+    unset(_REXGLUE_SDL_ORIGINAL_PROJECT_INCLUDE)
+endif()
 
 #=============================================================================
 # DXC API headers (vendored from DirectXShaderCompiler, runtime-loaded)

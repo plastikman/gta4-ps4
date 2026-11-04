@@ -28,6 +28,7 @@ set(GTA4_APP_SOURCES
     src/gta4_sony_event_hooks.cpp
     src/gta4_loading_parallax_fix.cpp
     src/gta4_motion_bridge.cpp
+    src/gta4_ps4_crash_trace.cpp
     src/gta4_motion_hooks.cpp
     src/gta4_motion_vehicle_hooks.cpp
     src/gta4_audio_lifetime_trace.cpp
@@ -443,6 +444,71 @@ elseif(ANDROID)
             -Wno-profile-instr-unprofiled -Wno-profile-instr-out-of-date
             -Wno-backend-plugin)
         target_link_options(LibertyRecomp PRIVATE "-fprofile-use=${LIBERTY_ANDROID_PGO}")
+    endif()
+elseif(PS4)
+    # PS4: one static Orbis program with the GTA IV native Vulkan renderer
+    # linked in. RADV and its headless VideoOut WSI are supplied by
+    # ps4-vkloader from the matching Orbis SDK bundle.
+    set(GTA4_PS4_SOURCES ${GTA4_APP_SOURCES})
+    list(REMOVE_ITEM GTA4_PS4_SOURCES src/network/community_multiplayer.cpp)
+    add_executable(gta4
+        ${GTA4_PS4_SOURCES}
+        src/ps4/orbis_condition_variable.cpp
+        src/android/android_platform_stubs.cpp
+        src/android/android_frame_wait_hook.cpp
+        ${GENERATED_SOURCES}
+    )
+    set_property(SOURCE generated/gta4_register.cpp APPEND PROPERTY COMPILE_OPTIONS
+        "$<$<CONFIG:Release,RelWithDebInfo>:-O0>")
+    target_include_directories(gta4 PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/generated
+        ${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/crypto
+        ${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/imgui
+        ${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/inja/third_party/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/stb
+    )
+    set_property(SOURCE src/gta4_native_hooks.cpp APPEND PROPERTY INCLUDE_DIRECTORIES
+        "${CMAKE_CURRENT_SOURCE_DIR}/../src")
+    set_source_files_properties(src/gta4_sony_feedback.cpp src/gta4_sony_event_hooks.cpp
+        PROPERTIES COMPILE_DEFINITIONS GTA4_SONY_PRIMARY_PLAYER_ALIAS)
+    target_compile_definitions(gta4 PRIVATE
+        REX_FUSED_VMADDFP=1
+        GTA4_RECOMP_ASSET_XEX="/app0/assets/default_v8.xex"
+        GTA4_BUTTON_PROMPT_ASSET_ROOT="/app0/Resources/button_prompts"
+        GTA4_RPF_AES_KEY_SOURCE="/app0/Resources/aes_key.bin"
+    )
+    target_link_libraries(gta4 PRIVATE
+        rex::runtime
+        rexgpu-gta4-native
+        ps4-vkloader
+        xxHash::xxhash
+        SDL3::SDL3
+        utf8cpp
+        z
+    )
+    # Orbis returns ETIMEDOUT=60, while this SDK's prebuilt libc++ timed
+    # condition-variable routine compares against Linux's value (110).
+    # Keep the PS4 replacement defined in the executable ahead of libc++.
+    target_link_options(gta4 PRIVATE "LINKER:--allow-multiple-definition")
+    # Large C++ allocations go to flexible, then direct memory, and refused
+    # ones are rescued (src/core/memory_ps4.cpp): wrap the compat library's
+    # operator new.
+    target_link_options(gta4 PRIVATE
+        "LINKER:--wrap=_Znwm,--wrap=_Znam,--wrap=_ZnwmRKSt9nothrow_t,--wrap=_ZnamRKSt9nothrow_t"
+        "LINKER:--wrap=_ZnwmSt11align_val_t,--wrap=_ZnamSt11align_val_t"
+        "LINKER:--wrap=_ZnwmSt11align_val_tRKSt9nothrow_t,--wrap=_ZnamSt11align_val_tRKSt9nothrow_t"
+        "LINKER:--wrap=_ZdlPv,--wrap=_ZdaPv,--wrap=_ZdlPvm,--wrap=_ZdaPvm"
+        "LINKER:--wrap=_ZdlPvRKSt9nothrow_t,--wrap=_ZdaPvRKSt9nothrow_t"
+        "LINKER:--wrap=_ZdlPvSt11align_val_t,--wrap=_ZdaPvSt11align_val_t"
+        "LINKER:--wrap=_ZdlPvmSt11align_val_t,--wrap=_ZdaPvmSt11align_val_t"
+        "LINKER:--wrap=_ZdlPvSt11align_val_tRKSt9nothrow_t,--wrap=_ZdaPvSt11align_val_tRKSt9nothrow_t"
+        # LXXXIII: and the C allocator, whose refusals aborted the driver.
+        "LINKER:--wrap=malloc,--wrap=calloc,--wrap=realloc,--wrap=free"
+        "LINKER:--wrap=aligned_alloc,--wrap=posix_memalign,--wrap=malloc_usable_size")
+    rexglue_configure_target(gta4)
+    if(COMMAND ps4_create_eboot)
+        ps4_create_eboot(gta4)
     endif()
 elseif(PS5)
     # [ps5 port] One static PS5 program: the game, the runtime and the

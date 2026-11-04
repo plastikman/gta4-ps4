@@ -1,0 +1,56 @@
+# Disable the guest cache:/cache1: device (restores pre-XLIV behavior).
+# Key must be top-level: cvar.cpp flattens TOML tables to "<table>_<key>".
+guest_cache_device = false
+
+# Quiet runtime log ("warn" - the cvar rejects "warning"); per-event guest tracing off.
+log_level = "warn"
+gta4_ps4_trace = false
+
+# First 3D frame hangs the GPU in texture prep with GPU detile; detile on the CPU.
+gta4_native_gpu_detile = false
+
+# Xbox 360 / Android render target sizes (the 4096x4096 point-shadow cache ran out of GPU memory).
+gta4_shadow_map_base_size = 256
+gta4_reflection_resolution = "original"
+
+# LXXIV: GPU memory arena 1536 MiB (the driver's ladder stops at 1024; 1.9 GB of direct memory was free in play).
+ps4_gpu_arena_mib = 1536
+
+# LXXVI: frame rate counter in the top left corner.
+ps4_fps_counter = true
+
+
+# LXXVII: the PS4 driver reports 0 heap usage, so texture eviction never saw pressure
+# (2044 textures, direct memory 1595 -> 533 MB free, then bad_alloc). Cap native textures.
+gta4_native_texture_memory_limit_mb = 384
+gta4_native_frame_timeline = false
+
+# LXXXV-b: console presets (the PS4 had the desktop ones: draw distance 3x,
+# shadow distance 2x, population 1.25x, SMAA). PS5/Android values, 30 FPS cap.
+gta4_draw_distance_scale = 0.5
+gta4_shadow_distance_scale = 0.5
+gta4_traffic_density_scale = 0.5
+gta4_parked_car_density_scale = 0.5
+gta4_ped_density_scale = 0.5
+gta4_scenario_ped_density_scale = 0.5
+gta4_native_anti_aliasing = "fxaa"
+gta4_motion_blur = false
+gta4_native_shadow_min_indices = 1000
+gta4_frame_limit = 30
+
+# XC-b draw-count sensitivity test: fewer draws (the render thread does ~110 ms of work per frame).
+ps5_environment_reflection_every = 4
+ps5_water_reflection_every = 2
+
+# XCVIII: redraw the sun shadow map every 2nd frame (hooks drop its draws on rest frames; the
+# renderer skips its clears/resolves so it keeps the last update). 1 = every frame.
+gta4_native_shadow_interval = 2
+
+
+
+
+# Settings test (CIX): 720p changed nothing (CPU-bound on the render thread and the recorder);
+# fewer draws and sound sources instead: draw distance 0.5, densities 0.5.
+
+# CX: the 100 Hz CPU sampler (every thread signalled) off for play; set true to profile again.
+ps4_cpu_sampler = false

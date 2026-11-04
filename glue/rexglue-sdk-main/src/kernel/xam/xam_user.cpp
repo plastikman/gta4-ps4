@@ -13,11 +13,13 @@
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 
 #include <cstring>
+#include <cstdio>
 #include <limits>
 #include <ranges>
 
 #include <rex/cvar.h>
 #include <rex/kernel/xam/private.h>
+#include <rex/platform.h>
 #include <rex/kernel/xboxkrnl/error.h>
 #include <rex/logging.h>
 #include <rex/math.h>
@@ -33,6 +35,10 @@
 #include <rex/system/xtypes.h>
 
 #include <rex/kernel/xam/xgi_stats_abi.h>
+
+#if REX_PLATFORM_PS4
+#include <orbis/libkernel.h>
+#endif
 
 #include "xam_user_identity_policy.h"
 
@@ -1004,6 +1010,18 @@ u32 XamSessionCreateHandle_entry(mapped_u32 handle_ptr) {
 }
 
 u32 XamSessionRefObjByHandle_entry(u32 handle, mapped_u32 obj_ptr) {
+#if REX_PLATFORM_PS4
+  char trace[160];
+  std::snprintf(trace, sizeof(trace),
+                "[PS4 XamSessionRefObjByHandle] handle=%08x guest=%08x host=%p\n",
+                handle, obj_ptr.guest_address(), obj_ptr.host_address());
+  if (FILE* log = std::fopen("/data/LibertyRecomp/logs/gta4-guest-trace.txt", "a")) {
+    std::fputs(trace, log);
+    std::fflush(log);
+    std::fclose(log);
+  }
+  sceKernelDebugOutText(0, trace);
+#endif
   if (!obj_ptr) {
     return X_ERROR_INVALID_PARAMETER;
   }

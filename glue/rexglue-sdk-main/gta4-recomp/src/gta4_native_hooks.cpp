@@ -50,6 +50,7 @@
 #include <rex/ui/window.h>
 
 #include "gta4_init.h"
+#include "gta4_ps4_crash_trace.h"
 #include "gta4_gpu_pass_context.h"
 #include "gta4_aspect_hooks.h"
 #include "gta4_aspect_resolution.h"
@@ -58,10 +59,14 @@
 #include "gta4_draw_distance_policy.h"
 
 REXCVAR_DECLARE(uint32_t, gta4_shadow_map_base_size);
-#if REX_PLATFORM_PS5
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
 REXCVAR_DECLARE(uint32_t, gta4_native_shadow_min_indices);
+REXCVAR_DECLARE(uint32_t, gta4_native_shadow_interval);
 REXCVAR_DECLARE(uint32_t, ps5_environment_reflection_every);
 REXCVAR_DECLARE(uint32_t, ps5_water_reflection_every);
+#endif
+#if REX_PLATFORM_PS4
+REXCVAR_DECLARE(bool, ps4_fast_handoff);
 #endif
 REXCVAR_DEFINE_UINT32(gta4_shadow_cascade_count, 0, "GTA IV/Graphics/Shadows",
                       "Directional shadow cascades (0 keeps the stock 5)")
@@ -96,7 +101,7 @@ REXCVAR_DEFINE_BOOL(
     "Diagnostic-only removal of the authored filler-light flag from apartment bulb x890")
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 
-#if REX_PLATFORM_PS5
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
 bool DropSmallShadowDraw(uint8_t* base, uint32_t device, uint32_t index_count);  // (below)
 #endif
 
@@ -2646,7 +2651,7 @@ double GetExteriorReflectionCaptureDistance() {
 }
 
 rex::system::IGraphicsSystem* GetNativeGraphicsSystem() {
-#if REX_PLATFORM_PS5
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
   // [ps5 port] Asked several times per draw; the graphics system lives as long
   // as the game does here (the app ends with the process), so look it up once.
   static std::atomic<rex::system::IGraphicsSystem*> cached{nullptr};
@@ -2660,7 +2665,7 @@ rex::system::IGraphicsSystem* GetNativeGraphicsSystem() {
   if (!graphics || graphics->GetTitleCommandAbi(kTitleId) != kTitleCommandAbi) {
     return nullptr;
   }
-#if REX_PLATFORM_PS5
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
   cached.store(graphics, std::memory_order_release);
 #endif
   return graphics;
@@ -4411,8 +4416,49 @@ void ApplyNativeShaderState(PPCContext& ctx, uint8_t* base, GuestFunction implem
   StoreU32(base, device + kPendingResourceMaskOffset, pending_resource_mask);
 }
 
+#if REX_PLATFORM_PS4
+// The Xbox D3D shader-constant setters sub_82A42168 (vertex constants, device
+// registers from 120) and sub_82A42250 (pixel, from 376), natively: r6 float4
+// registers from r5 (any alignment) to the device r3 at ((r4 + first) << 4),
+// 16-byte aligned, then the stage's dirty mask (big-endian u64 at r3 + 0 for
+// vertex, r3 + 8 for pixel) |= r7. Checked against the recompiled bodies on
+// the host (every count 0-40, source alignment and register base).
+// Recompiled, every vector went through lvlx/lvrx and byte-order shuffles in
+// and out that cancel: about 5% of the game's render thread (XCIII). The
+// registers they leave behind are volatile ones no caller reads.
+void SetShaderConstantsNative(PPCContext& ctx, uint8_t* base, uint32_t first_register,
+                              uint32_t mask_offset) {
+  const uint32_t device = ctx.r3.u32;
+  uint32_t source = ctx.r5.u32;
+  uint32_t destination = uint32_t((ctx.r4.u32 + first_register) << 4) + device;
+  for (uint32_t count = ctx.r6.u32; count; --count, source += 16, destination += 16) {
+    uint8_t vector[16];
+    std::memcpy(vector, base + source, sizeof(vector));
+    std::memcpy(base + (destination & ~0xFu), vector, sizeof(vector));
+  }
+  uint64_t mask;
+  std::memcpy(&mask, base + device + mask_offset, sizeof(mask));
+  mask = __builtin_bswap64(__builtin_bswap64(mask) | ctx.r7.u64);
+  std::memcpy(base + device + mask_offset, &mask, sizeof(mask));
+}
+
+extern "C" void sub_82A42250(PPCContext& ctx, uint8_t* base) {
+  if (REXCVAR_GET(ps4_fast_handoff)) {
+    SetShaderConstantsNative(ctx, base, 376, 8);
+    return;
+  }
+  __imp__sub_82A42250(ctx, base);
+}
+#endif
+
 extern "C" void sub_82A42168(PPCContext& ctx, uint8_t* base) {
   if (!IsNativeMode() || !HookDiagnosticsEnabled(rex::diagnostics::Category::kNativeTrace)) {
+#if REX_PLATFORM_PS4
+    if (REXCVAR_GET(ps4_fast_handoff)) {
+      SetShaderConstantsNative(ctx, base, 120, 0);
+      return;
+    }
+#endif
     __imp__sub_82A42168(ctx, base);
     return;
   }
@@ -4715,7 +4761,7 @@ extern "C" void sub_828E7000(PPCContext& ctx, uint8_t* base) {
 
 extern "C" void sub_828BFC00(PPCContext& ctx, uint8_t* base) {
   LogKnownOffscreenTransformBoundary("offscreen-boundary-indexed-entry", ctx, base, ctx.r3.u32);
-#if REX_PLATFORM_PS5
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
   // [ps5 port] The game's geometry draw: vertex declaration (when it changed),
   // indices, stream and DrawIndexedPrimitive, each a command we capture. A
   // small geometry going into the sun shadow map, whose draw DropSmallShadowDraw
@@ -5247,7 +5293,17 @@ extern "C" void sub_82A41520(PPCContext& ctx, uint8_t* base) {
 
 extern "C" void sub_82A416B8(PPCContext& ctx, uint8_t* base) {
   if (!IsNativeMode()) {
+    GTA4_Ps4DeviceCreateTrace("generated-entry", ctx.r4.u32, ctx.r6.u32,
+                              ctx.r7.u32, ctx.r8.u32, 0, 0, uint32_t(ctx.lr));
+    REXLOG_INFO("gta4-ps4-device-create: generated mode={} behavior={:08X} presentation={:08X} output={:08X} lr={:08X}",
+                ctx.r4.u32, ctx.r6.u32, ctx.r7.u32, ctx.r8.u32, uint32_t(ctx.lr));
     __imp__sub_82A416B8(ctx, base);
+    GTA4_Ps4DeviceCreateTrace("generated-return", ctx.r4.u32, ctx.r6.u32,
+                              ctx.r7.u32, ctx.r8.u32,
+                              ctx.r8.u32 ? LoadU32(base, ctx.r8.u32) : 0,
+                              ctx.r3.u32, uint32_t(ctx.lr));
+    REXLOG_INFO("gta4-ps4-device-create: generated result={:08X} output-value={:08X}",
+                ctx.r3.u32, ctx.r8.u32 ? LoadU32(base, ctx.r8.u32) : 0);
     return;
   }
 
@@ -5255,17 +5311,31 @@ extern "C" void sub_82A416B8(PPCContext& ctx, uint8_t* base) {
   uint32_t behavior = ctx.r6.u32;
   const uint32_t presentation = ctx.r7.u32;
   const uint32_t output = ctx.r8.u32;
+  GTA4_Ps4DeviceCreateTrace("native-entry", mode, behavior, presentation,
+                            output, 0, 0, uint32_t(ctx.lr));
+  REXLOG_INFO("gta4-ps4-device-create: native mode={} behavior={:08X} presentation={:08X} output={:08X} lr={:08X}",
+              mode, behavior, presentation, output, uint32_t(ctx.lr));
   if (output) {
     StoreU32(base, output, 0);
   }
 
   const uint32_t device = InvokeGuest(ctx, base, D3D_MemAllocAligned, kGuestDeviceSize, 128).r3.u32;
+  GTA4_Ps4DeviceCreateTrace(device ? "allocated" : "allocation-null",
+                            mode, behavior, presentation, output, device,
+                            device ? 0 : kOutOfMemory, uint32_t(ctx.lr));
   if (!device) {
+    GTA4_Ps4DeviceCreateTrace("allocation-failed", mode, behavior, presentation,
+                              output, 0, kOutOfMemory, uint32_t(ctx.lr));
+    REXLOG_ERROR("gta4-ps4-device-create: allocation failed mode={} output={:08X}", mode, output);
     ctx.r3.u32 = kOutOfMemory;
     return;
   }
 
-  if (!InvokeGuest(ctx, base, sub_82A50820, device).r3.u32) {
+  const uint32_t validation = InvokeGuest(ctx, base, sub_82A50820, device).r3.u32;
+  GTA4_Ps4DeviceCreateTrace(validation ? "validation-ok" : "validation-failed",
+                            mode, behavior, presentation, output, device,
+                            validation, uint32_t(ctx.lr));
+  if (!validation) {
     FreeNativeDeviceAllocation(ctx, base, device);
     ctx.r3.u32 = kOutOfMemory;
     return;
@@ -5284,6 +5354,10 @@ extern "C" void sub_82A416B8(PPCContext& ctx, uint8_t* base) {
   }
 
   if (!initialized) {
+    GTA4_Ps4DeviceCreateTrace("initialization-failed", mode, behavior, presentation,
+                              output, device, kOutOfMemory, uint32_t(ctx.lr));
+    REXLOG_ERROR("gta4-ps4-device-create: CPU initialization failed mode={} device={:08X} output={:08X}",
+                 mode, device, output);
     FreeNativeDeviceAllocation(ctx, base, device);
     ctx.r3.u32 = kOutOfMemory;
     return;
@@ -5292,6 +5366,10 @@ extern "C" void sub_82A416B8(PPCContext& ctx, uint8_t* base) {
   if (output) {
     StoreU32(base, output, device);
   }
+  GTA4_Ps4DeviceCreateTrace("success", mode, behavior, presentation,
+                            output, device, 0, uint32_t(ctx.lr));
+  REXLOG_INFO("gta4-ps4-device-create: success mode={} device={:08X} output={:08X}",
+              mode, device, output);
   DeviceCommand command{{sizeof(DeviceCommand), CommandType::kDeviceCreated}, device, mode};
   {
     // A new device registers its declarations afresh.
@@ -5680,6 +5758,19 @@ extern "C" void sub_82A441F8(PPCContext& ctx, uint8_t* base) {
 extern "C" void D3DResource_Release(PPCContext& ctx, uint8_t* base) {
   const bool native_mode = IsNativeMode();
   const uint32_t resource = ctx.r3.u32;
+#if REX_PLATFORM_PS4
+  // The startup crash is a write to guest address 0x8285E930. The generated
+  // release routine decrements the refcount at resource + 4, so a resource
+  // pointer in this executable code page would write into translated game
+  // code. Treat that corrupt resource handle as an unreleasable reference.
+  if (resource >= 0x8285e000u && resource < 0x82860000u) {
+    GTA4_Ps4DeviceCreateTrace("skip-code-page-d3d-resource", resource,
+                             ctx.r4.u32, ctx.r5.u32, ctx.r6.u32, ctx.r7.u32,
+                             ctx.r8.u32, static_cast<uint32_t>(ctx.lr));
+    ctx.r3.u32 = 1;
+    return;
+  }
+#endif
   __imp__D3DResource_Release(ctx, base);
 
   // The generated implementation returns zero only after the guest reference
@@ -6035,7 +6126,7 @@ extern "C" void sub_82A3DAB0(PPCContext& ctx, uint8_t* base) {
   ctx.r3.u32 = vertex_data;
 }
 
-#if REX_PLATFORM_PS5
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
 bool SkipReflectionRestCommand(uint8_t* base, uint32_t device);  // (below)
 #endif
 
@@ -6061,7 +6152,7 @@ extern "C" void sub_82A3DF50(PPCContext& ctx, uint8_t* base) {
     return;
   }
 
-#if REX_PLATFORM_PS5
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
   if (SkipReflectionRestCommand(base, device)) {
     // (the state changes it took at its begin stay pending for the next draw)
     for (size_t index = 0; index < g_pending_draw_primitive_up.dirty_state.words.size(); ++index) {
@@ -6092,7 +6183,7 @@ extern "C" void sub_82A3DF50(PPCContext& ctx, uint8_t* base) {
   g_pending_draw_primitive_up = {};
 }
 
-#if REX_PLATFORM_PS5
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
 // [ps5 port] The reflection targets as the game creates them (sub_828DC7F0),
 // so the hooks can tell a draw into a reflection (the environment map cars
 // and glass reflect, the water's mirror image) without asking the renderer.
@@ -6233,7 +6324,7 @@ extern "C" void sub_82A3DF60(PPCContext& ctx, uint8_t* base) {
   }
 
   const uint32_t device = ctx.r3.u32;
-#if REX_PLATFORM_PS5
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
   if (SkipReflectionRestCommand(base, device)) return;
 #endif
   DrawPrimitiveCommand command{};
@@ -6268,7 +6359,7 @@ void SubmitNativeResolve(uint8_t* base, uint32_t device, uint32_t flags,
   } else if (source_index < kRenderTargetCount) {
     source_surface = LoadU32(base, device + (kRenderTargetBase + source_index) * sizeof(uint32_t));
   }
-#if REX_PLATFORM_PS5
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
   {
     // The renderer's test: the source surface's reflection family, else the
     // destination texture's.
@@ -6610,7 +6701,7 @@ extern "C" void sub_828DC7F0(PPCContext& ctx, uint8_t* base) {
     command.physical_height = physical_height;
     command.sample_count_override = GetReflectionSampleCountOverride();
     const bool texture_required = reflection.role == ReflectionRole::kColor;
-#if REX_PLATFORM_PS5
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
     NoteHookReflectionTarget(command.surface, command.texture, reflection.family);
 #endif
     if (!command.surface || (texture_required && !command.texture) ||
@@ -7438,7 +7529,7 @@ extern "C" void sub_82A3EDA8(PPCContext& ctx, uint8_t* base) {
   ctx.r3.u32 = 0;
 }
 
-#if REX_PLATFORM_PS5
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
 // [ps5 port] Small Object Shadows off: a small draw into the sun shadow map is
 // dropped here, before it is handed to the renderer. Handing a draw over costs
 // the game's render thread about what recording it costs the renderer, and
@@ -7447,7 +7538,19 @@ extern "C" void sub_82A3EDA8(PPCContext& ctx, uint8_t* base) {
 // state is left for the next draw to take.
 bool DropSmallShadowDraw(uint8_t* base, uint32_t device, uint32_t index_count) {
   const uint32_t minimum = REXCVAR_GET(gta4_native_shadow_min_indices);
+#if REX_PLATFORM_PS4
+  // PS4: on the frames gta4_native_shadow_interval rests the sun shadow map
+  // (the renderer then also skips its clears and resolves, so it keeps the
+  // last update), every draw into it is dropped here, not just small ones:
+  // nothing of them is handed over or recorded. The frame being built is
+  // submitted as the device's counter + 1, the renderer's submitted_frame.
+  const uint32_t interval = REXCVAR_GET(gta4_native_shadow_interval);
+  const bool shadow_rest = interval > 1 && device &&
+                           (LoadU32(base, device + kSubmittedFrameOffset) + 1) % interval != 0;
+  if (!shadow_rest && (!minimum || index_count >= minimum || !device)) return false;
+#else
   if (!minimum || index_count >= minimum || !device) return false;
+#endif
   if (LoadU32(base, device + 12432)) return false;  // a colour target: not the shadow map
   const uint32_t depth = LoadU32(base, device + 12448);
   if (!depth || (g_native_captures_open.load(std::memory_order_relaxed) && g_active_native_capture.active))
@@ -7467,7 +7570,7 @@ extern "C" void sub_82A3E348(PPCContext& ctx, uint8_t* base) {
     __imp__sub_82A3E348(ctx, base);
     return;
   }
-#if REX_PLATFORM_PS5
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
   if (DropSmallShadowDraw(base, ctx.r3.u32, ctx.r7.u32) ||
       SkipReflectionRestCommand(base, ctx.r3.u32))
     return;
@@ -7636,7 +7739,7 @@ extern "C" void sub_82A457B0(PPCContext& ctx, uint8_t* base) {
   command.depth_bits = std::bit_cast<uint64_t>(ctx.f1.f64);
   command.stencil = ctx.r8.u32;
 
-#if REX_PLATFORM_PS5
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
   const bool skip_clear = SkipReflectionRestCommand(base, device);
 #else
   constexpr bool skip_clear = false;
@@ -7862,7 +7965,7 @@ extern "C" void sub_826273A0(PPCContext& ctx, uint8_t* base) {
   }
 }
 
-#if REX_PLATFORM_PS5
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
 REXCVAR_DECLARE(bool, ps5_decoupled_presentation);
 REXCVAR_DECLARE(uint32_t, gta4_frame_limit);
 REXCVAR_DECLARE(std::string, gta4_native_frame_generation);
@@ -8005,7 +8108,8 @@ extern "C" void sub_82A467D8(PPCContext& ctx, uint8_t* base) {
   }
   g_last_present_frontbuffer.store(command.frontbuffer_texture, std::memory_order_relaxed);
   SubmitNativeCommand(command);
-#if REX_PLATFORM_PS5
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
+  // (also records the game's render thread, for the frame timing line)
   Ps5LimitFrameRate();
 #endif
   ctx.r3.u32 = device;

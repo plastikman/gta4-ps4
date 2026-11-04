@@ -16,6 +16,7 @@
 #include <rex/runtime.h>
 
 #include "gta4_init.h"
+#include "gta4_ps4_crash_trace.h"
 
 namespace {
 namespace policy = gta4::presentation::policy;
@@ -93,6 +94,13 @@ void TraceStartup(uint8_t* base, const char* point, uint32_t caller) {
       REX_LOAD_U8(kIntroPending), index, marker, REX_LOAD_U32(kScreenCount));
 }
 
+void TraceLoadingTransition(const char* phase, uint8_t* base) {
+  GTA4_Ps4LoadingStateTrace(
+      phase, REX_LOAD_U8(0x831D5335), REX_LOAD_U32(0x831D5340),
+      REX_LOAD_U8(0x831D5336), REX_LOAD_U8(0x831D5337),
+      REX_LOAD_U8(0x831D5348), REX_LOAD_U32(0x82BFA13C));
+}
+
 class ParserScope final {
  public:
   explicit ParserScope(bool enabled) : previous_(cold_parser_scope) { cold_parser_scope = enabled; }
@@ -156,9 +164,13 @@ extern "C" void sub_82145420(PPCContext& ctx, uint8_t* base) {
     observe_startup.store(Diagnostics(), std::memory_order_relaxed);
     TraceStartup(base, "cold-start-enter", caller);
   }
+  GTA4_Ps4CrashTrace("sub_82145420-entry", ctx, base);
+  TraceLoadingTransition("setter-before", base);
   const ParserScope scope(eligible && gta4::presentation::SkipIntroAtLaunch());
   // Keep arguments, asset loading, timer setup and publication entirely retail.
   __imp__sub_82145420(ctx, base);
+  TraceLoadingTransition("setter-after", base);
+  GTA4_Ps4CrashTrace("sub_82145420-exit", ctx, base);
   if (eligible)
     TraceStartup(base, "cold-start-ready", caller);
 }
@@ -203,15 +215,21 @@ extern "C" void sub_82145968(PPCContext& ctx, uint8_t* base) {
 // Observation only: the original routine owns screen advancement and clocks.
 extern "C" void sub_82144708(PPCContext& ctx, uint8_t* base) {
   const uint32_t caller = ctx.lr;
+  GTA4_Ps4CrashTrace("sub_82144708-entry", ctx, base);
   __imp__sub_82144708(ctx, base);
+  TraceLoadingTransition("screen-after", base);
   TraceStartup(base, "screen-advanced", caller);
 }
 
 extern "C" void sub_82142230(PPCContext& ctx, uint8_t* base) {
   // This is the stock frontend/profile/DLC workflow, not proof of rendered UI.
+  GTA4_Ps4CrashTrace("sub_82142230-entry", ctx, base);
+  TraceLoadingTransition("workflow-before", base);
   TraceStartup(base, "frontend-workflow-enter", ctx.lr);
   observe_startup.store(false, std::memory_order_relaxed);
   __imp__sub_82142230(ctx, base);
+  TraceLoadingTransition("workflow-after", base);
+  GTA4_Ps4CrashTrace("sub_82142230-exit", ctx, base);
 }
 
 extern "C" void sub_822CF300(PPCContext& ctx, uint8_t* base) {

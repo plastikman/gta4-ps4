@@ -1,0 +1,14 @@
+diff --git a/include/spdlog/details/periodic_worker.h b/include/spdlog/details/periodic_worker.h
+index 2f59bb3..7e390be 100644
+--- a/include/spdlog/details/periodic_worker.h
++++ b/include/spdlog/details/periodic_worker.h
+@@ -31,7 +31,8 @@ public:
+         worker_thread_ = std::thread([this, callback_fun, interval]() {
+             for (;;) {
+                 std::unique_lock<std::mutex> lock(this->mutex_);
+-                if (this->cv_.wait_for(lock, interval, [this] { return !this->active_; })) {
++                bool stopped = this->cv_.wait_for(lock, interval, [this] { return !this->active_; });
++                if (stopped) {
+                     return;  // active_ == false, so exit this thread
+                 }
+                 callback_fun();

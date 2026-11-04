@@ -17,9 +17,13 @@
 #endif
 #include <algorithm>
 #include <array>
+#include <atomic>
+#include <chrono>
 #include <optional>
 #include <rex/assert.h>
 #include <rex/audio/audio_driver.h>
+#include <rex/frame_stats.h>
+#include <rex/ps5_diag.h>
 #include <rex/audio/audio_system.h>
 #include <rex/audio/flags.h>
 #include <rex/audio/xma/decoder.h>
@@ -63,6 +67,31 @@ REXCVAR_DEFINE_INT32(
 #include "handoff_trace.inc"
 
 namespace rex::audio {
+
+#if REX_PLATFORM_PS4
+}  // namespace rex::audio
+REXCVAR_DEFINE_INT32(ps4_audio_thread_priority, 0, "Audio",
+                     "PS4: priority of the audio worker and the game's mixing thread (256 highest, "
+                     "700 normal, 767 lowest; 0 = leave them at the default)")
+    .range(0, 767);
+extern "C" int32_t scePthreadSetprio(pthread_t thread, int prio);
+extern "C" int32_t scePthreadGetprio(pthread_t thread, int32_t* prio);
+// [ps4 port] Raises the calling audio thread above the render threads (as the
+// Android and macOS builds do): in play they kept the game's mixer from making
+// sound in real time (CIV: 1435-1560 frames of 1875 in 10 s while driving).
+void Ps4RaiseAudioThreadPriority(const char* what) {
+  const int32_t want = REXCVAR_GET(ps4_audio_thread_priority);
+  if (want <= 0) return;
+  int32_t before = 0;
+  scePthreadGetprio(pthread_self(), &before);
+  const int32_t result = scePthreadSetprio(pthread_self(), want);
+  REXAPU_WARN("PS4 audio: {} thread priority {} -> {} (result {:#x})", what, before, want,
+              uint32_t(result));
+}
+namespace rex::audio {
+#endif
+// Guest mixer callbacks and their time, for the PS4/PS5 driver's 10 s line.
+std::atomic<uint64_t> g_mixer_callbacks{0}, g_mixer_callback_us{0}, g_mixer_callback_max_us{0};
 
 AudioSystem::AudioSystem(runtime::FunctionDispatcher* function_dispatcher)
     : memory_(function_dispatcher->memory()),
@@ -132,6 +161,12 @@ void AudioSystem::WorkerThreadMain() {
     __android_log_print(ANDROID_LOG_WARN, "LibertyRecomp", "audio-priority %s tid=%d result=%d errno=%d",
                         "audio_system.cpp", int(gettid()), result, result ? errno : 0);
   }
+#endif
+#if REX_PLATFORM_PS4
+  rex::frame_stats::g_audio_worker_thread.store(reinterpret_cast<uintptr_t>(pthread_self()),
+                                                std::memory_order_relaxed);
+  ::Ps4RaiseAudioThreadPriority("worker");
+  rex::ps5diag::MarkAudioThread();  // (its own core: ps4_audio_core)
 #endif
   // Initialize driver and ringbuffer.
   Initialize();
@@ -211,8 +246,15 @@ void AudioSystem::WorkerThreadMain() {
             client_callback_arg);
         handoff::Span handoff_callback("guest-mixer", index, client_callback, client_callback_arg);
         uint64_t args[] = {client_callback_arg};
+        const auto callback_begin = std::chrono::steady_clock::now();
         function_dispatcher_->Execute(worker_thread_->thread_state(), client_callback, args,
                                       rex::countof(args));
+        const uint64_t callback_us = uint64_t(std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - callback_begin).count());
+        g_mixer_callbacks.fetch_add(1, std::memory_order_relaxed);
+        g_mixer_callback_us.fetch_add(callback_us, std::memory_order_relaxed);
+        if (callback_us > g_mixer_callback_max_us.load(std::memory_order_relaxed))
+          g_mixer_callback_max_us.store(callback_us, std::memory_order_relaxed);
         diagnostics::gta4_transition::RecordSteady(
             diagnostics::gta4_transition::EventSource::kAudio,
             diagnostics::gta4_transition::EventType::kAudioCallbackEnd,

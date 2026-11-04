@@ -25,6 +25,10 @@ inline std::atomic<uint32_t> g_history_us[kHistory];
 // [ps5 port] Set while FSR 3 frame generation is chosen and the device can
 // run it; with it off (or unavailable) presentation is decoupled.
 inline std::atomic<bool> g_frame_generation_active{false};
+// The guest's timed sleeps (KeDelayExecutionThread of 1 ms or more): how many,
+// and the time asked for against the time they took (PS4 audio line).
+inline std::atomic<uint64_t> g_guest_sleeps{0}, g_guest_sleep_requested_us{0},
+    g_guest_sleep_actual_us{0};
 
 inline int64_t NowNs() {
   return std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -63,6 +67,11 @@ inline std::atomic<uint64_t> g_title_frame_guest_wait_ticks{0};
 // The game's main thread (its entry point's, which runs the game's update:
 // set when it starts) and its time in the same waits, for the timing line.
 inline std::atomic<uintptr_t> g_game_main_thread{0};
+// The audio system's worker, which runs the game's mixer callback (PS4 waits report).
+inline std::atomic<uintptr_t> g_audio_worker_thread{0};
+// The game's own audio mixing thread (the mixer callback only wakes it and
+// waits): recognised by its idle wait (xobject.cpp), for the same report.
+inline std::atomic<uintptr_t> g_audio_mix_thread{0};
 inline std::atomic<uint64_t> g_main_guest_wait_ticks{0};
 inline bool IsTitleThread() {
   const uintptr_t title = g_title_thread.load(std::memory_order_relaxed);

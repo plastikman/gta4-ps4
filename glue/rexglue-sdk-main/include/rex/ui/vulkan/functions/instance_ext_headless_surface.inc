@@ -1,0 +1,1 @@
+XE_UI_VULKAN_FUNCTION(vkCreateHeadlessSurfaceEXT)

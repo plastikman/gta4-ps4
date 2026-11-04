@@ -16,7 +16,7 @@
 #include <rex/logging.h>
 #include <rex/thread.h>
 
-REXCVAR_DEFINE_STRING(gta4_transition_diagnostics, "off", "GTA IV/Diagnostics",
+REXCVAR_DEFINE_STRING(gta4_transition_diagnostics, "metadata", "GTA IV/Diagnostics",
                       "Loading-to-gameplay trace: off, metadata, or pcm")
     .allowed({"off", "metadata", "pcm"})
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart)
@@ -477,9 +477,14 @@ class Coordinator {
                        last_tick};
 
     std::error_code ec;
+#if REX_PLATFORM_PS4
+    const std::filesystem::path directory =
+        "/data/LibertyRecomp/logs/transition";
+#else
     const std::filesystem::path directory =
         std::filesystem::temp_directory_path(ec) /
         "libertyrecomp-transition-traces";
+#endif
     if (!ec) {
       std::filesystem::create_directories(directory, ec);
     }

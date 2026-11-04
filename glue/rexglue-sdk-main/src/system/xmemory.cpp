@@ -12,15 +12,25 @@
 #include <rex/platform.h>
 #if REX_PLATFORM_PS5
 #include <rex/ps5_diag.h>
+#endif
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
 #include <rex/system/xthread.h>
 #include <rex/system/thread_state.h>
 #endif
 #include <algorithm>
+#if REX_PLATFORM_PS4
+#include <cstdio>
+#include <orbis/libkernel.h>
+#endif
 #include <cstring>
 #include <utility>
 
-#if defined(__APPLE__) || defined(__PROSPERO__)  // [ps5 port]
+#if defined(__APPLE__) || defined(__PROSPERO__) || REX_PLATFORM_PS4  // [console mmap APIs]
 #include <sys/mman.h>
+#endif
+#if REX_PLATFORM_PS4
+#include <fcntl.h>
+#include <unistd.h>
 #endif
 #include <fmt/format.h>
 
@@ -40,6 +50,10 @@
 
 REXCVAR_DEFINE_BOOL(protect_zero, true, "Memory", "Protect the zero page from reads and writes")
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
+REXCVAR_DEFINE_BOOL(ps4_physical_precommit, true, "Memory",
+                    "PS4: commit the 512 MiB guest physical heap at startup, as every other "
+                    "platform does, so physical-heap aliases always have backing")
+    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 
 REXCVAR_DEFINE_BOOL(protect_on_release, false, "Memory",
                     "Protect released memory to prevent accesses");
@@ -47,6 +61,58 @@ REXCVAR_DEFINE_BOOL(protect_on_release, false, "Memory",
 REXCVAR_DEFINE_BOOL(scribble_heap, false, "Memory", "Scribble 0xCD into all allocated heap memory");
 
 namespace rex::memory {
+
+#if REX_PLATFORM_PS4
+namespace {
+void Ps4MemoryStartupLog(const char* message) {
+  char line[256];
+  std::snprintf(line, sizeof(line), "[GTA4 PS4 memory] %s\n", message);
+  sceKernelDebugOutText(0, line);
+}
+void Ps4MemoryStartupLogf(const char* format, size_t value) {
+  char line[256];
+  std::snprintf(line, sizeof(line), "[GTA4 PS4 memory] ");
+  const size_t prefix = std::strlen(line);
+  std::snprintf(line + prefix, sizeof(line) - prefix, format, value);
+  const size_t used = std::strlen(line);
+  if (used + 1 < sizeof(line)) {
+    line[used] = '\n';
+    line[used + 1] = '\0';
+  }
+  sceKernelDebugOutText(0, line);
+}
+void Ps4MemoryStartupLogInt(const char* format, int value) {
+  char line[256];
+  std::snprintf(line, sizeof(line), "[GTA4 PS4 memory] ");
+  const size_t prefix = std::strlen(line);
+  std::snprintf(line + prefix, sizeof(line) - prefix, format, value);
+  const size_t used = std::strlen(line);
+  if (used + 1 < sizeof(line)) {
+    line[used] = '\n';
+    line[used + 1] = '\0';
+  }
+  sceKernelDebugOutText(0, line);
+}
+void Ps4PhysicalAllocTrace(const char* phase, uint32_t size, uint32_t alignment,
+                           uint32_t low, uint32_t high, uint32_t parent_address,
+                           uint32_t guest_address) {
+  static std::atomic<uint32_t> count{0};
+  if ((size != 0x4000 && size != 0x10000) ||
+      count.fetch_add(1, std::memory_order_relaxed) >= 16) return;
+  char line[256];
+  std::snprintf(line, sizeof(line),
+                "[GTA4 PS4 memory] physical alloc %s size=%08x align=%08x "
+                "range=%08x-%08x parent=%08x guest=%08x\n",
+                phase, size, alignment, low, high, parent_address, guest_address);
+  sceKernelDebugOutText(0, line);
+}
+}  // namespace
+#else
+namespace {
+void Ps4PhysicalAllocTrace(const char*, uint32_t, uint32_t, uint32_t, uint32_t,
+                           uint32_t, uint32_t) {}
+}  // namespace
+#endif
 
 uint32_t get_page_count(uint32_t value, uint32_t page_size, uint32_t page_size_shift) {
   return rex::round_up(value, page_size) >> page_size_shift;
@@ -125,145 +191,23 @@ Memory::~Memory() {
   heaps_.physical.Dispose();
 
   // Unmap all views and close mapping.
+#if REX_PLATFORM_PS4
+  if (mapping_base_) {
+    constexpr size_t kPs4GuestMappingLength = 0x120000000ull;
+    sceKernelMunmap(mapping_base_, kPs4GuestMappingLength);
+    mapping_base_ = nullptr;
+  }
+#else
   if (mapping_ != rex::memory::kFileMappingHandleInvalid) {
     UnmapViews();
     rex::memory::CloseFileMappingHandle(mapping_, file_name_);
     mapping_base_ = nullptr;
     mapping_ = rex::memory::kFileMappingHandleInvalid;
   }
+#endif
 
   virtual_membase_ = nullptr;
   physical_membase_ = nullptr;
-}
-
-bool Memory::Initialize() {
-  file_name_ = fmt::format("xenia_memory_{}", chrono::Clock::QueryHostTickCount());
-
-  // Create main page file-backed mapping. This is all reserved but
-  // uncommitted (so it shouldn't expand page file).
-  // Round up to allocation granularity to accommodate platforms with large pages.
-  const size_t mapping_size =
-      rex::round_up(static_cast<size_t>(0x120000000ull) + system_allocation_granularity_,
-                    static_cast<size_t>(system_allocation_granularity_));
-  mapping_ = rex::memory::CreateFileMappingHandle(file_name_, mapping_size,
-                                                  rex::memory::PageAccess::kReadWrite, false);
-  if (mapping_ == rex::memory::kFileMappingHandleInvalid) {
-#if REX_PLATFORM_PS5
-    // [ps5 port] Expected in a PS5 app: shared memory comes from the small
-    // flexible pool. MapViewsPs5 maps the guest in direct memory instead.
-    REXSYS_INFO("PS5: no shared memory object for the guest; using direct memory");
-#else
-    REXSYS_ERROR("Unable to reserve the 4gb guest address space.");
-    assert_always();
-    return false;
-#endif
-  }
-
-#if REX_PLATFORM_MAC
-  // On macOS, reserve a contiguous host range first, then carve guest views
-  // into it with MAP_SHARED|MAP_FIXED so all views share the same backing fd.
-  if (MapViewsMac()) {
-    REXSYS_ERROR("Unable to find a continuous block in the 64bit address space.");
-    assert_always();
-    return false;
-  }
-  mapping_base_ = views_.all_views[0];
-#else
-  // Attempt to create our views. This may fail at the first address
-  // we pick, so try a few times.
-  mapping_base_ = 0;
-#if REX_PLATFORM_PS5
-  // [ps5 port] Reserve the whole range, then fixed views into it (tested on a PS5).
-  if (!MapViewsPs5()) {
-    mapping_base_ = views_.all_views[0];
-  }
-#else
-  for (size_t n = 32; n < 64; n++) {
-    auto mapping_base = reinterpret_cast<uint8_t*>(1ull << n);
-    if (!MapViews(mapping_base)) {
-      mapping_base_ = mapping_base;
-      break;
-    }
-  }
-#endif  // REX_PLATFORM_PS5
-  if (!mapping_base_) {
-    REXSYS_ERROR("Unable to find a continuous block in the 64bit address space.");
-    assert_always();
-    return false;
-  }
-#endif
-  virtual_membase_ = mapping_base_;
-  physical_membase_ = mapping_base_ + 0x100000000ull;
-
-  // Prepare virtual heaps.
-  heaps_.v00000000.Initialize(this, virtual_membase_, memory::HeapType::kGuestVirtual, 0x00000000,
-                              0x40000000, 4096);
-  heaps_.v40000000.Initialize(this, virtual_membase_, memory::HeapType::kGuestVirtual, 0x40000000,
-                              0x40000000 - 0x01000000, 64 * 1024);
-  heaps_.v80000000.Initialize(this, virtual_membase_, memory::HeapType::kGuestXex, 0x80000000,
-                              0x10000000, 64 * 1024);
-  heaps_.v90000000.Initialize(this, virtual_membase_, memory::HeapType::kGuestXex, 0x90000000,
-                              0x10000000, 4096);
-
-  // Prepare physical heaps.
-  heaps_.physical.Initialize(this, physical_membase_, memory::HeapType::kGuestPhysical, 0x00000000,
-                             0x20000000, 4096);
-  heaps_.vA0000000.Initialize(this, virtual_membase_, memory::HeapType::kGuestPhysical, 0xA0000000,
-                              0x20000000, 64 * 1024, &heaps_.physical);
-  heaps_.vC0000000.Initialize(this, virtual_membase_, memory::HeapType::kGuestPhysical, 0xC0000000,
-                              0x20000000, 16 * 1024 * 1024, &heaps_.physical);
-  heaps_.vE0000000.Initialize(this, virtual_membase_, memory::HeapType::kGuestPhysical, 0xE0000000,
-                              0x1FD00000, 4096, &heaps_.physical);
-
-  // Protect the first and last 64kb of memory.
-  heaps_.v00000000.AllocFixed(0x00000000, 0x10000, 0x10000,
-                              memory::kMemoryAllocationReserve | memory::kMemoryAllocationCommit,
-                              !REXCVAR_GET(protect_zero)
-                                  ? memory::kMemoryProtectRead | memory::kMemoryProtectWrite
-                                  : memory::kMemoryProtectNoAccess);
-  heaps_.physical.AllocFixed(0x1FFF0000, 0x10000, 0x10000, memory::kMemoryAllocationReserve,
-                             memory::kMemoryProtectNoAccess);
-
-  // GPU writeback.
-  // 0xC... is physical, 0x7F... is virtual. We may need to overlay these.
-  heaps_.vC0000000.AllocFixed(0xC0000000, 0x01000000, 32,
-                              memory::kMemoryAllocationReserve | memory::kMemoryAllocationCommit,
-                              memory::kMemoryProtectRead | memory::kMemoryProtectWrite);
-
-  // Pre-commit the physical memory range so the GPU can access it
-  // without page faults. Reference: xenia-canary 5f5be0668.
-  rex::memory::AllocFixed(heaps_.physical.TranslateRelative(0), heaps_.physical.heap_size(),
-                          rex::memory::AllocationType::kCommit,
-                          rex::memory::PageAccess::kReadWrite);
-
-  // Install MMIO handler for physical address translation and MMIO ranges
-  mmio_handler_ = runtime::MMIOHandler::Install(
-      virtual_membase_, physical_membase_, physical_membase_ + 0x1FFFFFFF, HostToGuestVirtualThunk,
-      this, AccessViolationCallbackThunk, this);
-  if (!mmio_handler_) {
-    REXSYS_ERROR("Unable to install MMIO handlers");
-    assert_always();
-    return false;
-  }
-  REXSYS_DEBUG("Installed MMIO handler for physical address translation");
-
-  // ?
-  uint32_t unk_phys_alloc;
-  heaps_.vA0000000.Alloc(0x340000, 64 * 1024, memory::kMemoryAllocationReserve,
-                         memory::kMemoryProtectNoAccess, true, &unk_phys_alloc);
-
-  // Allocate region at start of XEX range. Title 544307D5 explicitly
-  // accesses 0x8000001C and expects a specific constant value.
-  // Reference: xenia-canary 78f97f8ff.
-  uint32_t unknown_xex_range;
-  heaps_.v80000000.Alloc(0x40000, 4 * 1024, memory::kMemoryAllocationCommit,
-                         memory::kMemoryProtectRead | memory::kMemoryProtectWrite, false,
-                         &unknown_xex_range);
-
-  uint32_t value_to_write = rex::byte_swap(uint32_t(0x2a6e3f38));
-  std::memcpy(TranslateVirtual(0x80000000 + 0x1C), &value_to_write, sizeof(uint32_t));
-
-  return true;
 }
 
 static const struct {
@@ -326,6 +270,312 @@ static const struct {
         0x0000000100000000ull,
     },
 };
+
+#if REX_PLATFORM_PS4
+// Orbis direct-memory mappings must begin and end on 16 KiB boundaries.
+static constexpr uint32_t kGuestPageSize = 16 * 1024;
+#else
+static constexpr uint32_t kGuestPageSize = 4096;
+#endif
+
+
+bool Memory::Initialize() {
+  file_name_ = fmt::format("xenia_memory_{}", chrono::Clock::QueryHostTickCount());
+
+  // PS4 maps committed guest pages into Orbis direct memory on demand. Do not
+  // create or eagerly map the 4.5 GiB file-backed view used by desktop ports;
+  // doing so drives the PS4 pagedaemon hard enough to stall ShellCore.
+#if REX_PLATFORM_PS4
+  mapping_ = rex::memory::kFileMappingHandleInvalid;
+  Ps4MemoryStartupLog("using demand-mapped Orbis direct memory; no guest backing file");
+#else
+  // Create main page file-backed mapping. This is all reserved but
+  // uncommitted (so it shouldn't expand page file).
+  // Round up to allocation granularity to accommodate platforms with large pages.
+  const size_t mapping_size =
+      rex::round_up(static_cast<size_t>(0x120000000ull) + system_allocation_granularity_,
+                    static_cast<size_t>(system_allocation_granularity_));
+  mapping_ = rex::memory::CreateFileMappingHandle(file_name_, mapping_size,
+                                                  rex::memory::PageAccess::kReadWrite, false);
+#endif
+  if (mapping_ == rex::memory::kFileMappingHandleInvalid) {
+#if REX_PLATFORM_PS4
+    // PS4 reserves address space in the kernel and backs committed pages with
+    // direct memory; it does not use a process-wide file mapping.
+#elif REX_PLATFORM_PS5
+    // [ps5 port] Expected in a PS5 app: shared memory comes from the small
+    // flexible pool. MapViewsPs5 maps the guest in direct memory instead.
+    REXSYS_INFO("PS5: no shared memory object for the guest; using direct memory");
+#else
+    REXSYS_ERROR("Unable to reserve the 4gb guest address space.");
+    assert_always();
+    return false;
+#endif
+  }
+
+#if REX_PLATFORM_MAC
+  // On macOS, reserve a contiguous host range first, then carve guest views
+  // into it with MAP_SHARED|MAP_FIXED so all views share the same backing fd.
+  if (MapViewsMac()) {
+    REXSYS_ERROR("Unable to find a continuous block in the 64bit address space.");
+    assert_always();
+    return false;
+  }
+  mapping_base_ = views_.all_views[0];
+#else
+  // Attempt to create our views. This may fail at the first address
+  // we pick, so try a few times.
+  mapping_base_ = 0;
+#if REX_PLATFORM_PS5
+  // [ps5 port] Reserve the whole range, then fixed views into it (tested on a PS5).
+  if (!MapViewsPs5()) {
+    mapping_base_ = views_.all_views[0];
+  }
+#elif REX_PLATFORM_PS4
+  Ps4MemoryStartupLog("reserving guest virtual range");
+  const size_t ps4_total_size = static_cast<size_t>(
+      map_info[rex::countof(map_info) - 1].virtual_address_end -
+      map_info[0].virtual_address_start + 1);
+  // The guest needs a 4.5 GiB address layout, not 4.5 GiB of resident memory.
+  // Reserve address space once; guest heaps map direct-memory pages into it
+  // only when Xenia commits those pages.
+  constexpr uintptr_t kPs4GuestRangeBase = 0x1000000000ull;
+  void* ps4_reserved_base = reinterpret_cast<void*>(kPs4GuestRangeBase);
+  const int reserve_result = sceKernelReserveVirtualRange(
+      &ps4_reserved_base, ps4_total_size, 0x10 | 0x80, system_allocation_granularity_);
+  const bool ps4_range_reserved = reserve_result == 0 &&
+                                 ps4_reserved_base == reinterpret_cast<void*>(kPs4GuestRangeBase);
+  if (!ps4_range_reserved) {
+    Ps4MemoryStartupLogInt("guest virtual-range reservation failed: result=%d", reserve_result);
+    if (reserve_result == 0 && ps4_reserved_base) {
+      sceKernelMunmap(ps4_reserved_base, ps4_total_size);
+    }
+  } else {
+    auto* ps4_base = reinterpret_cast<uint8_t*>(ps4_reserved_base);
+    for (size_t n = 0; n < rex::countof(map_info); n++) {
+      views_.all_views[n] = ps4_base + map_info[n].virtual_address_start;
+    }
+    mapping_base_ = views_.all_views[0];
+    Ps4MemoryStartupLog("guest range reserved; views will be backed on commit");
+  }
+#else
+  for (size_t n = 32; n < 64; n++) {
+    auto mapping_base = reinterpret_cast<uint8_t*>(1ull << n);
+#if REX_PLATFORM_PS4
+    Ps4MemoryStartupLogf("trying guest-view base candidate %zu", n);
+#endif
+    if (!MapViews(mapping_base)) {
+      mapping_base_ = mapping_base;
+#if REX_PLATFORM_PS4
+      Ps4MemoryStartupLogf("guest views mapped at candidate %zu", n);
+#endif
+      break;
+    }
+  }
+#endif  // REX_PLATFORM_PS5 / REX_PLATFORM_PS4
+  if (!mapping_base_) {
+#if REX_PLATFORM_PS4
+    Ps4MemoryStartupLog("could not map guest views at any candidate address");
+#endif
+    REXSYS_ERROR("Unable to find a continuous block in the 64bit address space.");
+    assert_always();
+    return false;
+  }
+#endif
+  virtual_membase_ = mapping_base_;
+  physical_membase_ = mapping_base_ + 0x100000000ull;
+
+  // Prepare virtual heaps.
+  heaps_.v00000000.Initialize(this, virtual_membase_, memory::HeapType::kGuestVirtual, 0x00000000,
+                              0x40000000, 4096);
+  heaps_.v40000000.Initialize(this, virtual_membase_, memory::HeapType::kGuestVirtual, 0x40000000,
+                              0x40000000 - 0x01000000, 64 * 1024);
+  heaps_.v80000000.Initialize(this, virtual_membase_, memory::HeapType::kGuestXex, 0x80000000,
+                              0x10000000, 64 * 1024);
+  heaps_.v90000000.Initialize(this, virtual_membase_, memory::HeapType::kGuestXex, 0x90000000,
+                              0x10000000, kGuestPageSize);
+
+  // Prepare physical heaps.
+  heaps_.physical.Initialize(this, physical_membase_, memory::HeapType::kGuestPhysical, 0x00000000,
+                             0x20000000, kGuestPageSize);
+  heaps_.vA0000000.Initialize(this, virtual_membase_, memory::HeapType::kGuestPhysical, 0xA0000000,
+                              0x20000000, 64 * 1024, &heaps_.physical);
+  heaps_.vC0000000.Initialize(this, virtual_membase_, memory::HeapType::kGuestPhysical, 0xC0000000,
+                              0x20000000, 16 * 1024 * 1024, &heaps_.physical);
+  heaps_.vE0000000.Initialize(this, virtual_membase_, memory::HeapType::kGuestPhysical, 0xE0000000,
+                              0x1FD00000,
+#if REX_PLATFORM_PS4
+                              4096,
+#else
+                              kGuestPageSize,
+#endif
+                              &heaps_.physical);
+
+  // Protect the first and last 64kb of memory. The allocator's free-list
+  // sentinel is at guest address 0x1000, so on PS4 make only the host page
+  // containing its link fields accessible. Keep the remainder of the low
+  // guard inaccessible; the exact accessible prefix follows Orbis allocation
+  // granularity, which can be larger than the guest's 4kb page size.
+#if REX_PLATFORM_PS4
+  const uint32_t ps4_low_accessible_size = static_cast<uint32_t>(rex::round_up(
+      static_cast<size_t>(0x1014), static_cast<size_t>(system_allocation_granularity_)));
+  const uint32_t ps4_low_guard_size = 0x10000;
+  const uint32_t low_access = memory::kMemoryProtectRead | memory::kMemoryProtectWrite;
+  heaps_.v00000000.AllocFixed(
+      0x00000000, ps4_low_accessible_size, system_allocation_granularity_,
+      memory::kMemoryAllocationReserve | memory::kMemoryAllocationCommit, low_access);
+  if (ps4_low_accessible_size < ps4_low_guard_size) {
+    heaps_.v00000000.AllocFixed(
+        ps4_low_accessible_size, ps4_low_guard_size - ps4_low_accessible_size,
+        system_allocation_granularity_,
+        memory::kMemoryAllocationReserve | memory::kMemoryAllocationCommit,
+        !REXCVAR_GET(protect_zero) ? low_access : memory::kMemoryProtectNoAccess);
+  }
+  Ps4MemoryStartupLogf("low sentinel page accessible size=0x%zx", ps4_low_accessible_size);
+  // The allocator writes the sentinel's links at 0x1010/0x1014. Both AllocFixed
+  // calls above discard their result and Ps4MemoryStartupLog goes to
+  // sceKernelDebugOutText, which this setup does not capture - so a silent
+  // failure here is invisible and presents as a guest fault much later.
+  // Record the protection actually in force, in the guest trace.
+  {
+    uint32_t prot_1000 = 0, prot_1010 = 0;
+    const bool q1000 = heaps_.v00000000.QueryProtect(0x1000, &prot_1000);
+    const bool q1010 = heaps_.v00000000.QueryProtect(0x1010, &prot_1010);
+    HeapAllocationInfo info{};
+    const bool region = heaps_.v00000000.QueryRegionInfo(0x1010, &info);
+    char line[256];
+    std::snprintf(line, sizeof(line),
+                  "[PS4 sentinel] accessible=0x%x granularity=0x%x "
+                  "q1000=%u prot1000=%08x q1010=%u prot1010=%08x "
+                  "region=%u state=%08x rprot=%08x\n",
+                  ps4_low_accessible_size, system_allocation_granularity_,
+                  q1000 ? 1u : 0u, prot_1000, q1010 ? 1u : 0u, prot_1010,
+                  region ? 1u : 0u, region ? info.state : 0u,
+                  region ? info.protect : 0u);
+    if (FILE* log = std::fopen("/data/LibertyRecomp/logs/gta4-guest-trace.txt", "a")) {
+      std::fputs(line, log);
+      std::fflush(log);
+      std::fclose(log);
+    }
+    sceKernelDebugOutText(0, line);
+
+    // Belt and braces: the guest allocator *must* be able to write the
+    // sentinel's links at 0x1010/0x1014. Both AllocFixed results above are
+    // discarded, so if the mapping did not take, force the containing host
+    // page read-write and record whether that worked. One-shot, and it turns
+    // a silent failure into either a fix or a clear negative result.
+    const bool sentinel_writable =
+        q1010 && (prot_1010 & memory::kMemoryProtectWrite) != 0;
+    if (!sentinel_writable) {
+      const uint32_t need = static_cast<uint32_t>(rex::round_up(
+          static_cast<size_t>(0x1014), static_cast<size_t>(system_allocation_granularity_)));
+      const bool refix = heaps_.v00000000.AllocFixed(
+          0x00000000, need, system_allocation_granularity_,
+          memory::kMemoryAllocationReserve | memory::kMemoryAllocationCommit,
+          memory::kMemoryProtectRead | memory::kMemoryProtectWrite);
+      uint32_t after = 0;
+      const bool q_after = heaps_.v00000000.QueryProtect(0x1010, &after);
+      char fix[192];
+      std::snprintf(fix, sizeof(fix),
+                    "[PS4 sentinel] not writable - refix need=0x%x ok=%u q_after=%u prot_after=%08x\n",
+                    need, refix ? 1u : 0u, q_after ? 1u : 0u, after);
+      if (FILE* flog = std::fopen("/data/LibertyRecomp/logs/gta4-guest-trace.txt", "a")) {
+        std::fputs(fix, flog);
+        std::fflush(flog);
+        std::fclose(flog);
+      }
+      sceKernelDebugOutText(0, fix);
+    }
+  }
+#else
+  heaps_.v00000000.AllocFixed(0x00000000, 0x10000, 0x10000,
+                              memory::kMemoryAllocationReserve | memory::kMemoryAllocationCommit,
+                              !REXCVAR_GET(protect_zero)
+                                  ? memory::kMemoryProtectRead | memory::kMemoryProtectWrite
+                                  : memory::kMemoryProtectNoAccess);
+#endif
+  heaps_.physical.AllocFixed(0x1FFF0000, 0x10000, 0x10000, memory::kMemoryAllocationReserve,
+                             memory::kMemoryProtectNoAccess);
+
+  // GPU writeback.
+  // 0xC... is physical, 0x7F... is virtual. We may need to overlay these.
+  heaps_.vC0000000.AllocFixed(0xC0000000, 0x01000000, 32,
+                              memory::kMemoryAllocationReserve | memory::kMemoryAllocationCommit,
+                              memory::kMemoryProtectRead | memory::kMemoryProtectWrite);
+
+#if REX_PLATFORM_PS4
+  // The guest physical heap is 512 MiB. Committing all of it at startup wastes
+  // PS4 direct memory before the title requests any guest pages; GPU-visible
+  // allocations are instead backed when the corresponding heap pages commit.
+  // Skipping this left physical-heap alias pages with guest metadata saying
+  // "committed, writable" but no usable host backing: every hung run loops
+  // ~2 million times in the stale-protection recovery on guest A77B51C5 (vA
+  // alias, write-combined). Every other platform, PS5 included, pre-commits
+  // here, and on PS4 a single commit becomes one direct-memory entry that every
+  // later alias lookup can resolve against. Restored behind a cvar so it can be
+  // switched off from native.toml without a rebuild.
+  if (REXCVAR_GET(ps4_physical_precommit)) {
+    void* precommitted = rex::memory::AllocFixed(
+        heaps_.physical.TranslateRelative(0), heaps_.physical.heap_size(),
+        rex::memory::AllocationType::kCommit, rex::memory::PageAccess::kReadWrite);
+    char line[160];
+    const int len = std::snprintf(line, sizeof(line),
+                                  "[PS4 precommit] physical heap size=0x%x result=%p\n",
+                                  heaps_.physical.heap_size(), precommitted);
+    if (len > 0) {
+      const int fd = open("/data/LibertyRecomp/logs/gta4-guest-trace.txt",
+                          O_WRONLY | O_APPEND | O_CREAT, 0666);
+      if (fd >= 0) {
+        (void)write(fd, line, static_cast<size_t>(len));
+        close(fd);
+      }
+    }
+    Ps4MemoryStartupLog(precommitted ? "512 MiB physical precommit ok"
+                                     : "512 MiB physical precommit FAILED");
+  } else {
+    Ps4MemoryStartupLog("skipping eager 512 MiB physical-memory precommit");
+  }
+#else
+  // Pre-commit the physical memory range so the GPU can access it without page faults.
+  // Reference: xenia-canary 5f5be0668.
+  rex::memory::AllocFixed(heaps_.physical.TranslateRelative(0), heaps_.physical.heap_size(),
+                          rex::memory::AllocationType::kCommit,
+                          rex::memory::PageAccess::kReadWrite);
+#endif
+
+  // Install MMIO handler for physical address translation and MMIO ranges
+  mmio_handler_ = runtime::MMIOHandler::Install(
+      virtual_membase_, physical_membase_, physical_membase_ + 0x1FFFFFFF, HostToGuestVirtualThunk,
+      this, AccessViolationCallbackThunk, this);
+  if (!mmio_handler_) {
+#if REX_PLATFORM_PS4
+    Ps4MemoryStartupLog("MMIO handler installation failed");
+#endif
+    REXSYS_ERROR("Unable to install MMIO handlers");
+    assert_always();
+    return false;
+  }
+  REXSYS_DEBUG("Installed MMIO handler for physical address translation");
+
+  // ?
+  uint32_t unk_phys_alloc;
+  heaps_.vA0000000.Alloc(0x340000, 64 * 1024, memory::kMemoryAllocationReserve,
+                         memory::kMemoryProtectNoAccess, true, &unk_phys_alloc);
+
+  // Allocate region at start of XEX range. Title 544307D5 explicitly
+  // accesses 0x8000001C and expects a specific constant value.
+  // Reference: xenia-canary 78f97f8ff.
+  uint32_t unknown_xex_range;
+  heaps_.v80000000.Alloc(0x40000, 4 * 1024, memory::kMemoryAllocationCommit,
+                         memory::kMemoryProtectRead | memory::kMemoryProtectWrite, false,
+                         &unknown_xex_range);
+
+  uint32_t value_to_write = rex::byte_swap(uint32_t(0x2a6e3f38));
+  std::memcpy(TranslateVirtual(0x80000000 + 0x1C), &value_to_write, sizeof(uint32_t));
+
+  return true;
+}
+
 
 namespace {
 
@@ -534,10 +784,16 @@ int Memory::MapViews(uint8_t* mapping_base) {
         map_info[n].virtual_address_end - map_info[n].virtual_address_start + 1,
         rex::memory::PageAccess::kReadWrite, map_info[n].target_address & granularity_mask));
     if (!views_.all_views[n]) {
+#if REX_PLATFORM_PS4
+      Ps4MemoryStartupLogf("guest view mapping failed at index %zu", n);
+#endif
       // Failed, so bail and try again.
       UnmapViews();
       return 1;
     }
+#if REX_PLATFORM_PS4
+    Ps4MemoryStartupLogf("guest view mapped at index %zu", n);
+#endif
   }
   return 0;
 }
@@ -684,6 +940,24 @@ runtime::MMIORange* Memory::LookupVirtualMappedRange(uint32_t virtual_address) {
 
 bool Memory::AccessViolationCallback(rex::thread::global_lock_t global_lock_locked_once,
                                      void* host_address, bool is_write) {
+#if REX_PLATFORM_PS4
+  // The repeat startup crash is a read fault in this one guest virtual page.
+  // Record whether the fault path reaches the memory callback before the
+  // generic exception handler reports it.
+  const uintptr_t host = reinterpret_cast<uintptr_t>(host_address);
+  constexpr uintptr_t kGuestBase = 0x1000000000ull;
+  constexpr uintptr_t kFaultPage = kGuestBase + 0x10ac1000ull;
+  static std::atomic<unsigned> fault_page_callback_count{0};
+  if (host >= kFaultPage && host < kFaultPage + 0x1000 &&
+      fault_page_callback_count.fetch_add(1, std::memory_order_relaxed) < 32) {
+    char line[192];
+    std::snprintf(line, sizeof(line),
+                  "[PS4 guest memory fault callback] host=%016llx guest=%08x write=%u\n",
+                  static_cast<unsigned long long>(host),
+                  static_cast<uint32_t>(host - kGuestBase), is_write ? 1u : 0u);
+    sceKernelDebugOutText(0, line);
+  }
+#endif
   // Access via physical_membase_ is special, when need to bypass everything
   // (for instance, for a data provider to actually write the data) so only
   // triggering callbacks on virtual memory regions.
@@ -692,10 +966,68 @@ bool Memory::AccessViolationCallback(rex::thread::global_lock_t global_lock_lock
     return false;
   }
   uint32_t virtual_address = HostToGuestVirtual(host_address);
+  // A low-address fault that keeps recurring at the same address is a retry
+  // loop, not something to adopt: a write to 0x1010 from the allocator's
+  // free-list unlink (sub_82848B68) was re-protected and resumed forever,
+  // which presented as a silent hang with no crash report. Declining low
+  // addresses outright is wrong though - early startup faults below 0x10000
+  // legitimately and relies on them being committed (doing so killed the title
+  // ~3600 trace events in, long before the allocator). So keep handling them,
+  // and only give up once the same address has clearly looped.
+  if (virtual_address < 0x10000u) {
+    static std::atomic<uint32_t> low_fault_address{0};
+    static std::atomic<uint32_t> low_fault_count{0};
+    uint32_t seen = low_fault_address.load(std::memory_order_relaxed);
+    if (seen != virtual_address) {
+      low_fault_address.store(virtual_address, std::memory_order_relaxed);
+      low_fault_count.store(1, std::memory_order_relaxed);
+    } else if (low_fault_count.fetch_add(1, std::memory_order_relaxed) > 4096) {
+      // Same low address over and over: stop adopting it so the unhandled
+      // fault path reports and the title stops instead of spinning.
+      return false;
+    }
+  }
   BaseHeap* heap = LookupHeap(virtual_address);
   if (!heap) {
     return false;
   }
+#if REX_PLATFORM_PS4
+  // A read from this uncommitted virtual page has stopped startup on every
+  // recent run. Commit and zero only the containing Orbis page once, then
+  // resume the faulting read so we can observe the next startup boundary.
+  constexpr uint32_t kFaultAddress = 0x10ac1244u;
+  constexpr uint32_t kOrbisPageBytes = 16 * 1024;
+  static std::atomic<unsigned> fault_page_recovery_count{0};
+  if (virtual_address == kFaultAddress && !is_write &&
+      fault_page_recovery_count.fetch_add(1, std::memory_order_relaxed) == 0) {
+    const uint32_t page_base = virtual_address & ~(kOrbisPageBytes - 1);
+    HeapAllocationInfo info{};
+    const bool has_region = heap->QueryRegionInfo(virtual_address, &info);
+    char line[256];
+    std::snprintf(line, sizeof(line),
+                  "[PS4 guest page recovery] addr=%08x page=%08x heap=%u region=%u "
+                  "state=%08x protect=%08x allocation_protect=%08x\n",
+                  virtual_address, page_base, static_cast<unsigned>(heap->heap_type()),
+                  has_region ? 1u : 0u, has_region ? info.state : 0u,
+                  has_region ? info.protect : 0u,
+                  has_region ? info.allocation_protect : 0u);
+    sceKernelDebugOutText(0, line);
+
+    if (!(has_region && (info.state & memory::kMemoryAllocationCommit))) {
+      const bool committed = heap->AllocFixed(
+          page_base, kOrbisPageBytes, kOrbisPageBytes,
+          memory::kMemoryAllocationReserve | memory::kMemoryAllocationCommit,
+          memory::kMemoryProtectRead | memory::kMemoryProtectWrite);
+      // Newly backed host pages arrive zero-filled; pages that already had
+      // backing hold neighbouring guest data and must not be cleared.
+      std::snprintf(line, sizeof(line),
+                    "[PS4 guest page recovery] committed=%u zeroed=%u\n",
+                    committed ? 1u : 0u, committed ? 1u : 0u);
+      sceKernelDebugOutText(0, line);
+      return committed;
+    }
+  }
+#endif
   if (heap->heap_type() != memory::HeapType::kGuestPhysical) {
     return false;
   }
@@ -759,6 +1091,61 @@ bool Memory::AccessViolationCallback(rex::thread::global_lock_t global_lock_lock
           reinterpret_cast<uintptr_t>(host_address) & ~(uintptr_t(host_page_size - 1));
       if (rex::memory::Protect(reinterpret_cast<void*>(page_base), host_page_size,
                                rex::memory::PageAccess::kReadWrite, nullptr)) {
+#if REX_PLATFORM_PS4
+        // Every hung run so far loops here about two million times on a single
+        // address (guest A77B51C5): protection is restored, the store retries
+        // and faults again. Record which guest thread and code is doing it -
+        // once per new address, then every 2^17 repeats - in the guest trace,
+        // the same file as the world-step markers, so its timing against the
+        // world-loader freeze can be read directly. The rex log this warning
+        // goes to rotates every 5 MB and is not ordered against that trace.
+        // Log only; open/write rather than stdio since this runs in the fault
+        // handler. Behaviour is unchanged.
+        {
+          static std::atomic<uint32_t> last_address{0};
+          static std::atomic<uint32_t> new_reports{0};
+          static std::atomic<uint64_t> repeats{0};
+          const uint64_t n = repeats.fetch_add(1, std::memory_order_relaxed);
+          const bool is_new =
+              last_address.exchange(virtual_address, std::memory_order_relaxed) != virtual_address;
+          if ((is_new && new_reports.fetch_add(1, std::memory_order_relaxed) < 64) ||
+              (n & 0x1FFFFu) == 0) {
+            uint32_t tid = 0, lr = 0, lr1 = 0, lr2 = 0, lr3 = 0;
+            auto* t = rex::system::XThread::GetCurrentThread();
+            if (t) tid = t->thread_id();
+            if (t && t->thread_state() && t->thread_state()->context()) {
+              auto* c = t->thread_state()->context();
+              lr = uint32_t(c->lr);
+              // Callers from the guest stack's back chain: each frame keeps the
+              // caller's r1 at 0(r1) and its return address at -8.
+              auto be32 = [this](uint32_t a) -> uint32_t {
+                if (a < 0x10000 || a >= 0xE0000000) return 0;
+                return rex::byte_swap(*TranslateVirtual<uint32_t*>(a));
+              };
+              const uint32_t b1 = be32(c->r1.u32);
+              lr1 = b1 ? be32(b1 - 8) : 0;
+              const uint32_t b2 = b1 ? be32(b1) : 0;
+              lr2 = b2 ? be32(b2 - 8) : 0;
+              const uint32_t b3 = b2 ? be32(b2) : 0;
+              lr3 = b3 ? be32(b3 - 8) : 0;
+            }
+            char line[256];
+            const int len = std::snprintf(
+                line, sizeof(line),
+                "[PS4 stale-phys] %s guest=%08x host=%016llx gprot=%08x n=%llu tid=%x "
+                "lr=%08x < %08x < %08x < %08x\n",
+                is_new ? "NEW" : "again", virtual_address,
+                static_cast<unsigned long long>(page_base), guest_protect,
+                static_cast<unsigned long long>(n), tid, lr, lr1, lr2, lr3);
+            const int fd = open("/data/LibertyRecomp/logs/gta4-guest-trace.txt",
+                                O_WRONLY | O_APPEND | O_CREAT, 0666);
+            if (fd >= 0) {
+              if (len > 0) (void)write(fd, line, static_cast<size_t>(len));
+              close(fd);
+            }
+          }
+        }
+#endif
         REXSYS_WARN(
             "Recovered stale physical page protection for guest {:08X} (host {:016X}, "
             "guest_protect {:08X})",
@@ -842,15 +1229,24 @@ void Memory::EnablePhysicalMemoryAccessCallbacks(uint32_t physical_address, uint
 
 uint32_t Memory::SystemHeapAlloc(uint32_t size, uint32_t alignment, uint32_t system_heap_flags) {
   // TODO(benvanik): lightweight pool.
+  const uint32_t zero_size = size;
+#if REX_PLATFORM_PS4
+  // Direct-memory maps operate in 16 KiB units. Keep system allocations on
+  // that granularity so adjacent 4 KiB guest allocations don't request
+  // overlapping, misaligned Orbis mappings.
+  constexpr uint32_t kOrbisDirectGranularity = 16 * 1024;
+  alignment = std::max(alignment, kOrbisDirectGranularity);
+  size = rex::round_up(size, kOrbisDirectGranularity);
+#endif
   bool is_physical = !!(system_heap_flags & memory::kSystemHeapPhysical);
-  auto heap = LookupHeapByType(is_physical, 4096);
+  auto heap = LookupHeapByType(is_physical, kGuestPageSize);
   uint32_t address;
   if (!heap->AllocSystemHeap(
           size, alignment, memory::kMemoryAllocationReserve | memory::kMemoryAllocationCommit,
           memory::kMemoryProtectRead | memory::kMemoryProtectWrite, false, &address)) {
     return 0;
   }
-  Zero(address, size);
+  Zero(address, zero_size);
   return address;
 }
 
@@ -1290,6 +1686,20 @@ bool BaseHeap::AllocSystemHeap(uint32_t size, uint32_t alignment, uint32_t alloc
 
 bool BaseHeap::AllocFixed(uint32_t base_address, uint32_t size, uint32_t alignment,
                           uint32_t allocation_type, uint32_t protect) {
+#if REX_PLATFORM_PS4
+  // Track commits that could make the repeatedly faulting startup page valid.
+  constexpr uint32_t kFaultPage = 0x10ac1000u;
+  static std::atomic<unsigned> fault_page_alloc_count{0};
+  const uint64_t allocation_end = uint64_t(base_address) + size;
+  if (base_address < kFaultPage + 0x1000u && allocation_end > kFaultPage &&
+      fault_page_alloc_count.fetch_add(1, std::memory_order_relaxed) < 32) {
+    char line[224];
+    std::snprintf(line, sizeof(line),
+                  "[PS4 guest page allocation] base=%08x size=%08x type=%08x protect=%08x\n",
+                  base_address, size, allocation_type, protect);
+    sceKernelDebugOutText(0, line);
+  }
+#endif
   alignment = rex::round_up(alignment, page_size_);
   if (base_address % alignment != 0) {
     if (base_address % page_size_ != 0) {
@@ -1945,11 +2355,19 @@ void PhysicalHeap::Initialize(memory::Memory* memory, uint8_t* membase, HeapType
                               uint32_t heap_base, uint32_t heap_size, uint32_t page_size,
                               VirtualHeap* parent_heap) {
   uint32_t host_address_offset;
+#if REX_PLATFORM_PS4
+  // Orbis direct-memory aliases must start on 16 KB boundaries. The Xbox
+  // E0000000 heap's usual 4 KB bias makes the guest pointer land one page
+  // before that boundary, so PS4 maps this heap without the bias and lets the
+  // guest allocation address follow the aligned physical address.
+  host_address_offset = 0;
+#else
   if (heap_base >= 0xE0000000 && rex::memory::allocation_granularity() > 0x1000) {
     host_address_offset = 0x1000;
   } else {
     host_address_offset = 0;
   }
+#endif
 
   BaseHeap::Initialize(memory, membase, heap_type, heap_base, heap_size, page_size,
                        host_address_offset);
@@ -1971,6 +2389,13 @@ bool PhysicalHeap::Alloc(uint32_t size, uint32_t alignment, uint32_t allocation_
 
   // Adjust alignment size our page size differs from the parent.
   size = rex::round_up(size, page_size_);
+#if REX_PLATFORM_PS4
+  // Keep 4 KB guest page tracking, but reserve complete Orbis pages in both
+  // heaps so direct-memory aliases can be mapped at 16 KB boundaries.
+  if (heap_base_ >= 0xE0000000 && system_page_size_ > page_size_) {
+    size = rex::round_up(size, system_page_size_);
+  }
+#endif
   alignment = rex::round_up(alignment, page_size_);
 
   std::lock_guard<std::recursive_mutex> heap_lock(heap_mutex_);
@@ -1988,11 +2413,15 @@ bool PhysicalHeap::Alloc(uint32_t size, uint32_t alignment, uint32_t allocation_
   // Given the address we've reserved in the parent heap, pin that here.
   // Shouldn't be possible for it to be allocated already.
   uint32_t address = heap_base_ + parent_address - parent_heap_start;
+  void* previous_alias = rex::memory::SetDirectMemoryAliasSource(
+      parent_heap_->TranslateRelative(parent_address - parent_heap_->heap_base()));
   if (!BaseHeap::AllocFixed(address, size, alignment, allocation_type, protect)) {
+    rex::memory::SetDirectMemoryAliasSource(previous_alias);
     REXSYS_ERROR("PhysicalHeap::Alloc unable to pin physical memory in physical heap");
     // TODO(benvanik): don't leak parent memory.
     return false;
   }
+  rex::memory::SetDirectMemoryAliasSource(previous_alias);
   *out_address = address;
   return true;
 }
@@ -2001,6 +2430,11 @@ bool PhysicalHeap::AllocFixed(uint32_t base_address, uint32_t size, uint32_t ali
                               uint32_t allocation_type, uint32_t protect) {
   // Adjust alignment size our page size differs from the parent.
   size = rex::round_up(size, page_size_);
+#if REX_PLATFORM_PS4
+  if (heap_base_ >= 0xE0000000 && system_page_size_ > page_size_) {
+    size = rex::round_up(size, system_page_size_);
+  }
+#endif
   alignment = rex::round_up(alignment, page_size_);
 
   std::lock_guard<std::recursive_mutex> heap_lock(heap_mutex_);
@@ -2018,11 +2452,15 @@ bool PhysicalHeap::AllocFixed(uint32_t base_address, uint32_t size, uint32_t ali
   // Given the address we've reserved in the parent heap, pin that here.
   // Shouldn't be possible for it to be allocated already.
   uint32_t address = heap_base_ + parent_base_address - GetPhysicalAddress(heap_base_);
+  void* previous_alias = rex::memory::SetDirectMemoryAliasSource(
+      parent_heap_->TranslateRelative(parent_base_address - parent_heap_->heap_base()));
   if (!BaseHeap::AllocFixed(address, size, page_size_, allocation_type, protect)) {
+    rex::memory::SetDirectMemoryAliasSource(previous_alias);
     REXSYS_ERROR("PhysicalHeap::Alloc unable to pin physical memory in physical heap");
     // TODO(benvanik): don't leak parent memory.
     return false;
   }
+  rex::memory::SetDirectMemoryAliasSource(previous_alias);
 
   return true;
 }
@@ -2034,6 +2472,11 @@ bool PhysicalHeap::AllocRange(uint32_t low_address, uint32_t high_address, uint3
 
   // Adjust alignment size our page size differs from the parent.
   size = rex::round_up(size, page_size_);
+#if REX_PLATFORM_PS4
+  if (heap_base_ >= 0xE0000000 && system_page_size_ > page_size_) {
+    size = rex::round_up(size, system_page_size_);
+  }
+#endif
   alignment = rex::round_up(alignment, page_size_);
 
   std::lock_guard<std::recursive_mutex> heap_lock(heap_mutex_);
@@ -2044,8 +2487,12 @@ bool PhysicalHeap::AllocRange(uint32_t low_address, uint32_t high_address, uint3
   uint32_t parent_low_address = GetPhysicalAddress(low_address);
   uint32_t parent_high_address = GetPhysicalAddress(high_address);
   uint32_t parent_address;
+  Ps4PhysicalAllocTrace("request", size, alignment, parent_low_address,
+                        parent_high_address, 0, 0);
   if (!parent_heap_->AllocRange(parent_low_address, parent_high_address, size, alignment,
                                 allocation_type, protect, top_down, &parent_address)) {
+    Ps4PhysicalAllocTrace("parent-failed", size, alignment, parent_low_address,
+                          parent_high_address, 0, 0);
     REXSYS_ERROR("PhysicalHeap::Alloc unable to alloc physical memory in parent heap");
     return false;
   }
@@ -2053,12 +2500,20 @@ bool PhysicalHeap::AllocRange(uint32_t low_address, uint32_t high_address, uint3
   // Given the address we've reserved in the parent heap, pin that here.
   // Shouldn't be possible for it to be allocated already.
   uint32_t address = heap_base_ + parent_address - GetPhysicalAddress(heap_base_);
+  void* previous_alias = rex::memory::SetDirectMemoryAliasSource(
+      parent_heap_->TranslateRelative(parent_address - parent_heap_->heap_base()));
   if (!BaseHeap::AllocFixed(address, size, page_size_, allocation_type, protect)) {
+    Ps4PhysicalAllocTrace("alias-failed", size, alignment, parent_low_address,
+                          parent_high_address, parent_address, address);
+    rex::memory::SetDirectMemoryAliasSource(previous_alias);
     REXSYS_ERROR("PhysicalHeap::Alloc unable to pin physical memory in physical heap");
     // TODO(benvanik): don't leak parent memory.
     return false;
   }
+  rex::memory::SetDirectMemoryAliasSource(previous_alias);
   *out_address = address;
+  Ps4PhysicalAllocTrace("success", size, alignment, parent_low_address,
+                        parent_high_address, parent_address, address);
   return true;
 }
 
@@ -2395,9 +2850,11 @@ uint32_t PhysicalHeap::GetPhysicalAddress(uint32_t address) const {
   assert_true(address >= heap_base_);
   address -= heap_base_;
   assert_true(address < heap_size_);
+#if !REX_PLATFORM_PS4
   if (heap_base_ >= 0xE0000000) {
     address += 0x1000;
   }
+#endif
   return address;
 }
 

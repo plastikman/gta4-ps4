@@ -68,7 +68,10 @@ FILE* OpenExclusive(const char* path, int* open_error) noexcept {
 #if defined(O_CLOEXEC)
   flags |= O_CLOEXEC;
 #endif
-  const int descriptor = open(path, flags, S_IRUSR | S_IWUSR);
+  // GoldHEN FTP runs under a different uid from the title. Diagnostic traces
+  // must be readable after the title writes them so they can be collected
+  // before a suspend/crash removes the sandbox state.
+  const int descriptor = open(path, flags, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
 #endif
   if (descriptor < 0) {
     if (open_error) {

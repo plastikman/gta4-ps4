@@ -21,6 +21,7 @@
 #include <rex/audio/handoff_trace.h>
 #include <rex/audio/xma/decoder.h>
 #include <rex/cvar.h>
+#include <rex/ps5_diag.h>
 #include <rex/dbg.h>
 #include <rex/diagnostics/gta4_transition.h>
 #include <rex/logging.h>
@@ -146,6 +147,16 @@ X_STATUS XmaDecoder::Setup(system::KernelState* kernel_state) {
 
   return X_STATUS_SUCCESS;
 }
+
+#if REX_PLATFORM_PS4
+// (CIX: no gain - the game re-kicks and polls until the data is there)
+REXCVAR_DEFINE_BOOL(ps4_xma_async_kick, false, "Audio",
+                    "PS4: an XMA kick returns at once and the decoder thread decodes in parallel "
+                    "(false: the kick waits for the decode, see ps4_xma_inline_decode)");
+REXCVAR_DEFINE_BOOL(ps4_xma_inline_decode, true, "Audio",
+                    "PS4: decode a kicked XMA context on the kicking thread instead of waking the "
+                    "decoder thread and waiting for it");
+#endif
 
 void XmaDecoder::WorkerThreadMain() {
 #if defined(__ANDROID__)
@@ -343,6 +354,28 @@ void XmaDecoder::WriteRegister(uint32_t addr, uint32_t value) {
         diagnostics::gta4_transition::EventType::kXmaKick, 0, 0, 0,
         diagnostics::gta4_transition::kFlagBefore, ready_word, kicked_value,
         base_context_id);
+#if REX_PLATFORM_PS4
+    if (REXCVAR_GET(ps4_xma_async_kick)) {
+      // [ps4 port] As the 360's XMA hardware: the kick returns at once and the
+      // decoder thread (on the other cores) decodes while the game's mixer
+      // carries on; the guest sees the results in the context data when it
+      // looks. A disable still waits for a decode in progress (Block below).
+      // CVIII: decoding was ~15% of the mixing thread, which was ~9% short.
+      ready_context_words_[ready_word].fetch_or(kicked_value, std::memory_order_release);
+      work_event_->Set();
+    } else if (REXCVAR_GET(ps4_xma_inline_decode)) {
+      // [ps4 port] Decode the kicked contexts right here, on the kicking
+      // (game's audio) thread: the same "done when the kick returns" as below,
+      // without waking the decoder thread and being woken back for each one
+      // (~5 kicks a 5.3 ms sound frame; CII: ~12% of the mixing thread).
+      for (int i = 0; kicked_value && i < 32; ++i, kicked_value >>= 1) {
+        if (kicked_value & 1) {
+          if (contexts_[base_context_id + i].Work()) PROFILE_XMA_FRAME_DECODED();
+        }
+      }
+    } else
+#endif
+    {
     ready_context_words_[ready_word].fetch_or(kicked_value, std::memory_order_release);
     // Signal the decoder thread to start processing.
     work_event_->Set();
@@ -352,6 +385,7 @@ void XmaDecoder::WriteRegister(uint32_t addr, uint32_t value) {
         uint32_t context_id = base_context_id + i;
         contexts_[context_id].WaitForWorkDone();
       }
+    }
     }
     diagnostics::gta4_transition::Record(
         diagnostics::gta4_transition::EventSource::kXma,

@@ -17,6 +17,7 @@
 #include <array>
 #include <chrono>
 #include <ctime>
+#include <system_error>
 
 #include <fmt/chrono.h>
 #include <fmt/format.h>
@@ -92,8 +93,16 @@ void ProgressView::spinnerLoop() {
   while (!stop_spinner_.load(std::memory_order_acquire)) {
     if (active_line_kind_ != ActiveLineKind::None)
       renderActiveLine();
-    spinner_cv_.wait_for(cv_lock, kSpinnerInterval,
-                         [this] { return stop_spinner_.load(std::memory_order_acquire); });
+    try {
+      spinner_cv_.wait_for(cv_lock, kSpinnerInterval,
+                           [this] { return stop_spinner_.load(std::memory_order_acquire); });
+    } catch (const std::system_error&) {
+#if REX_PLATFORM_PS4
+      // Orbis libc++ can report a normal timed wait by throwing.
+#else
+      throw;
+#endif
+    }
   }
 }
 

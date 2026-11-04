@@ -147,7 +147,7 @@ endfunction()
 
 # [ps5 port] one static program on the PS5: only the gta4-native renderer,
 # linked in (gpu_plugin_loader.cpp calls it directly).
-if(NOT PS5)
+if(NOT PS5 AND NOT PS4)
 add_library(rexgpu-xenos SHARED
     plugin_main.cpp
     ${REXGPU_XENOS_SOURCES}
@@ -209,6 +209,8 @@ if(REXGLUE_USE_VULKAN)
         "${LIBERTY_RECOMP_WORKSPACE_ROOT}/tools/XenosRecomp/thirdparty/dxc-bin")
     set(GTA4_NATIVE_DXC_LIBRARY_PATH "" CACHE PATH
         "Directory containing a DXC shared library compatible with gta4-native shader overrides")
+    set(GTA4_NATIVE_DXC_EXECUTABLE "" CACHE FILEPATH
+        "Host DXC executable used to compile GTA IV shader overrides")
     set(GTA4_NATIVE_SHADER_COMMON
         "${GTA4_NATIVE_SHADER_OVERRIDE_ROOT}/xenos_shader_common.h")
     if(CMAKE_HOST_WIN32)
@@ -246,6 +248,10 @@ if(REXGLUE_USE_VULKAN)
         if(NOT GTA4_NATIVE_DXC_LIBRARY_PATH)
             set(GTA4_NATIVE_DXC_LIBRARY_PATH "${GTA4_NATIVE_DXC_ROOT}/lib/x64")
         endif()
+    endif()
+
+    if(GTA4_NATIVE_DXC_EXECUTABLE)
+        set(GTA4_NATIVE_DXC "${GTA4_NATIVE_DXC_EXECUTABLE}")
     endif()
 
     set(GTA4_NATIVE_SHADER_OVERRIDE_COMMAND
@@ -292,7 +298,7 @@ if(REXGLUE_USE_VULKAN)
             "${CMAKE_CURRENT_BINARY_DIR}/gta4_native_zstd")
     endif()
 
-    if(PS5)
+    if(PS5 OR PS4)
         set(_gta4_native_library_type STATIC)
     else()
         set(_gta4_native_library_type SHARED)
@@ -345,8 +351,8 @@ if(REXGLUE_USE_VULKAN)
         target_link_libraries(rexgpu-gta4-native PRIVATE rexglue_fidelityfx_vulkan)
     endif()
     # [ps5 port] Line tables only (no code change): the PS5 sampling
-    # profiler's addresses map to source lines in the renderer.
-    if(PS5)
+    # profiler's addresses map to source lines in the renderer. (PS4 too.)
+    if(PS5 OR PS4)
         target_compile_options(rexgpu-gta4-native PRIVATE -gline-tables-only)
     endif()
     # ThinLTO inside the renderer plugin (recorder and render worker).

@@ -10,7 +10,7 @@
 #include <rex/chrono/clock.h>
 #include <rex/platform.h>
 
-static_assert(REX_PLATFORM_LINUX || REX_PLATFORM_MAC, "This file is POSIX-only");
+static_assert(REX_PLATFORM_LINUX || REX_PLATFORM_MAC || REX_PLATFORM_PS4, "This file is POSIX-only");
 
 #include <sys/time.h>
 
@@ -18,8 +18,8 @@ static_assert(REX_PLATFORM_LINUX || REX_PLATFORM_MAC, "This file is POSIX-only")
 #include <mach/mach_time.h>
 #endif
 
-#if REX_PLATFORM_PS5
-// [ps5 port] clock_gettime is a system call on the PS5; the guest reads the
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
+// [ps5 port] clock_gettime is a system call on the PS5 (and the PS4); the guest reads the
 // clock (mftb, KeQueryPerformanceCounter) tens of thousands of times a second.
 // The TSC is invariant and in step across the cores, as titles rely on.
 extern "C" uint64_t sceKernelReadTsc(void);
@@ -35,7 +35,7 @@ uint64_t Ps5TscFrequency() {
 namespace rex::chrono {
 
 uint64_t Clock::host_tick_frequency_platform() {
-#if REX_PLATFORM_PS5
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
   if (const uint64_t frequency = Ps5TscFrequency()) return frequency;
 #endif
 #ifdef __APPLE__
@@ -59,7 +59,7 @@ uint64_t Clock::host_tick_count_platform() {
   // inconsistent with the 24 MHz mach frequency and cause ~41x time acceleration.
   return mach_absolute_time();
 #else
-#if REX_PLATFORM_PS5
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
   if (Ps5TscFrequency()) return sceKernelReadTsc();
 #endif
   timespec tp;

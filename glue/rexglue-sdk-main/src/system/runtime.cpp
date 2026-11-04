@@ -28,16 +28,32 @@
 #include <rex/system/xmemory.h>
 #include <rex/system/xthread.h>
 #include <rex/thread.h>
+#if REX_PLATFORM_PS4
+#include <cstdio>
+#include <orbis/libkernel.h>
+#endif
 
 REXCVAR_DEFINE_STRING(game_data_root, "", "Runtime", "Override game data path");
 REXCVAR_DEFINE_STRING(user_data_root, "", "Runtime", "Override user data path");
 REXCVAR_DEFINE_STRING(update_data_root, "", "Runtime", "Override update data path");
 REXCVAR_DEFINE_STRING(cache_root, "", "Runtime", "Override shader cache path");
+REXCVAR_DEFINE_BOOL(guest_cache_device, true, "Runtime",
+                    "Back guest cache:/cache1: with a writable host directory");
 REXCVAR_DEFINE_STRING(metadata_root, "", "Runtime", "Override metadata path");
 REXCVAR_DEFINE_STRING(saved_game_root, "", "Runtime", "Override loose saved-game path")
     .lifecycle(rex::cvar::Lifecycle::kInitOnly);
 
 namespace rex {
+
+#if REX_PLATFORM_PS4
+namespace {
+void Ps4RuntimeStartupLog(const char* message) {
+  char line[256];
+  std::snprintf(line, sizeof(line), "[GTA4 PS4 runtime] %s\n", message);
+  sceKernelDebugOutText(0, line);
+}
+}  // namespace
+#endif
 
 // Static instance for global access
 Runtime* Runtime::instance_ = nullptr;
@@ -129,8 +145,14 @@ X_STATUS Runtime::Setup(RuntimeConfig config) {
   // Create memory system first
   memory_ = std::make_unique<memory::Memory>();
   if (!memory_->Initialize()) {
+#if REX_PLATFORM_PS4
+    Ps4RuntimeStartupLog("memory initialization failed");
+#endif
     return fail(X_STATUS_UNSUCCESSFUL, "memory init failed");
   }
+#if REX_PLATFORM_PS4
+  Ps4RuntimeStartupLog("memory initialized");
+#endif
 
   export_resolver_ = std::make_unique<runtime::ExportResolver>();
 
@@ -181,8 +203,14 @@ X_STATUS Runtime::Setup(RuntimeConfig config) {
 
   // Set up VFS: game_data_root as game:/d:, update_data_root as update:
   if (!SetupVfs()) {
+#if REX_PLATFORM_PS4
+    Ps4RuntimeStartupLog("VFS setup failed");
+#endif
     return fail(X_STATUS_UNSUCCESSFUL, "VFS setup failed");
   }
+#if REX_PLATFORM_PS4
+  Ps4RuntimeStartupLog("VFS setup complete");
+#endif
 
   // Skip GPU initialization in tool mode (for analysis tools like codegen)
   if (tool_mode_) {
@@ -198,8 +226,17 @@ X_STATUS Runtime::Setup(RuntimeConfig config) {
     X_STATUS gpu_status = graphics_system_->Setup(function_dispatcher_.get(), kernel_state_.get(),
                                                   app_context_, with_presentation);
     if (XFAILED(gpu_status)) {
+#if REX_PLATFORM_PS4
+      char startup_message[128];
+      std::snprintf(startup_message, sizeof(startup_message),
+                    "GPU setup failed: status=0x%08X", uint32_t(gpu_status));
+      Ps4RuntimeStartupLog(startup_message);
+#endif
       return fail(gpu_status, "GPU setup failed");
     }
+#if REX_PLATFORM_PS4
+    Ps4RuntimeStartupLog("GPU setup complete");
+#endif
     REXSYS_INFO("GPU system initialized (presentation={})", with_presentation);
   } else {
     REXSYS_INFO("Runtime initialized without graphics system (native rendering mode)");
@@ -219,6 +256,9 @@ X_STATUS Runtime::Setup(const rex::PPCImageInfo& image_info, RuntimeConfig confi
   if (!function_dispatcher_->InitializeFunctionTable(image_info.code_base, image_info.code_size,
                                                      image_info.image_base, image_info.image_size,
                                                      /*is_entrypoint=*/true)) {
+#if REX_PLATFORM_PS4
+    Ps4RuntimeStartupLog("function table initialization failed");
+#endif
     REXSYS_ERROR("Failed to initialize function table");
     Shutdown();
     return X_STATUS_UNSUCCESSFUL;
@@ -355,9 +395,36 @@ bool Runtime::SetupVfs() {
     REXSYS_DEBUG("  Registered NullDevice for \\Device\\Harddisk0\\{{Partition0,Cache0,Cache1}}");
   }
 
-  // NOTE: Do NOT register a device for cache: paths
-  // Games handle "device not found" gracefully but don't handle actual device
-  // errors (like NAME_COLLISION) well. Let cache: fail cleanly.
+  // GTA IV probes cache:\valid.txt at startup to decide whether its asset cache
+  // is usable. Historically no device was registered for cache: at all, on the
+  // grounds that titles handle "device not found" gracefully but handle real
+  // device errors (like NAME_COLLISION) badly. The cost is that the probe fails
+  // on every boot, so whatever the title would skip on a warm cache is redone
+  // each launch. Back cache: with a real writable host directory instead, which
+  // gives ordinary NOT_FOUND/created semantics rather than an unmapped prefix.
+  // Set guest_cache_device = false in native.toml to restore the old behavior.
+  if (REXCVAR_GET(guest_cache_device) && !cache_root_.empty()) {
+    const auto guest_cache_root = std::filesystem::absolute(cache_root_ / "guest");
+    std::error_code cache_ec;
+    std::filesystem::create_directories(guest_cache_root, cache_ec);
+    if (cache_ec) {
+      REXSYS_WARN("Runtime::SetupVfs: could not create guest cache root {}: {}",
+                  guest_cache_root.string(), cache_ec.message());
+    } else {
+      auto cache_mount = "\\Device\\LibertyRecomp\\Cache";
+      auto cache_device =
+          std::make_unique<rex::filesystem::HostPathDevice>(cache_mount, guest_cache_root, false);
+      if (cache_device->Initialize() && file_system_->RegisterDevice(std::move(cache_device))) {
+        file_system_->RegisterSymbolicLink("cache:", cache_mount);
+        file_system_->RegisterSymbolicLink("cache1:", cache_mount);
+        REXSYS_INFO("  Mounted {} at cache: and cache1:", guest_cache_root.string());
+      } else {
+        REXSYS_WARN("Runtime::SetupVfs: failed to mount guest cache device; cache: left unmapped");
+      }
+    }
+  } else {
+    REXSYS_INFO("  cache: left unmapped (guest_cache_device disabled)");
+  }
 
   return true;
 }

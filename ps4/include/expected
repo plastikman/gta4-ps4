@@ -1,0 +1,48 @@
+#pragma once
+#include <cassert>
+#include <type_traits>
+#include <utility>
+#include <variant>
+
+namespace std {
+template <class E> class unexpected {
+ public:
+  explicit unexpected(E error) : error_(std::move(error)) {}
+  const E& error() const& { return error_; }
+ private:
+  E error_;
+};
+template <class T, class E> class expected {
+ public:
+  expected(const T& value) : data_(value) {}
+  expected(T&& value) : data_(std::move(value)) {}
+  expected(const unexpected<E>& error) : data_(error.error()) {}
+  expected(unexpected<E>&& error) : data_(std::move(error).error()) {}
+  explicit operator bool() const noexcept { return data_.index() == 0; }
+  bool has_value() const noexcept { return static_cast<bool>(*this); }
+  T& value() & { assert(*this); return std::get<0>(data_); }
+  const T& value() const& { assert(*this); return std::get<0>(data_); }
+  E& error() & { assert(!*this); return std::get<1>(data_); }
+  const E& error() const& { assert(!*this); return std::get<1>(data_); }
+  T* operator->() { return &value(); }
+  const T* operator->() const { return &value(); }
+  T& operator*() & { return value(); }
+  const T& operator*() const& { return value(); }
+ private:
+  variant<T, E> data_;
+};
+
+template <class E> class expected<void, E> {
+ public:
+  expected() : data_(in_place_index<0>) {}
+  expected(const unexpected<E>& error) : data_(in_place_index<1>, error.error()) {}
+  expected(unexpected<E>&& error) : data_(in_place_index<1>, std::move(error).error()) {}
+  explicit operator bool() const noexcept { return data_.index() == 0; }
+  bool has_value() const noexcept { return static_cast<bool>(*this); }
+  void value() const { assert(*this); }
+  E& error() & { assert(!*this); return get<1>(data_); }
+  const E& error() const& { assert(!*this); return get<1>(data_); }
+ private:
+  variant<monostate, E> data_;
+};
+}  // namespace std

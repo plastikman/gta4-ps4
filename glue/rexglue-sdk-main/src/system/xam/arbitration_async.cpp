@@ -8,6 +8,7 @@
 #include <rex/system/xam/arbitration_async.h>
 
 #include <algorithm>
+#include <system_error>
 #include <utility>
 
 namespace rex::system::xam {
@@ -23,7 +24,15 @@ bool ArbitrationCancellation::IsCancelled() const {
 
 bool ArbitrationCancellation::WaitUntil(std::chrono::steady_clock::time_point deadline) {
   std::unique_lock lock(mutex_);
-  return condition_.wait_until(lock, deadline, [this] { return IsCancelled(); });
+  try {
+    return condition_.wait_until(lock, deadline, [this] { return IsCancelled(); });
+  } catch (const std::system_error&) {
+#if REX_PLATFORM_PS4
+    return IsCancelled();
+#else
+    throw;
+#endif
+  }
 }
 
 ArbitrationAsyncManager::ArbitrationAsyncManager() : worker_([this] { WorkerMain(); }) {}

@@ -58,6 +58,13 @@ void UnregisterThread();
 // thread on `main_mask` when one is given.
 void KeepOtherThreadsOn(uint64_t mask, uintptr_t title_thread, uintptr_t main_thread = 0,
                         uint64_t main_mask = 0);
+#if REX_PLATFORM_PS4
+// The audio threads' own core (ps4_audio_core): mark the calling thread as one
+// of them; apply moves registered threads that are not on their CPUs yet.
+void MarkAudioThread();
+void ApplyPs4AudioCoreLayout();
+#endif
+void SampleThreadStacks(uintptr_t pthread_value, const char* label, int count, int interval_ms);
 void SampleAllThreads();
 // A sampling CPU profiler on the same signal: ProfileTick() signals every
 // registered thread once, each records where it was; ProfileReport() logs,
@@ -78,6 +85,10 @@ extern void (*crash_hook)(const char* what);
 extern std::atomic<uint64_t> crashed_at_ms;
 // The log file, for the crash report (written without the logger).
 void SetLogPath(const char* path);
+// [ps4 port] An extra sink for the stack-dump lines. The rex log rotates every
+// 5 MB, which on PS4 recycles a dump before it can be fetched; the PS4 app
+// points this at the append-only guest trace instead.
+void SetTraceSink(void (*sink)(const char* line));
 // The game asked to quit (to the dashboard): the app's answer (restart into
 // its own menu). Set: it doesn't return when it succeeds.
 extern void (*title_exit_hook)();

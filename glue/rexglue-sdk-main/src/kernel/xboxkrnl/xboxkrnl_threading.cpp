@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cstdio>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -22,6 +23,10 @@
 
 #if defined(__ANDROID__) || defined(__linux__)
 #include <pthread.h>
+#endif
+
+#if REX_PLATFORM_PS4
+#include <orbis/libkernel.h>
 #endif
 
 #include <rex/chrono/clock.h>
@@ -283,8 +288,9 @@ void KeSetCurrentStackPointers_entry(mapped_void stack_ptr, ppc_ptr_t<X_KTHREAD>
                                      mapped_void stack_limit) {
   auto current_thread = XThread::GetCurrentThread();
   auto context = current_thread->thread_state()->context();
+  const uint32_t pcr_guest_address = static_cast<uint32_t>(context->r13.u64);
   auto pcr =
-      REX_KERNEL_MEMORY()->TranslateVirtual<X_KPCR*>(static_cast<uint32_t>(context->r13.u64));
+      REX_KERNEL_MEMORY()->TranslateVirtual<X_KPCR*>(pcr_guest_address);
 
   UpdateGuestStackPointers(thread, pcr, context, stack_ptr.guest_address(),
                            stack_alloc_base.value(), stack_base.value(), stack_limit.value());
@@ -292,6 +298,9 @@ void KeSetCurrentStackPointers_entry(mapped_void stack_ptr, ppc_ptr_t<X_KTHREAD>
 
 u32 KeSetAffinityThread_entry(mapped_void thread_ptr, u32 affinity,
                               mapped_u32 previous_affinity_ptr) {
+  if (thread_ptr.guest_address() < 0x10000) {
+    return X_STATUS_INVALID_HANDLE;
+  }
   REXKRNL_IMPORT_TRACE("KeSetAffinityThread", "thread={:#x} affinity={:#x}",
                        thread_ptr.guest_address(), (uint32_t)affinity);
   // The Xbox 360, according to disassembly of KeSetAffinityThread, unlike
@@ -316,6 +325,9 @@ u32 KeSetAffinityThread_entry(mapped_void thread_ptr, u32 affinity,
 }
 
 u32 KeQueryBasePriorityThread_entry(mapped_void thread_ptr) {
+  if (thread_ptr.guest_address() < 0x10000) {
+    return 0;
+  }
   REXKRNL_IMPORT_TRACE("KeQueryBasePriorityThread", "thread={:#x}", thread_ptr.guest_address());
   int32_t priority = 0;
 
@@ -563,6 +575,11 @@ u32 KeSetEvent_entry(ppc_ptr_t<X_KEVENT> event_ptr, u32 increment, u32 wait) {
 }
 
 u32 KePulseEvent_entry(ppc_ptr_t<X_KEVENT> event_ptr, u32 increment, u32 wait) {
+  if (event_ptr.guest_address() < 0x10000) {
+    REXKRNL_WARN("KePulseEvent: rejecting invalid event address {:#x}",
+                 event_ptr.guest_address());
+    return 0;
+  }
   auto ev = XObject::GetNativeObject<XEvent>(REX_KERNEL_STATE(), event_ptr);
   if (!ev) {
     assert_always();
@@ -939,7 +956,6 @@ u32 KeWaitForSingleObject_entry(mapped_void object_ptr, u32 wait_reason, u32 pro
 u32 NtWaitForSingleObjectEx_entry(u32 object_handle, u32 wait_mode, u32 alertable,
                                   mapped_u64 timeout_ptr) {
   X_STATUS result = X_STATUS_SUCCESS;
-
   auto object = REX_KERNEL_OBJECTS()->LookupObject<XObject>(object_handle);
   if (object) {
     uint64_t timeout = timeout_ptr ? static_cast<uint64_t>(*timeout_ptr) : 0u;
@@ -1243,6 +1259,11 @@ void NtQueueApcThread_entry(u32 thread_handle, mapped_void apc_routine,
 void KeInitializeApc_entry(ppc_ptr_t<XAPC> apc, mapped_void thread_ptr, mapped_void kernel_routine,
                            mapped_void rundown_routine, mapped_void normal_routine,
                            u32 processor_mode, mapped_void normal_context) {
+  if (apc.guest_address() < 0x10000) {
+    REXKRNL_WARN("KeInitializeApc: rejecting invalid APC address {:#x}",
+                 apc.guest_address());
+    return;
+  }
   xeKeInitializeApc(apc.host_address(), thread_ptr.guest_address(), kernel_routine.guest_address(),
                     rundown_routine.guest_address(), normal_routine.guest_address(), processor_mode,
                     normal_context.guest_address());
@@ -1250,6 +1271,11 @@ void KeInitializeApc_entry(ppc_ptr_t<XAPC> apc, mapped_void thread_ptr, mapped_v
 
 u32 KeInsertQueueApc_entry(ppc_ptr_t<XAPC> apc, mapped_void arg1, mapped_void arg2,
                            u32 priority_increment) {
+  if (apc.guest_address() < 0x10000) {
+    REXKRNL_WARN("KeInsertQueueApc: rejecting invalid APC address {:#x}",
+                 apc.guest_address());
+    return 0;
+  }
   return xeKeInsertQueueApc(apc.host_address(), arg1.guest_address(), arg2.guest_address(),
                             priority_increment, current_ppc_context());
 }
@@ -1526,6 +1552,12 @@ REX_EXPORT_STUB(__imp__KeSetEventBoostPriority);
 REX_EXPORT_STUB(__imp__KiApcNormalRoutineNop_);
 
 u32 KeSuspendThread_entry(mapped_void kthread_ptr) {
+  if (kthread_ptr.guest_address() < 0x10000) {
+#if REX_PLATFORM_PS4
+    sceKernelDebugOutText(0, "[PS4 KeSuspendThread] low guest KTHREAD pointer\n");
+#endif
+    return 0;
+  }
   auto thread = XObject::GetNativeObject<XThread>(REX_KERNEL_STATE(), kthread_ptr);
   uint32_t old_suspend_count = 0;
 

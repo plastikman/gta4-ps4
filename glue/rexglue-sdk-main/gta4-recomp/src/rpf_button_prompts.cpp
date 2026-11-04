@@ -425,11 +425,11 @@ std::string SelectVariant() {
   SDL_free(gamepads);
 
   std::string variant = "xbox360";
-  if (lower_name.contains("steam deck")) {
+  if (lower_name.find("steam deck") != std::string::npos) {
     variant = "steam_deck";
-  } else if (lower_name.contains("steam controller")) {
+  } else if (lower_name.find("steam controller") != std::string::npos) {
     variant = "steam_controller";
-  } else if (lower_name.contains("series")) {
+  } else if (lower_name.find("series") != std::string::npos) {
     variant = "xbox_series_x";
   } else {
     switch (type) {

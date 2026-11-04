@@ -92,6 +92,11 @@ int OpenAndroidContentFileDescriptor(const std::string_view uri, const char*) {
 #endif  // REX_PLATFORM_ANDROID
 
 std::filesystem::path GetUserFolder() {
+#if REX_PLATFORM_PS4
+  // PS4 homebrew apps do not have a passwd entry or HOME environment variable.
+  // Keep writable application data under the console's shared /data directory.
+  return std::filesystem::path("/data");
+#endif
 #if REX_PLATFORM_PS5
   // [ps5 port] No HOME and no passwd database (getpwuid_r finds nothing):
   // user data lives in the app's own folder.

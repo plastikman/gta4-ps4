@@ -98,6 +98,12 @@ bool IsWritableExecutableMemoryPreferred();
 void* AllocFixed(void* base_address, size_t length, AllocationType allocation_type,
                  PageAccess access);
 
+#if REX_PLATFORM_PS4
+// Makes the next AllocFixed call map the direct-memory backing containing
+// source_address. Used by guest physical heaps to create coherent aliases.
+void* SetDirectMemoryAliasSource(void* source_address);
+#endif
+
 // Deallocates and/or releases the given block of memory.
 // When releasing memory length must be zero, as all pages in the region are
 // released.

@@ -8,7 +8,7 @@
 
 #if REX_PLATFORM_PS4
 
-#include "orbis_audio_driver.h"
+#include <rex/audio/orbis/orbis_audio_driver.h>
 
 #include <cstring>
 

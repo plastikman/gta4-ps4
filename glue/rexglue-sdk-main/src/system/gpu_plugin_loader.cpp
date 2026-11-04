@@ -56,14 +56,13 @@ std::vector<platform::DynamicLibrary>& LoadedPlugins() {
 
 }  // namespace
 
-#if REX_PLATFORM_PS5
-// [ps5 port] No shared libraries of our own on the PS5: the gta4-native
-// renderer is linked into the program and created directly.
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
+// Console builds link the gta4-native renderer into the program.
 extern "C" IGraphicsSystem* rex_gpu_create(uint32_t abi_version, const GpuCreateInfo* info);
 #endif
 
 std::unique_ptr<IGraphicsSystem> LoadGpuPlugin(std::string_view name, std::string_view backend) {
-#if REX_PLATFORM_PS5
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
   {
     std::string backend_str(backend);
     GpuCreateInfo info{};

@@ -15,13 +15,17 @@ add_library(rex::input ALIAS rexinput)
 if(PS5)
     # [ps5 port] DualSense through scePad
     target_sources(rexinput PRIVATE ps5/ps5_input_driver.cpp)
+elseif(PS4)
+    target_sources(rexinput PRIVATE ps4/ps4_input_driver.cpp)
 endif()
 
 target_include_directories(rexinput PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
-if(WIN32)
+if(PS4)
+    # Orbis scePad input; SDL has no PS4 backend.
+elseif(WIN32)
     target_sources(rexinput PRIVATE sdl/sdl_input_driver.cpp sdl/physical_device_inventory.cpp xinput/xinput_input_driver.cpp)
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Switch")
     target_sources(rexinput PRIVATE switch/switch_input_driver.cpp)

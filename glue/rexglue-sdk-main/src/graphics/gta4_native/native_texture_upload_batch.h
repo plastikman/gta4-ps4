@@ -26,6 +26,7 @@ class NativeTextureUploadBatch {
 
   bool full() const { return uploads_.size() == kCapacity; }
   bool empty() const { return uploads_.empty(); }
+  size_t size() const { return uploads_.size(); }
   void Add(Upload upload) {
     assert(!full() && upload.image && upload.buffer && !upload.copies.empty());
     uploads_.push_back(std::move(upload));

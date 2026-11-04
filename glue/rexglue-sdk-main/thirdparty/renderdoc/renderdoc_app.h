@@ -30,7 +30,7 @@
 
 #if defined(WIN32) || defined(_WIN32)
 	#define RENDERDOC_CC __cdecl
-#elif defined(__linux__) || defined(__PROSPERO__)  // [ps5 port]
+#elif defined(__linux__) || defined(__PROSPERO__) || defined(__ORBIS__)  // console ports
 	#define RENDERDOC_CC
 #else
 	#error "Unknown platform"

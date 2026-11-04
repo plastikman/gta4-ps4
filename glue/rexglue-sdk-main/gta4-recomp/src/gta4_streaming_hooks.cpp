@@ -45,6 +45,7 @@ REXCVAR_DEFINE_STRING(gta4_streaming_trace_path, "", "GTA IV/Diagnostics",
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 
 namespace gta4::streaming {
+static void FlushTraceLocked(size_t maximum_count);
 namespace {
 
 // Verified in generated gta4_recomp.4/.33 and the parser's data references.
@@ -52,6 +53,7 @@ constexpr uint32_t kManager = 0x82A9AA7C;
 constexpr uint32_t kEntriesGlobal = 0x83032744;
 constexpr size_t kTraceCapacity = 32768;
 constexpr uint64_t kTraceEventLimit = 65536;
+constexpr size_t kTraceFlushBatch = 64;
 
 uint64_t Now() noexcept {
   return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -149,6 +151,11 @@ void EventLocked(Event event) {
   if (event_count == events.size()) { ++dropped_events; return; }
   event.epoch = epoch.load(std::memory_order_relaxed);
   events[event_count++] = event;
+  // Loading and carousel phases can run without an active gameplay view, so
+  // Tick() may not flush the trace for a long time. Persist bounded batches
+  // from the streaming hooks themselves; this also preserves evidence if the
+  // PS4 close path hard-exits before FinishTrace() can run.
+  if (event_count >= kTraceFlushBatch) FlushTraceLocked(kTraceFlushBatch);
 }
 
 // Bind side data to the current guest table before publishing/consuming ranks.
@@ -364,11 +371,26 @@ void Initialize(uint8_t* base) {
   // the open file, rather than failing exclusive creation on its own old path.
   if (!trace.attempted) {
     trace.attempted = true;
-    const std::string path = REXCVAR_GET(gta4_streaming_trace_path);
+    std::string path = REXCVAR_GET(gta4_streaming_trace_path);
+    bool using_default_probe_path = false;
+#if REX_PLATFORM_PS4
+    // The carousel run has not entered the world, so retain the bounded
+    // streaming lifecycle trace on PS4 even when the optional CVar is unset.
+    // Overwrite this fixed probe path on each launch so repeat installs work.
+    if (path.empty()) {
+      path = "/data/LibertyRecomp/logs/gta4-streaming-HC.csv";
+      using_default_probe_path = true;
+    }
+#endif
     if (!path.empty()) {
-      trace.file = std::fopen(path.c_str(), "wx");
+      trace.file = std::fopen(path.c_str(), using_default_probe_path ? "w" : "wx");
       if (trace.file) {
         std::fputs("time_ns,epoch,generation,entry,entity,model,kind,before,after,bytes,value\n", trace.file);
+        if (std::fflush(trace.file) != 0) {
+          REXLOG_WARN("gta4-streaming: trace header flush failed; recording disabled");
+          std::fclose(trace.file);
+          trace.file = nullptr;
+        }
       } else {
         REXLOG_WARN("gta4-streaming: could not create trace {}; recording disabled", path);
       }

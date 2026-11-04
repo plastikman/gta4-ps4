@@ -8,6 +8,7 @@
 #include <rex/system/xam/live_compatibility.h>
 
 #include <algorithm>
+#include <cerrno>
 #include <cstdlib>
 #include <array>
 #include <cmath>
@@ -25,6 +26,10 @@
 #include <rex/platform.h>
 #include <rex/system/xam/social_cache.h>
 #include "live_compatibility_internal.h"
+
+#if REX_PLATFORM_PS4
+#include <orbis/libkernel.h>
+#endif
 
 #if REX_PLATFORM_WIN32
 #include <winsock2.h>
@@ -1515,7 +1520,15 @@ std::vector<SessionRecord> LanSessionDirectory::Search(uint32_t title_id, uint32
     return {};
   }
   std::unique_lock lock(mutex_);
-  search_condition_.wait_for(lock, kSearchWindow);
+  try {
+    search_condition_.wait_for(lock, kSearchWindow);
+  } catch (const std::system_error&) {
+#if REX_PLATFORM_PS4
+    // A timed wait that throws is the timeout result on Orbis libc++.
+#else
+    throw;
+#endif
+  }
   return SearchRecords(discovered_sessions_, title_id, media_id, title_version,
                        protocol_version, procedure_index, contexts, properties,
                        maximum_results, &hosted_sessions_);
@@ -1600,12 +1613,21 @@ bool LanSessionDirectory::Join(uint64_t session_id, const SessionMember& member)
   }
 
   std::unique_lock lock(mutex_);
-  return search_condition_.wait_for(lock, kMutationWindow, [this, session_id, &member] {
+  const auto joined = [this, session_id, &member] {
     const auto discovered = discovered_sessions_.find(session_id);
     return discovered != discovered_sessions_.end() &&
            std::ranges::find(discovered->second.members, member.xuid, &SessionMember::xuid) !=
                discovered->second.members.end();
-  });
+  };
+  try {
+    return search_condition_.wait_for(lock, kMutationWindow, joined);
+  } catch (const std::system_error&) {
+#if REX_PLATFORM_PS4
+    return joined();
+#else
+    throw;
+#endif
+  }
 }
 
 bool LanSessionDirectory::Leave(uint64_t session_id, uint64_t xuid) {
@@ -1631,12 +1653,21 @@ bool LanSessionDirectory::Leave(uint64_t session_id, uint64_t xuid) {
   }
 
   std::unique_lock lock(mutex_);
-  return search_condition_.wait_for(lock, kMutationWindow, [this, session_id, xuid] {
+  const auto left = [this, session_id, xuid] {
     const auto discovered = discovered_sessions_.find(session_id);
     return discovered == discovered_sessions_.end() ||
            std::ranges::find(discovered->second.members, xuid, &SessionMember::xuid) ==
                discovered->second.members.end();
-  });
+  };
+  try {
+    return search_condition_.wait_for(lock, kMutationWindow, left);
+  } catch (const std::system_error&) {
+#if REX_PLATFORM_PS4
+    return left();
+#else
+    throw;
+#endif
+  }
 }
 
 std::optional<SessionRecord> LanSessionDirectory::Migrate(
@@ -2175,8 +2206,25 @@ void LiveCompatibilityRuntime::Shutdown() {
 void LiveCompatibilityRuntime::HeartbeatWorkerMain() {
   std::unique_lock lock(heartbeat_mutex_);
   while (!heartbeat_stopping_) {
-    if (heartbeat_condition_.wait_for(lock, detail::kCommunityHeartbeatInterval,
-                                      [&] { return heartbeat_stopping_; })) {
+    bool stopping = false;
+    try {
+      stopping = heartbeat_condition_.wait_for(
+          lock, detail::kCommunityHeartbeatInterval,
+          [&] { return heartbeat_stopping_; });
+    } catch (const std::system_error& error) {
+#if REX_PLATFORM_PS4
+      // Orbis libc++ reports ordinary condition-variable timeouts by throwing
+      // system_error. Its error value/category does not match host ETIMEDOUT.
+      char trace[192];
+      std::snprintf(trace, sizeof(trace),
+                    "[PS4 heartbeat wait catch] value=%d category=%s message=%s\n",
+                    error.code().value(), error.code().category().name(), error.what());
+      sceKernelDebugOutText(0, trace);
+#else
+      throw;
+#endif
+    }
+    if (stopping) {
       break;
     }
     lock.unlock();

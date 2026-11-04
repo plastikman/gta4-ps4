@@ -8,8 +8,8 @@
 
 #if REX_PLATFORM_PS4
 
-#include "orbis_audio_system.h"
-#include "orbis_audio_driver.h"
+#include <rex/audio/orbis/orbis_audio_system.h>
+#include <rex/audio/ps5/ps5_audio_driver.h>
 
 #include <rex/audio/flags.h>
 
@@ -33,7 +33,11 @@ X_STATUS OrbisAudioSystem::CreateDriver([[maybe_unused]] size_t index,
                                         rex::thread::Semaphore* semaphore,
                                         AudioDriver** out_driver) {
   assert_not_null(out_driver);
-  auto driver = new OrbisAudioDriver(memory_, semaphore);
+  // The PS5 port's driver: the game queues frames and a thread of the driver's
+  // own feeds sceAudioOut. OrbisAudioDriver output each frame on the game's
+  // audio thread and blocked there, so nothing was buffered: any hold-up of
+  // that thread over ~5 ms ran the speakers dry (slow, robotic sound).
+  auto driver = new ps5::Ps5AudioDriver(memory_, semaphore);
   if (!driver->Initialize()) {
     driver->Shutdown();
     delete driver;
@@ -46,10 +50,10 @@ X_STATUS OrbisAudioSystem::CreateDriver([[maybe_unused]] size_t index,
 
 void OrbisAudioSystem::DestroyDriver(AudioDriver* driver) {
   assert_not_null(driver);
-  auto orbis_driver = dynamic_cast<OrbisAudioDriver*>(driver);
-  assert_not_null(orbis_driver);
-  orbis_driver->Shutdown();
-  delete orbis_driver;
+  auto ps5_driver = dynamic_cast<ps5::Ps5AudioDriver*>(driver);
+  assert_not_null(ps5_driver);
+  ps5_driver->Shutdown();
+  delete ps5_driver;
 }
 
 }  // namespace rex::audio::orbis

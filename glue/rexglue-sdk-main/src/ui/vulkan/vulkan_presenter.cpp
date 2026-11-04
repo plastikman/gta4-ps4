@@ -14,6 +14,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cmath>
+#include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <functional>
@@ -61,6 +62,12 @@
 #if REX_PLATFORM_PS5
 #include <rex/ui/surface_ps5.h>
 extern "C" int sceSystemServiceHideSplashScreen();
+#endif
+#if REX_PLATFORM_PS4
+#include <rex/ui/surface_ps4.h>
+#include <orbis/libkernel.h>
+extern "C" int32_t sceGnmSubmitDone(void);
+extern "C" int32_t sceGnmAreSubmitsAllowed(void);
 #endif
 
 #if REX_PLATFORM_PS5
@@ -191,9 +198,15 @@ REXCVAR_DEFINE_BOOL(vulkan_presenter_probe_guest_output_pixels, false, "UI/Vulka
 REXCVAR_DEFINE_UINT32(vulkan_presenter_probe_guest_output_interval, 2048, "UI/Vulkan",
                       "Successful-paint interval for the opt-in guest-output probe (minimum 128)");
 
+#if REX_PLATFORM_PS4
+REXCVAR_DEFINE_BOOL(
+    vulkan_presenter_probe_swapchain_pixels, true, "UI/Vulkan",
+    "Asynchronously sample swapchain pixels immediately before presentation");
+#else
 REXCVAR_DEFINE_BOOL(
     vulkan_presenter_probe_swapchain_pixels, false, "UI/Vulkan",
     "Asynchronously sample swapchain pixels immediately before presentation");
+#endif
 
 static constexpr bool kVulkanHDRDefault = false;
 REXCVAR_DEFINE_BOOL(vulkan_hdr, kVulkanHDRDefault, "UI/Vulkan",
@@ -470,6 +483,11 @@ Surface::TypeFlags VulkanPresenter::GetSurfaceTypesSupportedByInstance(
 #if REX_PLATFORM_PS5
   if (instance_extensions.ext_KHR_display) {
     type_flags |= Surface::kTypeFlag_Ps5Display;
+  }
+#endif
+#if REX_PLATFORM_PS4
+  if (instance_extensions.ext_EXT_headless_surface) {
+    type_flags |= Surface::kTypeFlag_Ps4Headless;
   }
 #endif
   return type_flags;
@@ -936,6 +954,14 @@ VulkanPresenter::ConnectOrReconnectPaintingToSurfaceFromUIThread(Surface& new_su
         vulkan_surface_create_result =
             CreatePs5DisplaySurface(ifn, instance, vulkan_device_->physical_device(), ps5_surface,
                                     paint_context_.vulkan_surface);
+      } break;
+#endif
+#if REX_PLATFORM_PS4
+      case Surface::kTypeIndex_Ps4Headless: {
+        const VkHeadlessSurfaceCreateInfoEXT surface_create_info = {
+            VK_STRUCTURE_TYPE_HEADLESS_SURFACE_CREATE_INFO_EXT, nullptr, 0};
+        vulkan_surface_create_result = ifn.vkCreateHeadlessSurfaceEXT(
+            instance, &surface_create_info, nullptr, &paint_context_.vulkan_surface);
       } break;
 #endif
       default:
@@ -1889,6 +1915,9 @@ void VulkanPresenter::PollPresentationTiming() {
 }
 
 Presenter::PaintResult VulkanPresenter::PaintAndPresentImpl(bool execute_ui_drawers) {
+#if REX_PLATFORM_PS4
+  const bool ps4_ui_drawers_requested = execute_ui_drawers;
+#endif
   const uint64_t paint_timing_begin = rex::chrono::Clock::QueryHostTickCount();
   if (paint_context_.present_options != ReadPresentModeOptions()) {
     REXLOG_INFO("VulkanPresenter: VSync policy changed; recreating swapchain on the UI thread");
@@ -2074,6 +2103,22 @@ Presenter::PaintResult VulkanPresenter::PaintAndPresentImpl(bool execute_ui_draw
         reinterpret_cast<const char*>(completed_probe.mapping),
         size_t(sampled_byte_count)));
     const GuestOutputProvenance& provenance = completed_probe.provenance;
+#if REX_PLATFORM_PS4
+    char probe_result_line[320];
+    const int probe_result_length = std::snprintf(
+        probe_result_line, sizeof(probe_result_line),
+        "[PS4 sparse pixel result] paint=%llu frame=%llu attempt=%llu image=%u "
+        "format=%u guest=%d black=%d nonzero=%u/256 luma=%.6f/%.6f/%.6f "
+        "alpha=%.4f..%.4f checksum=%016llX\n",
+        static_cast<unsigned long long>(completed_probe.paint_submission),
+        static_cast<unsigned long long>(provenance.submitted_frame),
+        static_cast<unsigned long long>(completed_probe.paint_attempt),
+        completed_probe.swapchain_image, uint32_t(completed_probe.format),
+        int(completed_probe.guest_pass), int(completed_probe.full_black_fallback),
+        rgb_nonzero_samples, luminance_min, luminance_mean, luminance_max,
+        alpha_min, alpha_max, static_cast<unsigned long long>(checksum));
+    if (probe_result_length > 0) sceKernelDebugOutText(0, probe_result_line);
+#endif
     REXLOG_INFO(
         "gta4-tv-swapchain-content: session={} present={} frame={} attempt={} "
         "paint-submission={} swapchain-epoch={} swapchain-image={} format={} "
@@ -2299,6 +2344,36 @@ Presenter::PaintResult VulkanPresenter::PaintAndPresentImpl(bool execute_ui_draw
                  diagnostic_tv_provenance_.tv_session_id) {
     diagnostic_tv_paint_carry_remaining_ = 0;
   }
+
+#if REX_PLATFORM_PS4
+  // Sample the actual swapchain output at a low rate during ordinary gameplay
+  // too. TV provenance tracing is not active during the startup/loading path,
+  // so without this the existing swapchain probe never observes the black
+  // screen that follows the startup logos. The probe reads only its 16x16
+  // pixel grid and reuses the per-submission readback buffer.
+  constexpr uint64_t kPs4SwapchainProbeInterval = 300;
+  const bool ps4_swapchain_probe_sample =
+      guest_output_image &&
+      current_paint_submission_index % kPs4SwapchainProbeInterval == 0;
+  if (ps4_swapchain_probe_sample) {
+    log_tv_paint = true;
+    char probe_line[256];
+    const int probe_length = std::snprintf(
+        probe_line, sizeof(probe_line),
+        "[PS4 sparse pixel probe] paint=%llu frame=%llu mailbox=%u version=%llu "
+        "image=%016llX view=%016llX size=%ux%u\n",
+        static_cast<unsigned long long>(current_paint_submission_index),
+        static_cast<unsigned long long>(
+            guest_output_properties.provenance.submitted_frame),
+        guest_output_mailbox_index,
+        static_cast<unsigned long long>(frame_mailbox_version),
+        static_cast<unsigned long long>(uintptr_t(guest_output_image->image())),
+        static_cast<unsigned long long>(uintptr_t(guest_output_image->view())),
+        guest_output_properties.frontbuffer_width,
+        guest_output_properties.frontbuffer_height);
+    if (probe_length > 0) sceKernelDebugOutText(0, probe_line);
+  }
+#endif
 
   if (guest_output_image) {
 #if defined(REX_HAS_FIDELITYFX_FSR1)
@@ -2941,8 +3016,29 @@ Presenter::PaintResult VulkanPresenter::PaintAndPresentImpl(bool execute_ui_draw
       gpu_flight::Record("present.submit-begin", uint64_t(uintptr_t(draw_command_buffer)),
                          current_paint_submission_index, tv_trace_provenance.submitted_frame,
                          swapchain_image_index, uint64_t(uintptr_t(fence_acqusition.fence())));
+#if REX_PLATFORM_PS4
+      const uint32_t ps4_recorded_command_count = submit_info.commandBufferCount;
+      submit_result = dfn.vkQueueSubmit(queue_acquisition.queue(), 1, &submit_info,
+                                        fence_acqusition.fence());
+      static uint32_t ps4_queue_submit_count = 0;
+      ++ps4_queue_submit_count;
+      if (ps4_queue_submit_count <= 8 || (ps4_queue_submit_count % 100) == 0 ||
+          submit_result != VK_SUCCESS) {
+        char line[224];
+        const int length = std::snprintf(
+            line, sizeof(line),
+            "[PS4 Vulkan submit] count=%u result=%d recorded=%u submitted=%u ui-requested=%d ui=%d guest=%d black=%d image=%u paint=%llu\n",
+            ps4_queue_submit_count, int32_t(submit_result), ps4_recorded_command_count,
+            submit_info.commandBufferCount, int(ps4_ui_drawers_requested),
+            int(execute_ui_drawers), int(guest_output_pass_recorded),
+            int(full_black_fallback_recorded), swapchain_image_index,
+            static_cast<unsigned long long>(current_paint_submission_index));
+        if (length > 0) sceKernelDebugOutText(0, line);
+      }
+#else
       submit_result =
           dfn.vkQueueSubmit(queue_acquisition.queue(), 1, &submit_info, fence_acqusition.fence());
+#endif
       if (submit_result == VK_SUCCESS) image_access.Commit();
       gpu_flight::Record("present.submit-end", uint64_t(uintptr_t(draw_command_buffer)),
                          current_paint_submission_index, tv_trace_provenance.submitted_frame,
@@ -3074,6 +3170,33 @@ Presenter::PaintResult VulkanPresenter::PaintAndPresentImpl(bool execute_ui_draw
         vulkan_device_->AcquireQueue(paint_context_.present_queue_family, 0);
     present_result = dfn.vkQueuePresentKHR(queue_acquisition.queue(), &present_info);
   }
+#if REX_PLATFORM_PS4
+  static uint32_t ps4_present_submit_done_count = 0;
+  static int32_t ps4_present_previous_allowed = -1;
+  const int32_t ps4_present_allowed = sceGnmAreSubmitsAllowed();
+  int32_t ps4_present_submit_done_result = INT32_MIN;
+  int64_t ps4_present_submit_done_us = 0;
+  if (ps4_present_allowed) {
+    const auto begin = std::chrono::steady_clock::now();
+    ps4_present_submit_done_result = sceGnmSubmitDone();
+    ps4_present_submit_done_us = std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now() - begin).count();
+  }
+  ++ps4_present_submit_done_count;
+  if (ps4_present_submit_done_count <= 3 ||
+      ps4_present_allowed != ps4_present_previous_allowed ||
+      ps4_present_submit_done_result != 0 || ps4_present_submit_done_us > 100000) {
+    char line[192];
+    const int length = std::snprintf(
+        line, sizeof(line),
+        "[PS4 GNM present] count=%u allowed=%d result=%d skipped=%d us=%lld\n",
+        ps4_present_submit_done_count, ps4_present_allowed,
+        ps4_present_submit_done_result, !ps4_present_allowed,
+        static_cast<long long>(ps4_present_submit_done_us));
+    if (length > 0) sceKernelDebugOutText(0, line);
+  }
+  ps4_present_previous_allowed = ps4_present_allowed;
+#endif
   if (rex::diagnostics::IsEnabled(rex::diagnostics::Category::kPresenter)) {
     REXLOG_INFO("FramePacer point=submit epoch={} id={} serial={} frame={} fps={} "
                 "slot-host-ns={} queue-host-ns={} desired-ns={} result={} fifo={}",

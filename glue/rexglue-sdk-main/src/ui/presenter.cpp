@@ -20,6 +20,10 @@
 #include <rex/diagnostics/policy.h>
 #include <rex/logging.h>
 #include <rex/platform.h>
+#if REX_PLATFORM_PS4
+#include <cstdio>
+#include <orbis/libkernel.h>
+#endif
 #if REX_PLATFORM_PS5
 #include <rex/frame_stats.h>
 #endif
@@ -92,6 +96,20 @@ REXCVAR_DEFINE_BOOL(present_allow_overscan_cutoff, false, "UI/Presenter",
 
 namespace {
 using GuestOutputPaintConfig = rex::ui::Presenter::GuestOutputPaintConfig;
+
+#if REX_PLATFORM_PS4
+void Ps4GfxTrace(unsigned site, const char* stage, uint64_t a = 0, uint64_t b = 0,
+                 uint64_t c = 0) {
+  static std::atomic<uint32_t> counts[8]{};
+  const uint32_t count = counts[site].fetch_add(1, std::memory_order_relaxed) + 1;
+  if (count > 8 && count % 120 != 0) return;
+  char line[256];
+  std::snprintf(line, sizeof(line), "[PS4 gfx] %s n=%u a=%llx b=%llx c=%llx\n", stage,
+                count, static_cast<unsigned long long>(a),
+                static_cast<unsigned long long>(b), static_cast<unsigned long long>(c));
+  sceKernelDebugOutText(0, line);
+}
+#endif
 
 bool IsPresenterFlowLogMilestone(uint64_t count) {
   return count <= 8 || count == 16 || count == 32 || count == 64 || count == 128 ||
@@ -401,6 +419,10 @@ void Presenter::SetWindowSurfaceFromUIThread(Window* new_window, Surface* new_su
   }
 
   if (new_surface) {
+#if REX_PLATFORM_PS4
+    Ps4GfxTrace(0, "surface-attach", reinterpret_cast<uintptr_t>(new_window),
+                reinterpret_cast<uintptr_t>(new_surface));
+#endif
     assert_true(paint_mode_ == PaintMode::kNone);
     surface_ = new_surface;
     UpdateSurfaceMonitorFromUIThread(true);
@@ -499,6 +521,10 @@ void Presenter::PaintFromUIThreadImpl(bool force_paint, bool display_opportunity
   if (ui_thread_paint_requested_.exchange(false, std::memory_order_relaxed)) {
     do_paint = true;
   }
+#if REX_PLATFORM_PS4
+  Ps4GfxTrace(3, "paint-entry", force_paint, do_paint,
+              static_cast<uint32_t>(surface_paint_connection_state_));
+#endif
   ui_paint_pending_ |= do_paint;
   PaintResult paint_result = PaintResult::kNotPresented;
   bool request_repaint_at_tick = false;
@@ -614,6 +640,10 @@ bool Presenter::RefreshGuestOutput(
     uint32_t display_aspect_ratio_y,
     std::function<bool(GuestOutputRefreshContext& context)> refresher,
     GuestOutputProvenance provenance) {
+#if REX_PLATFORM_PS4
+  Ps4GfxTrace(6, "guest-refresh-enter", provenance.submitted_frame,
+              provenance.title_present_id, provenance.guest_caller);
+#endif
   GuestOutputProperties& writable_properties =
       guest_output_properties_[guest_output_mailbox_writable_];
   writable_properties.frontbuffer_width = frontbuffer_width;
@@ -653,6 +683,10 @@ bool Presenter::RefreshGuestOutput(
             frontbuffer_height, provenance.selected_texture,
             provenance.selected_generation, provenance.native_command_count);
       }
+#if REX_PLATFORM_PS4
+      Ps4GfxTrace(7, "guest-refresh-failed", provenance.submitted_frame,
+                  provenance.title_present_id, frontbuffer_width);
+#endif
       return false;
     }
     guest_output_active_last_refresh_ = true;
@@ -709,6 +743,10 @@ bool Presenter::RefreshGuestOutput(
     // currently not accessible to the host presentation.
     guest_output_mailbox_writable_ = (3 - last_acquired - guest_output_mailbox_writable_) % 3;
   }
+#if REX_PLATFORM_PS4
+  Ps4GfxTrace(7, "guest-refresh-published", provenance.submitted_frame,
+              publication_serial, published_mailbox_index);
+#endif
 
   if (provenance.diagnostic_trace) {
     REXLOG_INFO(
@@ -1677,6 +1715,10 @@ void Presenter::UpdateSurfacePaintConnectionFromUIThread(bool* repaint_needed_ou
           *surface_, surface_width, surface_height,
           surface_paint_connection_state_ == SurfacePaintConnectionState::kConnectedPaintable,
           is_vsync_implicit);
+#if REX_PLATFORM_PS4
+      Ps4GfxTrace(1, "surface-connect", static_cast<uint32_t>(connect_result), surface_width,
+                  surface_height);
+#endif
       switch (connect_result) {
         case SurfacePaintConnectResult::kSuccess:
           if (repaint_needed_out) {
@@ -1721,6 +1763,10 @@ bool Presenter::RequestPaintOrConnectionRecoveryViaWindow(bool force_ui_thread_p
   // theoretically. For safety, check whether the window exists unconditionally.
   assert_not_null(window_);
   assert_not_null(surface_);
+#if REX_PLATFORM_PS4
+  Ps4GfxTrace(2, "paint-request", force_ui_thread_paint_tick, defer_until_ui_tick,
+              publication_only);
+#endif
   const bool already_requested = publication_only && UsesExplicitPaintDemand()
       ? false : ui_thread_paint_requested_.exchange(true, std::memory_order_relaxed);
   if (already_requested && defer_until_ui_tick) return false;
@@ -1810,6 +1856,10 @@ bool Presenter::InSurfaceOnMonitorFromUIThread() const {
 Presenter::PaintResult Presenter::PaintAndPresent(bool execute_ui_drawers) {
   assert_false(execute_ui_drawers && !is_in_ui_thread_paint_);
   assert_true(surface_paint_connection_state_ == SurfacePaintConnectionState::kConnectedPaintable);
+#if REX_PLATFORM_PS4
+  Ps4GfxTrace(5, "paint-present-enter", execute_ui_drawers,
+              static_cast<uint32_t>(surface_paint_connection_state_));
+#endif
   SurfacePaintConnectionState connection_state_before = surface_paint_connection_state_;
   const uint32_t fps = host_frame_rate_limit_.load(std::memory_order_relaxed);
   frame_pacer_.Configure(fps, FramePacerNowNs());
@@ -1827,6 +1877,10 @@ Presenter::PaintResult Presenter::PaintAndPresent(bool execute_ui_drawers) {
   paint_retry_delay_ns_.store(1'000'000, std::memory_order_relaxed);
   const uint64_t paint_begin_ns = FramePacerNowNs();
   PaintResult result = PaintAndPresentImpl(execute_ui_drawers);
+#if REX_PLATFORM_PS4
+  Ps4GfxTrace(4, "paint-present-result", static_cast<uint32_t>(result),
+              static_cast<uint32_t>(surface_paint_connection_state_));
+#endif
   if (result == PaintResult::kPresented || result == PaintResult::kPresentedSuboptimal) {
     const uint64_t queue_end_ns = FramePacerNowNs();
     frame_pacer_.Queued(queue_end_ns);

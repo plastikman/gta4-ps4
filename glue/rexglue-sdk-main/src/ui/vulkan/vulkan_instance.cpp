@@ -10,6 +10,7 @@
  */
 
 #include <atomic>
+#include <cstdio>
 #include <map>
 #include <cstdlib>
 #include <cstring>
@@ -26,6 +27,9 @@
 #include <rex/platform.h>
 #include <rex/ui/vulkan/instance.h>
 #include <rex/ui/vulkan/presenter.h>
+#if REX_PLATFORM_PS4
+#include <orbis/libkernel.h>
+#endif
 
 #include "graphics/gta4_native/temporal/dlss_bootstrap.h"
 
@@ -44,7 +48,7 @@ namespace rex {
 namespace ui {
 namespace vulkan {
 
-#if REX_PLATFORM_PS5
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
 }  // namespace vulkan
 }  // namespace ui
 }  // namespace rex
@@ -53,10 +57,10 @@ extern "C" VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL vk_icdGetInstanceProcAddr(
 namespace rex {
 namespace ui {
 namespace vulkan {
-// [ps5 port] RADV's ICD entry point, with the core-1.1 names it only exports
-// under their KHR aliases mapped (as plume-ps5 does).
-static VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL Ps5GetInstanceProcAddr(VkInstance instance,
-                                                                       const char* name) {
+// RADV's ICD entry point, with core-1.1 names exported only under their KHR
+// aliases mapped (as plume-ps5 does).
+static VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL ConsoleGetInstanceProcAddr(VkInstance instance,
+                                                                           const char* name) {
   if (!vk_icdGetInstanceProcAddr || !name) return nullptr;
   if (PFN_vkVoidFunction fn = vk_icdGetInstanceProcAddr(instance, name)) return fn;
   if (std::strcmp(name, "vkGetPhysicalDeviceProperties2") == 0)
@@ -65,18 +69,21 @@ static VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL Ps5GetInstanceProcAddr(VkInstanc
     return vk_icdGetInstanceProcAddr(instance, "vkGetPhysicalDeviceFeatures2KHR");
   return nullptr;
 }
-// The app's instance, for the vk* functions below.
+#if REX_PLATFORM_PS5
+// The PS5 FidelityFX entry points below call Vulkan globally.
 static std::atomic<VkInstance> g_ps5_vulkan_instance{VK_NULL_HANDLE};
+#endif
 }  // namespace vulkan
 }  // namespace ui
 }  // namespace rex
-// [ps5 port] AMD's FidelityFX SDK (FSR 3) calls a few Vulkan functions by name
+#if REX_PLATFORM_PS5
+// AMD's FidelityFX SDK (FSR 3) calls a few Vulkan functions by name
 // rather than through the function pointers it is given. With no loader on the
 // PS5, these forward to RADV through the app's instance (or the device).
 namespace {
 template <typename Fn>
 Fn Ps5InstanceFunction(const char* name) {
-  return reinterpret_cast<Fn>(rex::ui::vulkan::Ps5GetInstanceProcAddr(
+  return reinterpret_cast<Fn>(rex::ui::vulkan::ConsoleGetInstanceProcAddr(
       rex::ui::vulkan::g_ps5_vulkan_instance.load(std::memory_order_acquire), name));
 }
 }  // namespace
@@ -120,6 +127,10 @@ VKAPI_ATTR VkResult VKAPI_CALL vkCreateBuffer(VkDevice device, const VkBufferCre
   return fn(device, info, allocator, buffer);
 }
 }  // extern "C"
+#endif
+#endif
+
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
 namespace rex {
 namespace ui {
 namespace vulkan {
@@ -139,10 +150,10 @@ std::unique_ptr<VulkanInstance> VulkanInstance::Create(const bool with_surface,
 
   bool functions_loaded = true;
   bool loader_loaded = false;
-#if REX_PLATFORM_PS5
-  // [ps5 port] No loader library: PS5_Mesa's RADV is linked into the app and
-  // its ICD entry point stands in for vkGetInstanceProcAddr (as in plume-ps5).
-  ifn.vkGetInstanceProcAddr = Ps5GetInstanceProcAddr;
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
+  // Orbis homebrew has no system Vulkan loader. RADV is linked into the app;
+  // its ICD entry point stands in for vkGetInstanceProcAddr.
+  ifn.vkGetInstanceProcAddr = ConsoleGetInstanceProcAddr;
   functions_loaded &= vk_icdGetInstanceProcAddr != nullptr;
   (void)loader_loaded;
 #else
@@ -275,6 +286,11 @@ std::unique_ptr<VulkanInstance> VulkanInstance::Create(const bool with_surface,
 #if REX_PLATFORM_PS5
     // #3. [ps5 port]
     requested_extensions.emplace("VK_KHR_display", &vulkan_instance->extensions_.ext_KHR_display);
+#endif
+#if REX_PLATFORM_PS4
+    // Orbis RADV maps headless WSI presents to sceVideoOutSubmitFlip.
+    requested_extensions.emplace("VK_EXT_headless_surface",
+                                 &vulkan_instance->extensions_.ext_EXT_headless_surface);
 #endif
   }
 
@@ -552,7 +568,7 @@ std::unique_ptr<VulkanInstance> VulkanInstance::Create(const bool with_surface,
 
   // Load instance functions.
 
-#if REX_PLATFORM_PS5
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
   ifn.vkDestroyInstance = PFN_vkDestroyInstance(
       ifn.vkGetInstanceProcAddr(vulkan_instance->instance_, "vkDestroyInstance"));
   functions_loaded &= ifn.vkDestroyInstance != nullptr;
@@ -608,6 +624,11 @@ std::unique_ptr<VulkanInstance> VulkanInstance::Create(const bool with_surface,
 #if REX_PLATFORM_PS5
   if (vulkan_instance->extensions_.ext_KHR_display) {
 #include <rex/ui/vulkan/functions/instance_khr_display.inc>
+  }
+#endif
+#if REX_PLATFORM_PS4
+  if (vulkan_instance->extensions_.ext_EXT_headless_surface) {
+#include <rex/ui/vulkan/functions/instance_ext_headless_surface.inc>
   }
 #endif
   if (vulkan_instance->extensions_.ext_KHR_surface) {
@@ -717,18 +738,40 @@ VulkanInstance::~VulkanInstance() {
 void VulkanInstance::EnumeratePhysicalDevices(
     std::vector<VkPhysicalDevice>& physical_devices_out) const {
   physical_devices_out.clear();
-  while (true) {
+  constexpr uint32_t kMaxEnumerationAttempts = 8;
+  for (uint32_t attempt = 1; attempt <= kMaxEnumerationAttempts; ++attempt) {
+#if REX_PLATFORM_PS4
+    char trace[160];
+    std::snprintf(trace, sizeof(trace), "[PS4 Vulkan enumerate] count-begin attempt=%u\n", attempt);
+    sceKernelDebugOutText(0, trace);
+#endif
     uint32_t physical_device_count = 0;
     const VkResult get_physical_device_count_result =
         functions_.vkEnumeratePhysicalDevices(instance_, &physical_device_count, nullptr);
+#if REX_PLATFORM_PS4
+    std::snprintf(trace, sizeof(trace),
+                  "[PS4 Vulkan enumerate] count-end attempt=%u result=%d count=%u\n", attempt,
+                  int(get_physical_device_count_result), physical_device_count);
+    sceKernelDebugOutText(0, trace);
+#endif
     if ((get_physical_device_count_result != VK_SUCCESS &&
          get_physical_device_count_result != VK_INCOMPLETE) ||
         !physical_device_count) {
       return;
     }
     physical_devices_out.resize(physical_device_count);
+#if REX_PLATFORM_PS4
+    std::snprintf(trace, sizeof(trace), "[PS4 Vulkan enumerate] devices-begin attempt=%u\n", attempt);
+    sceKernelDebugOutText(0, trace);
+#endif
     const VkResult get_physical_devices_result = functions_.vkEnumeratePhysicalDevices(
         instance_, &physical_device_count, physical_devices_out.data());
+#if REX_PLATFORM_PS4
+    std::snprintf(trace, sizeof(trace),
+                  "[PS4 Vulkan enumerate] devices-end attempt=%u result=%d count=%u\n", attempt,
+                  int(get_physical_devices_result), physical_device_count);
+    sceKernelDebugOutText(0, trace);
+#endif
     if (get_physical_devices_result == VK_INCOMPLETE) {
       continue;
     }
@@ -736,6 +779,12 @@ void VulkanInstance::EnumeratePhysicalDevices(
                                                                           : 0);
     return;
   }
+#if REX_PLATFORM_PS4
+  sceKernelDebugOutText(0, "[PS4 Vulkan enumerate] retry-limit-exceeded\n");
+#endif
+  REXLOG_ERROR("VulkanInstance: physical device enumeration stayed incomplete after {} attempts",
+               kMaxEnumerationAttempts);
+  physical_devices_out.clear();
 }
 
 VkBool32 VulkanInstance::DebugUtilsMessengerCallback(

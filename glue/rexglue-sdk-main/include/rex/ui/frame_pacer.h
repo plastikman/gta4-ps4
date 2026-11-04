@@ -1,11 +1,15 @@
 #pragma once
 
 #include <algorithm>
+#include <cerrno>
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
 #include <limits>
 #include <mutex>
+#include <system_error>
+
+#include <rex/platform.h>
 
 namespace rex::ui {
 
@@ -177,9 +181,20 @@ class FramePublicationGate {
     const uint64_t epoch = epoch_;
     // A minimized/occluded window or missing callback must not hang the title.
     // This is a watchdog, never a frame-rate target.
-    return condition_.wait_for(lock, std::chrono::milliseconds(250), [&] {
+    auto ready = [&] {
       return stopped_ || !available_ || !limited_ || epoch_ != epoch || admitted_ >= serial;
-    });
+    };
+#if REX_PLATFORM_PS4
+    try {
+      return condition_.wait_for(lock, std::chrono::milliseconds(250), ready);
+    } catch (const std::system_error&) {
+      // Orbis libc++ may throw for an ordinary timed wait. Recheck the
+      // predicate and let the next frame attempt continue.
+      return ready();
+    }
+#else
+    return condition_.wait_for(lock, std::chrono::milliseconds(250), ready);
+#endif
   }
   void SetAvailable(bool value) {
     std::lock_guard lock(mutex_);

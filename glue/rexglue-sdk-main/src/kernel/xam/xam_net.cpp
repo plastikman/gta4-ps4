@@ -22,8 +22,12 @@
 #include <ranges>
 #include <vector>
 
-#if REX_PLATFORM_MAC
+#if !REX_PLATFORM_WIN32
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <netdb.h>
 #include <sys/select.h>
+#include <sys/socket.h>
 #endif
 
 #include <rex/chrono/clock.h>
@@ -54,6 +58,7 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <netinet/in.h>
+#include <netdb.h>
 #include <netinet/ip.h>
 #include <sys/socket.h>
 #endif

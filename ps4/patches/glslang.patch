@@ -1,0 +1,13 @@
+diff --git a/glslang/CMakeLists.txt b/glslang/CMakeLists.txt
+index 1c7d22a..0742a67 100644
+--- a/glslang/CMakeLists.txt
++++ b/glslang/CMakeLists.txt
+@@ -33,7 +33,7 @@
+ 
+ if(WIN32)
+     add_subdirectory(OSDependent/Windows)
+-elseif(UNIX)
++elseif(UNIX OR PS4)
+     add_subdirectory(OSDependent/Unix)
+ else(WIN32)
+     message("unknown platform")

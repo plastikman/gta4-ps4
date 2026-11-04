@@ -2,6 +2,7 @@
  * [ps5 port] sceAudioOut audio driver (see ps5_audio_driver.h).
  */
 #include <rex/audio/ps5/ps5_audio_driver.h>
+#include <rex/frame_stats.h>
 
 #include <algorithm>
 #include <cstring>
@@ -23,13 +24,20 @@ REXCVAR_DECLARE(bool, audio_mute);
 // [ps5 port] The sound queued ahead of the speakers: 12 frames is 64 ms. The
 // generic 64 (341 ms) put every sound a third of a second behind the picture
 // and the controller.
-REXCVAR_DEFINE_UINT32(ps5_audio_frames, 12, "PS5",
+// The PS4 starts at 24 (128 ms): its game threads are held up for longer.
+REXCVAR_DEFINE_UINT32(ps5_audio_frames, REX_PLATFORM_PS4 ? 24 : 12, "PS5",
                       "Sound frames queued ahead of the speakers (5.3 ms each): fewer is less delay")
     .range(2, 64);
+
+namespace rex::audio {
+extern std::atomic<uint64_t> g_mixer_callbacks, g_mixer_callback_us, g_mixer_callback_max_us;
+}
 
 namespace rex::audio::ps5 {
 
 namespace {
+// Frames the game handed over (SubmitFrame), for the 10 s line.
+std::atomic<uint64_t> g_submitted_frames{0};
 constexpr int32_t kSystemUser = 0xFF;
 constexpr int32_t kPortTypeMain = 0;
 constexpr uint32_t kFormatS16Stereo = 1;
@@ -50,7 +58,12 @@ bool Ps5AudioDriver::Initialize() {
     REXAPU_ERROR("PS5 audio: sceAudioOutOpen failed ({:#x})", uint32_t(port_));
     return false;
   }
+#if REX_PLATFORM_PS4
+  // (warnings on the PS4, so they show with log_level = "warn")
+  REXAPU_WARN("PS5 audio: port {} (48000 Hz, 256-sample frames, s16 stereo)", port_);
+#else
   REXAPU_INFO("PS5 audio: port {} (48000 Hz, 256-sample frames, s16 stereo)", port_);
+#endif
   running_ = true;
   thread_ = std::thread([this] { OutputThread(); });
   return true;
@@ -58,8 +71,13 @@ bool Ps5AudioDriver::Initialize() {
 
 uint32_t Ps5AudioDriver::RecommendedInitialCredits(uint32_t configured_maximum) const {
   const uint32_t frames = std::clamp<uint32_t>(REXCVAR_GET(ps5_audio_frames), 2, std::max(2u, configured_maximum));
+#if REX_PLATFORM_PS4
+  REXAPU_WARN("PS5 audio: {} frames ahead of the speakers ({:.0f} ms)", frames,
+              double(frames) * kChannelSamples * 1000.0 / kFrequency);
+#else
   REXAPU_INFO("PS5 audio: {} frames ahead of the speakers ({:.0f} ms)", frames,
               double(frames) * kChannelSamples * 1000.0 / kFrequency);
+#endif
   return frames;
 }
 
@@ -76,6 +94,7 @@ void Ps5AudioDriver::SubmitFrame(uint32_t frame_ptr) {
     }
   }
   std::memcpy(frame, input_frame, kFrameSamples * sizeof(float));
+  g_submitted_frames.fetch_add(1, std::memory_order_relaxed);
   std::lock_guard<std::mutex> guard(frames_mutex_);
   frames_queued_.push(frame);
 }
@@ -110,8 +129,26 @@ void Ps5AudioDriver::OutputThread() {
     }
     if (++played == kFrequency * 10 / kChannelSamples) {
       if (gaps) {
+#if REX_PLATFORM_PS4
+        // (1875 frames are needed in 10 s; the mixer callback makes each one)
+        const uint64_t callbacks = g_mixer_callbacks.exchange(0, std::memory_order_relaxed);
+        const uint64_t callback_us = g_mixer_callback_us.exchange(0, std::memory_order_relaxed);
+        REXAPU_WARN("PS5 audio: {} gaps in 10 s ({:.0f} ms of silence); {} frames ahead; {} frames "
+                    "submitted, {} mixer callbacks averaging {:.2f} ms (max {:.1f} ms)",
+                    gaps, double(silent) * kChannelSamples * 1000.0 / kFrequency,
+                    REXCVAR_GET(ps5_audio_frames), g_submitted_frames.exchange(0, std::memory_order_relaxed),
+                    callbacks, callbacks ? double(callback_us) / 1000.0 / double(callbacks) : 0.0,
+                    double(g_mixer_callback_max_us.exchange(0, std::memory_order_relaxed)) / 1000.0);
+        const uint64_t sleeps = rex::frame_stats::g_guest_sleeps.exchange(0, std::memory_order_relaxed);
+        const uint64_t asked = rex::frame_stats::g_guest_sleep_requested_us.exchange(0, std::memory_order_relaxed);
+        const uint64_t took = rex::frame_stats::g_guest_sleep_actual_us.exchange(0, std::memory_order_relaxed);
+        REXAPU_WARN("PS4 guest sleeps: {} in 10 s, asked {:.2f} ms, took {:.2f} ms on average", sleeps,
+                    sleeps ? double(asked) / 1000.0 / double(sleeps) : 0.0,
+                    sleeps ? double(took) / 1000.0 / double(sleeps) : 0.0);
+#else
         REXAPU_INFO("PS5 audio: {} gaps in 10 s ({:.0f} ms of silence); {} frames ahead", gaps,
                     double(silent) * kChannelSamples * 1000.0 / kFrequency, REXCVAR_GET(ps5_audio_frames));
+#endif
       }
       gaps = silent = played = 0;
     }

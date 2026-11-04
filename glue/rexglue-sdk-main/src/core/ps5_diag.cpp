@@ -11,12 +11,30 @@
 
 #include <fcntl.h>
 #include <pthread.h>
-#include <pthread_np.h>
 #include <signal.h>
 #include <unistd.h>
 
+#include <rex/platform.h>
+
+#if REX_PLATFORM_PS4
+// [ps4 port] The PS4 SDK has no <pthread_np.h>; libkernel supplies the id.
+extern "C" int32_t scePthreadGetthreadid(void);
+static inline int rex_diag_thread_id() { return scePthreadGetthreadid(); }
+#else
+#include <pthread_np.h>
+static inline int rex_diag_thread_id() { return pthread_getthreadid_np(); }
+#endif
+
 #include <rex/chrono/clock.h>
+#include <rex/cvar.h>
 #include <rex/logging.h>
+
+// The PS4 log runs at "warn": the reports are warnings there.
+#if REX_PLATFORM_PS4
+#define PS5DIAG_LOG REXLOG_WARN
+#else
+#define PS5DIAG_LOG REXLOG_INFO
+#endif
 
 namespace rex::ps5diag {
 std::atomic<uint64_t> counters[kCount];
@@ -74,6 +92,8 @@ struct ThreadEntry {
   uint32_t profile_reported = 0;
   // The CPUs KeepOtherThreadsOn last gave it (0: none yet).
   uint64_t applied_mask = 0;
+  // PS4: one of the audio threads (MarkAudioThread), kept on the audio core.
+  bool audio = false;
 };
 constexpr int kThreads = 160;  // (the game runs about 40)
 ThreadEntry threads[kThreads];
@@ -86,6 +106,7 @@ constexpr uintptr_t kNear = 256ull << 20;  // the eboot text is ~100 MB
 // malloc is charged past them, to whoever asked for the memory.
 }  // namespace
 }  // namespace rex::ps5diag
+#if !REX_PLATFORM_PS4
 extern "C" {
 __attribute__((weak)) void* __wrap_malloc(size_t);
 __attribute__((weak)) void __wrap_free(void*);
@@ -98,6 +119,7 @@ __attribute__((weak)) void* ps5_heap_memalign(size_t, size_t);
 __attribute__((weak)) void* ps5_heap_realloc(void*, size_t);
 __attribute__((weak)) void ps5_heap_free(void*);
 }
+#endif
 namespace rex::ps5diag {
 namespace {
 struct PassThrough {
@@ -116,6 +138,7 @@ bool IsPassThrough(uint32_t word) {
   return false;
 }
 void FindPassThroughs() {
+#if !REX_PLATFORM_PS4
   NotePassThrough(reinterpret_cast<const void*>(&__wrap_malloc), 256);
   NotePassThrough(reinterpret_cast<const void*>(&__wrap_free), 256);
   NotePassThrough(reinterpret_cast<const void*>(&__wrap_calloc), 256);
@@ -126,6 +149,7 @@ void FindPassThroughs() {
   NotePassThrough(reinterpret_cast<const void*>(&ps5_heap_memalign), 1024);
   NotePassThrough(reinterpret_cast<const void*>(&ps5_heap_realloc), 1024);
   NotePassThrough(reinterpret_cast<const void*>(&ps5_heap_free), 1024);
+#endif
   void* (*new_one)(size_t) = &::operator new;
   void* (*new_array)(size_t) = &::operator new[];
   void (*delete_one)(void*) noexcept = &::operator delete;
@@ -260,6 +284,11 @@ struct RawLine {
 
 std::atomic<uint64_t> crashed_at_ms{0};
 
+namespace {
+void (*g_trace_sink)(const char*) = nullptr;
+}
+void SetTraceSink(void (*sink)(const char* line)) { g_trace_sink = sink; }
+
 void SetLogPath(const char* path) {
   if (!path) return;
   std::strncpy(log_path, path, sizeof(log_path) - 1);
@@ -283,7 +312,7 @@ void UnhandledHostFault(uintptr_t rip, uintptr_t address, uintptr_t rsp) {
   const uintptr_t anchor = Anchor();
   static RawLine line;
   line.Add("\n[ps5 crash] thread ");
-  line.Dec(uint64_t(my_entry ? my_entry->tid : pthread_getthreadid_np()));
+  line.Dec(uint64_t(my_entry ? my_entry->tid : rex_diag_thread_id()));
   line.Add(" (");
   line.Add(my_entry ? my_entry->what : "unregistered");
   line.Add(") faulted at ");
@@ -380,7 +409,7 @@ void ProfileReport() {
   }
   std::sort(busy.begin(), busy.end(), [](const Busy& a, const Busy& b) { return a.inside > b.inside; });
 
-  REXLOG_INFO("ps5 prof: anchor {:X}, {} threads ran game code", Anchor(), busy.size());
+  PS5DIAG_LOG("ps5 prof: anchor {:X}, {} threads ran game code", Anchor(), busy.size());
   // Every block seen twice or more, 120 to a line: the whole picture, not
   // just the top (a frame's work is spread over many functions).
   auto emit = [](const Busy& b, const char* kind, const std::unordered_map<uint32_t, uint32_t>& map,
@@ -395,14 +424,14 @@ void ProfileReport() {
       snprintf(buf, sizeof(buf), " %X:%u", pc, hits);
       line += buf;
       if (++entries == 120) {
-        REXLOG_INFO("ps5 prof: tid {} {}: {} samples, {} {} part {}:{}", b.e->tid, b.e->what, b.total,
+        PS5DIAG_LOG("ps5 prof: tid {} {}: {} samples, {} {} part {}:{}", b.e->tid, b.e->what, b.total,
                     n, kind, ++part, line);
         line.clear();
         entries = 0;
       }
     }
     if (entries || !part)
-      REXLOG_INFO("ps5 prof: tid {} {}: {} samples, {} {} part {}:{}", b.e->tid, b.e->what, b.total, n,
+      PS5DIAG_LOG("ps5 prof: tid {} {}: {} samples, {} {} part {}:{}", b.e->tid, b.e->what, b.total, n,
                   kind, ++part, line);
   };
   // Library time by caller and that caller's caller ("A/B"), the busiest 120.
@@ -420,7 +449,7 @@ void ProfileReport() {
       ++entries;
     }
     if (entries)
-      REXLOG_INFO("ps5 prof: tid {} {}: {} samples, {} {} part 1:{}", b.e->tid, b.e->what, b.total, n,
+      PS5DIAG_LOG("ps5 prof: tid {} {}: {} samples, {} {} part 1:{}", b.e->tid, b.e->what, b.total, n,
                   kind, line);
   };
   for (size_t t = 0; t < busy.size() && t < 10; ++t) {
@@ -437,7 +466,7 @@ void RegisterThread(const char* what) {
   if (i >= kThreads) return;
   ThreadEntry& e = threads[i];
   e.pthread = pthread_self();
-  e.tid = pthread_getthreadid_np();
+  e.tid = rex_diag_thread_id();
   int marker = 0;
   e.stack_top = reinterpret_cast<uintptr_t>(&marker) + 256;  // (a little above: the caller's frame)
   std::strncpy(e.what, what ? what : "", sizeof(e.what) - 1);
@@ -459,7 +488,9 @@ void UnregisterThread() {
   my_entry = nullptr;
 }
 
+#if !REX_PLATFORM_PS4
 extern "C" int32_t scePthreadSetaffinity(pthread_t thread, uint64_t mask);
+#endif
 void KeepOtherThreadsOn(uint64_t mask, uintptr_t title_thread, uintptr_t main_thread,
                         uint64_t main_mask) {
   int count = next_thread.load();
@@ -475,7 +506,101 @@ void KeepOtherThreadsOn(uint64_t mask, uintptr_t title_thread, uintptr_t main_th
     // 0.6b2's frozen sessions had in common.
     if (e.applied_mask == want) continue;
     e.applied_mask = want;
+#if !REX_PLATFORM_PS4
     scePthreadSetaffinity(e.pthread, want);
+#else
+    (void)want;
+#endif
+  }
+}
+
+#if REX_PLATFORM_PS4
+// (OpenOrbis declares these with empty parameter lists; the same symbols, typed)
+extern "C" int32_t ps4_pthread_setaffinity(pthread_t, uint64_t) asm("scePthreadSetaffinity");
+extern "C" int32_t ps4_pthread_getaffinity(pthread_t, uint64_t*) asm("scePthreadGetaffinity");
+}  // namespace rex::ps5diag
+REXCVAR_DEFINE_INT32(ps4_audio_core, -1, "PS4",
+                     "Core for the audio threads, every other thread kept off it (-1: core 5, "
+                     "-2: no layout, every thread anywhere)")
+    .range(-2, 6);
+namespace rex::ps5diag {
+void MarkAudioThread() {
+  if (my_entry) my_entry->audio = true;
+}
+// [ps4 port] The game's audio mixer needs about a core in play (~5.3 ms of each
+// 5.3 ms sound frame); raised above the render threads it took them ~25% of
+// their frame rate, left level with them it fell behind (CV). Its own core:
+// the audio threads on it, every other registered thread on the rest. Moves
+// a thread only when its CPUs change.
+void ApplyPs4AudioCoreLayout() {
+  const int32_t setting = REXCVAR_GET(ps4_audio_core);
+  if (setting == -2) return;
+  static uint64_t process_mask = 0;
+  if (!process_mask) {
+    ps4_pthread_getaffinity(pthread_self(), &process_mask);
+    process_mask &= 0x7F;
+    if (!process_mask) process_mask = 0x3F;
+  }
+  const int core = setting >= 0 ? setting : (process_mask & (1u << 5)) ? 5 : 63 - __builtin_clzll(process_mask);
+  const uint64_t audio_mask = uint64_t(1) << core;
+  const uint64_t other_mask = process_mask & ~audio_mask;
+  if (!other_mask || !(process_mask & audio_mask)) return;
+  int count = next_thread.load();
+  if (count > kThreads) count = kThreads;
+  int moved_audio = 0, moved_other = 0, failed = 0;
+  for (int i = 0; i < count; ++i) {
+    ThreadEntry& e = threads[i];
+    if (!e.used.load(std::memory_order_acquire)) continue;
+    const uint64_t want = e.audio ? audio_mask : other_mask;
+    if (e.applied_mask == want) continue;
+    e.applied_mask = want;
+    if (ps4_pthread_setaffinity(e.pthread, want) != 0) ++failed;
+    else if (e.audio) ++moved_audio;
+    else ++moved_other;
+  }
+  if (moved_audio || moved_other || failed) {
+    PS5DIAG_LOG("PS4 cores: process {:#x}, audio core {}: moved {} audio and {} other threads ({} failed)",
+                process_mask, core, moved_audio, moved_other, failed);
+  }
+}
+#endif
+
+// [ps4 port] Full stacks of one thread, `count` times `interval_ms` apart:
+// where it is when the profiler's short walk finds no game frame (CI: the
+// game's audio mixing thread, ~70% of its samples that way).
+void SampleThreadStacks(uintptr_t pthread_value, const char* label, int count, int interval_ms) {
+  if (!pthread_value) return;
+  InstallSampleHandler();
+  int n = next_thread.load();
+  if (n > kThreads) n = kThreads;
+  ThreadEntry* target = nullptr;
+  for (int i = 0; i < n; ++i) {
+    if (threads[i].used.load(std::memory_order_acquire) &&
+        reinterpret_cast<uintptr_t>(threads[i].pthread) == pthread_value) {
+      target = &threads[i];
+      break;
+    }
+  }
+  if (!target) return;
+  ThreadEntry& e = *target;
+  for (int k = 0; k < count; ++k) {
+    e.done.store(0);
+    e.want_stack.store(true, std::memory_order_release);
+    if (pthread_kill(e.pthread, SIGPROF) != 0) return;
+    for (int ms = 0; ms < 50 && !e.done.load(std::memory_order_acquire); ++ms) usleep(1000);
+    if (!e.done.load()) {
+      e.want_stack.store(false, std::memory_order_release);
+      continue;
+    }
+    std::string line;
+    for (int w = 0; w < e.nwords; ++w) {
+      char buf[24];
+      snprintf(buf, sizeof(buf), " %lX", (unsigned long)(e.words[w] - Anchor() + 0x10000000));
+      line += buf;
+    }
+    PS5DIAG_LOG("ps4 stack sample: {} tid {}: rip {:X} |{}", label, e.tid,
+                e.rip - Anchor() + 0x10000000, line);
+    usleep(interval_ms * 1000);
   }
 }
 
@@ -483,7 +608,12 @@ void SampleAllThreads() {
   static std::mutex sampling;  // the stall watcher and the hang monitor
   std::lock_guard<std::mutex> one_at_a_time(sampling);
   InstallSampleHandler();
-  REXLOG_INFO("ps5 stack: anchor {:X}", Anchor());
+  PS5DIAG_LOG("ps5 stack: anchor {:X}", Anchor());
+  if (g_trace_sink) {
+    char b[64];
+    snprintf(b, sizeof(b), "ps5 stack: anchor %lX", (unsigned long)Anchor());
+    g_trace_sink(b);
+  }
   int count = next_thread.load();
   if (count > kThreads) count = kThreads;
   for (int i = 0; i < count; ++i) {
@@ -494,7 +624,12 @@ void SampleAllThreads() {
     if (pthread_kill(e.pthread, SIGPROF) != 0) continue;
     for (int ms = 0; ms < 200 && !e.done.load(std::memory_order_acquire); ++ms) usleep(1000);
     if (!e.done.load()) {
-      REXLOG_INFO("ps5 stack: tid {} {}: no answer", e.tid, e.what);
+      PS5DIAG_LOG("ps5 stack: tid {} {}: no answer", e.tid, e.what);
+      if (g_trace_sink) {
+        char b[128];
+        snprintf(b, sizeof(b), "ps5 stack: tid %d %s: no answer", e.tid, e.what);
+        g_trace_sink(b);
+      }
       continue;
     }
     std::string line;
@@ -503,8 +638,16 @@ void SampleAllThreads() {
       snprintf(buf, sizeof(buf), " %lX", (unsigned long)(e.words[k] - Anchor() + 0x10000000));
       line += buf;
     }
-    REXLOG_INFO("ps5 stack: tid {} {}: rip {:X} |{}", e.tid, e.what,
+    PS5DIAG_LOG("ps5 stack: tid {} {}: rip {:X} |{}", e.tid, e.what,
                 e.rip - Anchor() + 0x10000000, line);
+    if (g_trace_sink) {
+      std::string full = "ps5 stack: tid " + std::to_string(e.tid) + " " + e.what + ": rip ";
+      char rip[24];
+      snprintf(rip, sizeof(rip), "%lX |", (unsigned long)(e.rip - Anchor() + 0x10000000));
+      full += rip;
+      full += line;
+      g_trace_sink(full.c_str());
+    }
   }
 }
 }  // namespace rex::ps5diag

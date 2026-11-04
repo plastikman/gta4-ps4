@@ -9,6 +9,10 @@
  * @modified    Tom Clay, 2026 - Adapted for ReXGlue runtime
  */
 
+#include <rex/platform.h>
+#include <cstring>
+#include <cstdio>
+#include <atomic>
 #include <rex/filesystem/vfs.h>
 #include <rex/filesystem/devices/host_path_device.h>
 #include <rex/logging.h>
@@ -246,14 +250,53 @@ X_STATUS XFile::ReadInternalLocked(uint32_t buffer_guest_address, uint32_t buffe
           buffer_start_heap->heap_type() == memory::HeapType::kGuestPhysical
               ? static_cast<rex::memory::PhysicalHeap*>(buffer_start_heap)
               : nullptr;
-      result = file_->ReadSync(
-          std::span<uint8_t>(
-              buffer_physical_heap
-                  ? memory()->TranslatePhysical(
-                        buffer_physical_heap->GetPhysicalAddress(buffer_guest_address))
-                  : memory()->TranslateVirtual(buffer_guest_address),
-              buffer_length),
-          static_cast<size_t>(effective_offset), &bytes_read);
+      uint8_t* const host_destination =
+          buffer_physical_heap
+              ? memory()->TranslatePhysical(
+                    buffer_physical_heap->GetPhysicalAddress(buffer_guest_address))
+              : memory()->TranslateVirtual(buffer_guest_address);
+      result = file_->ReadSync(std::span<uint8_t>(host_destination, buffer_length),
+                               static_cast<size_t>(effective_offset), &bytes_read);
+#if REX_PLATFORM_PS4
+      // The streamed resource records that later overflow `new T*[count]` all
+      // hold the same 24 bytes (2ccd727b e3a0f205 ...), which exist in neither
+      // the ISO nor TU8. Log (a) any read landing in the window those records
+      // live in and (b) any read anywhere that returns that pattern, with the
+      // requested offset, so it is visible whether the game asks for the same
+      // thing repeatedly. Cheap range/byte checks; bounded output.
+      {
+        constexpr uint32_t kWindowLo = 0xCAD00000u, kWindowHi = 0xCAE00000u;
+        static const uint8_t kPattern[8] = {0x2c, 0xcd, 0x72, 0x7b, 0xe3, 0xa0, 0xf2, 0x05};
+        const bool in_window = buffer_guest_address < kWindowHi &&
+                               buffer_guest_address + buffer_length > kWindowLo;
+        const bool has_pattern =
+            bytes_read >= 8 && std::memcmp(host_destination, kPattern, 8) == 0;
+        // Separate budgets so one kind of hit cannot crowd out the other.
+        static std::atomic<uint32_t> window_logged{0};
+        static std::atomic<uint32_t> pattern_logged{0};
+        const bool log_it =
+            (in_window && window_logged.fetch_add(1, std::memory_order_relaxed) < 1500) ||
+            (has_pattern && pattern_logged.fetch_add(1, std::memory_order_relaxed) < 200);
+        if (log_it) {
+          char first[16 * 3 + 1] = {};
+          for (size_t k = 0; k < 16 && k < bytes_read; ++k) {
+            std::snprintf(first + k * 3, 4, "%02x ", host_destination[k]);
+          }
+          char line[512];
+          std::snprintf(line, sizeof(line),
+                        "[PS4 read] %s%s path=%s off=0x%llx len=0x%x dst=%08x got=0x%zx res=%08x "
+                        "first=%s",
+                        in_window ? "WINDOW" : "", has_pattern ? " PATTERN" : "", path().c_str(),
+                        static_cast<unsigned long long>(effective_offset), buffer_length,
+                        buffer_guest_address, bytes_read, static_cast<uint32_t>(result), first);
+          if (FILE* log = std::fopen("/data/LibertyRecomp/logs/gta4-guest-trace.txt", "a")) {
+            std::fputs(line, log);
+            std::fputc('\n', log);
+            std::fclose(log);
+          }
+        }
+      }
+#endif
       if (XSUCCEEDED(result)) {
         if (buffer_physical_heap) {
           buffer_physical_heap->TriggerCallbacks(

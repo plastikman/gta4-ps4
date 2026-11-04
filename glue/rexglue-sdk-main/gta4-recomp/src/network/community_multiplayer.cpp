@@ -5,6 +5,7 @@
  ******************************************************************************
  */
 
+#include <orbis_ranges.h>
 #include "community_multiplayer.h"
 #include "pending_stats_flush.h"
 #include "community_qos_policy.h"
@@ -87,6 +88,7 @@ using rex::system::xam::InvitationRecord;
 using rex::system::xam::CachedMuteState;
 using rex::system::xam::LeaderboardResult;
 using rex::system::xam::LiveBackendServices;
+
 using rex::system::xam::LiveConfig;
 using rex::system::xam::LiveIdentity;
 using rex::system::xam::PeerDatagram;

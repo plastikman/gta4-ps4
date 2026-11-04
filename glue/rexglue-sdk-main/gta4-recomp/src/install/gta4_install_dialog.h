@@ -7,6 +7,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include <rex/ui/imgui_dialog.h>
 
@@ -56,8 +57,17 @@ class InstallDialog final : public rex::ui::ImGuiDialog {
     GameSourceInspectionWorker inspection_worker;
   };
 
+  struct BrowserEntry {
+    std::filesystem::path path;
+    bool directory = false;
+  };
+
   void ShowFilePicker(PickerTarget target);
   void ShowFolderPicker(PickerTarget target);
+  void OpenNativePicker(PickerTarget target, bool folder);
+  void RefreshNativePickerEntries();
+  void DrawNativePicker();
+  void ChooseNativePath(const std::filesystem::path& path);
   void StartInstall();
   void FinishInstallIfNeeded();
   void DrawBaseInspection();
@@ -78,6 +88,13 @@ class InstallDialog final : public rex::ui::ImGuiDialog {
   State state_ = State::kSelecting;
   bool auto_start_ = false;
   int completion_frames_ = -1;
+  bool native_picker_open_ = false;
+  bool native_picker_folder_ = false;
+  PickerTarget native_picker_target_ = PickerTarget::kGame;
+  std::filesystem::path native_picker_directory_;
+  std::vector<BrowserEntry> native_picker_entries_;
+  int native_picker_selection_ = -1;
+  std::string native_picker_error_;
 };
 
 }  // namespace gta4::install

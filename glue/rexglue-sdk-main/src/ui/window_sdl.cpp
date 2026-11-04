@@ -48,6 +48,8 @@
 #include <rex/ui/surface_android.h>
 #elif REX_PLATFORM_PS5
 #include <rex/ui/surface_ps5.h>  // [ps5 port]
+#elif REX_PLATFORM_PS4
+#include <rex/ui/surface_ps4.h>
 #elif REX_PLATFORM_GNU_LINUX
 #include <X11/Xlib-xcb.h>
 #include <rex/ui/surface_gnulinux.h>
@@ -177,11 +179,14 @@ bool WindowSDL::OpenImpl() {
 #if REX_PLATFORM_MAC
   flags |= SDL_WINDOW_METAL;
 #endif
-#if REX_PLATFORM_PS5
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
   // [ps5 port] The window is the dummy driver's: as big as the TV picture
   // (3840x2160), never "fullscreen" (that would take the dummy display's
   // 1024x768 mode and lay ImGui screens out 4:3).
-  sdl_window_ = SDL_CreateWindow(GetTitle().c_str(), 3840, 2160, flags & ~SDL_WINDOW_HIGH_PIXEL_DENSITY);
+  const int display_width = REX_PLATFORM_PS5 ? 3840 : 1920;
+  const int display_height = REX_PLATFORM_PS5 ? 2160 : 1080;
+  sdl_window_ = SDL_CreateWindow(GetTitle().c_str(), display_width, display_height,
+                                 flags & ~SDL_WINDOW_HIGH_PIXEL_DENSITY);
 #else
   sdl_window_ = SDL_CreateWindow(GetTitle().c_str(), int(SizeToPhysical(GetDesiredLogicalWidth())),
                                  int(SizeToPhysical(GetDesiredLogicalHeight())), flags);
@@ -220,7 +225,7 @@ bool WindowSDL::OpenImpl() {
     }
   }
 
-  if (IsFullscreen() && !REX_PLATFORM_PS5) {
+  if (IsFullscreen() && !REX_PLATFORM_PS5 && !REX_PLATFORM_PS4) {
     // Borderless desktop fullscreen (a NULL display mode is SDL3's default).
     if (!SDL_SetWindowFullscreen(sdl_window_, true)) {
       REXLOG_ERROR("SDL_SetWindowFullscreen failed: {}", SDL_GetError());
@@ -243,7 +248,7 @@ bool WindowSDL::OpenImpl() {
   // Fullscreen transitions may be asynchronous. Synchronize when possible so
   // the first surface observes final geometry, but a timeout only means the
   // transition is still pending. SDL window events will update the surface.
-  if (IsFullscreen() && !REX_PLATFORM_PS5 && !SDL_SyncWindow(sdl_window_)) {
+  if (IsFullscreen() && !REX_PLATFORM_PS5 && !REX_PLATFORM_PS4 && !SDL_SyncWindow(sdl_window_)) {
     REXLOG_WARN("SDL_SyncWindow timed out while entering fullscreen; continuing asynchronously");
   }
 
@@ -388,7 +393,7 @@ uint32_t WindowSDL::GetLatestDpiImpl() const {
 }
 
 void WindowSDL::ApplyNewFullscreen() {
-#if REX_PLATFORM_PS5
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
   return;  // [ps5 port] the window stays the TV picture's size
 #endif
   if (!sdl_window_) {
@@ -521,6 +526,10 @@ std::unique_ptr<Surface> WindowSDL::CreateSurfaceImpl(Surface::TypeFlags allowed
   // through VK_KHR_display. The presenter sets the real size from the mode.
   if (allowed_types & Surface::kTypeFlag_Ps5Display) {
     return std::make_unique<Ps5DisplaySurface>(3840, 2160);
+  }
+#elif REX_PLATFORM_PS4
+  if (allowed_types & Surface::kTypeFlag_Ps4Headless) {
+    return std::make_unique<Ps4HeadlessSurface>(1920, 1080);
   }
 #elif REX_PLATFORM_ANDROID
   if (allowed_types & Surface::kTypeFlag_AndroidNativeWindow) {

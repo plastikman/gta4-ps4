@@ -13,6 +13,7 @@ static_assert(REX_PLATFORM_PS4, "This file is PS4-only");
 
 #include <signal.h>
 #include <orbis/libkernel.h>    // scePthreadGetthreadid, scePthreadGetaffinity, scePthreadAttrSetaffinity
+#include <cstdio>
 
 // OpenOrbis declares `void scePthreadSetaffinity();` with an empty parameter
 // list (line 671 of orbis/libkernel.h). Provide a properly-typed local
@@ -32,6 +33,7 @@ int32_t scePthreadSetaffinity_proper(OrbisPthread, uint64_t) asm("scePthreadSeta
 #include <deque>
 #include <limits>
 #include <memory>
+#include <system_error>
 
 #include <pthread.h>
 #include <semaphore.h>
@@ -265,7 +267,19 @@ class PosixConditionBase {
         cond_.wait(lock, predicate);
         executed = true;  // Did not time out;
       } else {
-        executed = cond_.wait_for(lock, timeout, predicate);
+        try {
+          executed = cond_.wait_for(lock, timeout, predicate);
+        } catch (const std::system_error& error) {
+          // Orbis libc++ reports the normal pthread_cond_timedwait ETIMEDOUT
+          // result as an exception. Convert it back to the documented wait
+          // timeout result so callers can continue their timeout handling.
+          if (error.code() == std::errc::timed_out) {
+            executed = predicate();
+          } else {
+            sceKernelDebugOutText(0, "[PS4 wait] condition wait failed\n");
+            return WaitResult::kFailed;
+          }
+        }
       }
     }
     if (executed) {

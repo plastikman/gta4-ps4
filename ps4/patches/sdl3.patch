@@ -1,0 +1,43 @@
+diff --git a/src/dynapi/SDL_dynapi.c b/src/dynapi/SDL_dynapi.c
+index fcbbbd6..92c6e52 100644
+--- a/src/dynapi/SDL_dynapi.c
++++ b/src/dynapi/SDL_dynapi.c
+@@ -36,7 +36,7 @@
+ #ifdef HAVE_STDLIB_H
+ #include <stdlib.h>
+ #endif
+-
++#include <string.h>
+ #include <SDL3/SDL.h>
+ #include <SDL3/SDL_openxr.h>
+ #define SDL_MAIN_NOIMPL // don't drag in header-only implementation of SDL_main
+@@ -44,10 +44,10 @@
+ #include "../core/SDL_core_unsupported.h"
+ #include "../video/SDL_video_unsupported.h"
+ 
+-
+ // These headers have system specific definitions, so aren't included above
+ #include <SDL3/SDL_vulkan.h>
+ 
++
+ #if defined(WIN32) || defined(_WIN32) || defined(__CYGWIN__)
+ #ifndef WIN32_LEAN_AND_MEAN
+ #define WIN32_LEAN_AND_MEAN 1
+diff --git a/src/stdlib/SDL_string.c b/src/stdlib/SDL_string.c
+index c0525ef..5beae7c 100644
+--- a/src/stdlib/SDL_string.c
++++ b/src/stdlib/SDL_string.c
+@@ -32,9 +32,11 @@
+ 
+ #include "SDL_casefolding.h"
+ 
+-#if defined(__SIZEOF_WCHAR_T__)
++#if defined(__ORBIS__)
++#define SDL_SIZEOF_WCHAR_T 2
++#elif defined(__SIZEOF_WCHAR_T__)
+ #define SDL_SIZEOF_WCHAR_T __SIZEOF_WCHAR_T__
+-#elif defined(SDL_PLATFORM_NGAGE)
++#elif defined(SDL_PLATFORM_NGAGE) || defined(__ORBIS__)
+ #define SDL_SIZEOF_WCHAR_T 2
+ #elif defined(SDL_PLATFORM_WINDOWS) || defined(SDL_PLATFORM_DOS)
+ #define SDL_SIZEOF_WCHAR_T 2

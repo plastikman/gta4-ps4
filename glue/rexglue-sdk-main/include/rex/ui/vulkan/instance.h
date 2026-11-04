@@ -76,6 +76,9 @@ class VulkanInstance {
 #if REX_PLATFORM_PS5
 #include <rex/ui/vulkan/functions/instance_khr_display.inc>
 #endif
+#if REX_PLATFORM_PS4
+#include <rex/ui/vulkan/functions/instance_ext_headless_surface.inc>
+#endif
     // VK_KHR_get_physical_device_properties2 (#60, promoted to 1.1)
 #include <rex/ui/vulkan/functions/instance_1_1_khr_get_physical_device_properties2.inc>
     // VK_EXT_debug_utils (#129)
@@ -106,6 +109,9 @@ class VulkanInstance {
 #endif
 #if REX_PLATFORM_PS5
     bool ext_KHR_display = false;  // #3 [ps5 port]
+#endif
+#if REX_PLATFORM_PS4
+    bool ext_EXT_headless_surface = false;  // #261
 #endif
     bool ext_1_1_KHR_get_physical_device_properties2 = false;  // #60
     bool ext_EXT_debug_utils = false;                          // #129

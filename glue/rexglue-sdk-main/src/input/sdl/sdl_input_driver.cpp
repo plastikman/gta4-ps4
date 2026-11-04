@@ -11,7 +11,10 @@
 
 #include <algorithm>
 #include <array>
+#include <cerrno>
+#include <chrono>
 #include <filesystem>
+#include <system_error>
 
 #include <rex/assert.h>
 #include <rex/chrono/clock.h>
@@ -1114,9 +1117,17 @@ void SDLInputDriver::StartSonyWorker() {
         if (accepting_input_requests_.load(std::memory_order_acquire)) RefreshSonyFeedbackLocked();
       }
       wait_lock.lock();
-      sony_wait_.wait_for(wait_lock, std::chrono::milliseconds(10), [this]() {
-        return sony_stopping_.load(std::memory_order_acquire);
-      });
+      try {
+        sony_wait_.wait_for(wait_lock, std::chrono::milliseconds(10), [this]() {
+          return sony_stopping_.load(std::memory_order_acquire);
+        });
+      } catch (const std::system_error&) {
+#if REX_PLATFORM_PS4
+        // Orbis libc++ may report an ordinary timeout by throwing.
+#else
+        throw;
+#endif
+      }
     }
   });
 }

@@ -1,0 +1,14 @@
+diff --git a/lib/common/zstd_internal.h b/lib/common/zstd_internal.h
+index ecb9cfb..5c2b9c5 100644
+--- a/lib/common/zstd_internal.h
++++ b/lib/common/zstd_internal.h
+@@ -33,6 +33,9 @@
+ #  define XXH_STATIC_LINKING_ONLY  /* XXH64_state_t */
+ #endif
+ #include "xxhash.h"                /* XXH_reset, update, digest */
++#if defined(__ORBIS__) && !defined(ZSTD_NO_TRACE)
++#  define ZSTD_NO_TRACE
++#endif
+ #ifndef ZSTD_NO_TRACE
+ #  include "zstd_trace.h"
+ #else

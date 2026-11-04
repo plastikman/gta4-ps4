@@ -10,6 +10,13 @@
 */
 
 #include <algorithm>
+#include <rex/cvar.h>
+#include <vector>
+#include <thread>
+#include <deque>
+#include <condition_variable>
+#include <chrono>
+#include <mutex>
 #include <cstring>
 
 #include <rex/audio/xma/context.h>
@@ -41,6 +48,132 @@ extern "C" {
 
 // Credits for most of this code goes to:
 // https://github.com/koolkdev/libertyv/blob/master/libav_wrapper/xma2dec.c
+
+#if REX_PLATFORM_PS4
+namespace rex::system {
+void Ps4NoteAudioWait(uint32_t lr, uint32_t kind, uint64_t us);  // (xobject.cpp; audio threads only)
+bool Ps4IsAudioThread();
+}  // namespace rex::system
+namespace {
+// Takes an XMA context's lock; on the game's audio threads the time it took
+// goes to the waits report (the decoder holds it while it decodes).
+std::unique_lock<std::mutex> Ps4TimedXmaLock(std::mutex& mutex, uint32_t kind) {
+  if (!rex::system::Ps4IsAudioThread()) return std::unique_lock<std::mutex>(mutex);
+  const auto begin = std::chrono::steady_clock::now();
+  std::unique_lock<std::mutex> lock(mutex);
+  rex::system::Ps4NoteAudioWait(0, kind, uint64_t(std::chrono::duration_cast<std::chrono::microseconds>(
+                                             std::chrono::steady_clock::now() - begin).count()));
+  return lock;
+}
+}  // namespace
+#define PS4_XMA_LOCK(kind) std::lock_guard<std::mutex> lock(lock_)  // (Ps4TimedXmaLock: CI's measurement)
+#else
+#define PS4_XMA_LOCK(kind) std::lock_guard<std::mutex> lock(lock_)
+#endif
+
+#if REX_PLATFORM_PS4
+REXCVAR_DEFINE_BOOL(ps4_xma_decoder_pool, true, "Audio",
+                    "PS4: fresh XMA decoders are opened (and old ones freed) on a helper thread "
+                    "ahead of time; the game's audio thread only swaps one in");
+namespace {
+// [ps4 port] Each guest clear/release of an XMA context needs a fresh FFmpeg
+// decoder (xma_decoder_lifecycle.h), and opening one builds its MDCT tables:
+// ~6% of the game's audio mixing thread in play (CVI), which has no time to
+// spare. Here a helper thread keeps a few opened decoders ready per format the
+// game has asked for, and frees the retired ones.
+class Ps4XmaDecoderPool {
+ public:
+  static Ps4XmaDecoderPool& Get() {
+    static Ps4XmaDecoderPool* pool = new Ps4XmaDecoderPool();
+    return *pool;
+  }
+  // An opened decoder for the format, or null (the caller opens one itself).
+  AVCodecContext* Take(AVCodec* codec, int sample_rate, int channels) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    codec_ = codec;
+    Format& format = FormatFor(sample_rate, channels);
+    format.wanted = true;
+    AVCodecContext* context = nullptr;
+    if (!format.ready.empty()) {
+      context = format.ready.back();
+      format.ready.pop_back();
+      ++taken_;
+    } else {
+      ++missed_;
+    }
+    if ((taken_ + missed_) % 2000 == 0) {
+      REXAPU_WARN("PS4 XMA decoder pool: {} fresh decoders taken ready, {} opened on the spot",
+                  taken_, missed_);
+    }
+    condition_.notify_one();
+    return context;
+  }
+  void Retire(AVCodecContext* context) {
+    if (!context) return;
+    std::lock_guard<std::mutex> lock(mutex_);
+    retired_.push_back(context);
+    condition_.notify_one();
+  }
+
+ private:
+  static constexpr size_t kReady = 3;
+  struct Format {
+    int sample_rate = 0, channels = 0;
+    bool wanted = false;
+    std::vector<AVCodecContext*> ready;
+  };
+  Ps4XmaDecoderPool() {
+    std::thread([this] { Run(); }).detach();
+  }
+  Format& FormatFor(int sample_rate, int channels) {
+    for (Format& format : formats_)
+      if (format.sample_rate == sample_rate && format.channels == channels) return format;
+    formats_.push_back({sample_rate, channels});
+    return formats_.back();
+  }
+  Format* Short() {
+    if (!codec_) return nullptr;
+    for (Format& format : formats_)
+      if (format.wanted && format.ready.size() < kReady) return &format;
+    return nullptr;
+  }
+  void Run() {
+    std::unique_lock<std::mutex> lock(mutex_);
+    while (true) {
+      condition_.wait(lock, [this] { return !retired_.empty() || Short(); });
+      std::vector<AVCodecContext*> retired;
+      retired.swap(retired_);
+      Format* format = Short();
+      const int sample_rate = format ? format->sample_rate : 0;
+      const int channels = format ? format->channels : 0;
+      AVCodec* codec = codec_;
+      lock.unlock();
+      for (AVCodecContext* context : retired) avcodec_free_context(&context);
+      AVCodecContext* fresh = nullptr;
+      if (format) {
+        fresh = avcodec_alloc_context3(codec);
+        if (fresh) {
+          fresh->sample_rate = sample_rate;
+          fresh->channels = channels;
+          if (avcodec_open2(fresh, codec, nullptr) < 0) avcodec_free_context(&fresh);
+        }
+      }
+      lock.lock();
+      if (format) {
+        if (fresh) format->ready.push_back(fresh);
+        else format->wanted = false;  // (it cannot be opened: stop trying)
+      }
+    }
+  }
+  std::mutex mutex_;
+  std::condition_variable condition_;
+  std::deque<Format> formats_;  // (references stay valid as it grows)
+  std::vector<AVCodecContext*> retired_;
+  AVCodec* codec_ = nullptr;
+  uint64_t taken_ = 0, missed_ = 0;
+};
+}  // namespace
+#endif
 
 namespace rex::audio {
 
@@ -185,7 +318,7 @@ bool XmaContext::Work() {
 }
 
 void XmaContext::Enable() {
-  std::lock_guard<std::mutex> lock(lock_);
+  PS4_XMA_LOCK(0xF2);
   set_is_enabled(true);
 }
 
@@ -201,7 +334,7 @@ bool XmaContext::Block(bool poll) {
 }
 
 void XmaContext::Clear() {
-  std::lock_guard<std::mutex> lock(lock_);
+  PS4_XMA_LOCK(0xF5);
   REXAPU_NOISY_DEBUG("XmaContext: reset context {}", id());
 
   auto context_ptr = memory()->TranslateVirtual(guest_ptr());
@@ -243,12 +376,12 @@ void XmaContext::ResetDecoderStreamLocked() {
 }
 
 void XmaContext::Disable() {
-  std::lock_guard<std::mutex> lock(lock_);
+  PS4_XMA_LOCK(0xF3);
   set_is_enabled(false);
 }
 
 void XmaContext::Release() {
-  std::lock_guard<std::mutex> lock(lock_);
+  PS4_XMA_LOCK(0xF6);
   assert_true(is_allocated());
 
   handoff::Record("xma-release", id_, {handoff_generation_, handoff_codec_epoch_, handoff_frame_, uint64_t(reinterpret_cast<uintptr_t>(av_context_)), uint64_t(av_context_?av_context_->frame_number:0), current_frame_remaining_subframes_}, "codec-reset-pending");
@@ -509,6 +642,21 @@ void XmaContext::Consume(memory::RingBuffer* output_rb, const XMA_CONTEXT_DATA* 
 int XmaContext::PrepareDecoder(int sample_rate, bool is_two_channel) {
   sample_rate = GetSampleRate(sample_rate);
   const int channels = is_two_channel ? 2 : 1;
+#if REX_PLATFORM_PS4
+  // A fresh decoder from the pool when one is needed (same conditions as
+  // PrepareXmaDecoderForStream); the old one is freed on the pool's thread.
+  if (REXCVAR_GET(ps4_xma_decoder_pool) && av_codec_ && av_frame_ && sample_rate > 0 &&
+      (decoder_reset_pending_ || !av_context_ || !avcodec_is_open(av_context_) ||
+       av_context_->sample_rate != sample_rate || av_context_->channels != channels)) {
+    if (AVCodecContext* fresh = Ps4XmaDecoderPool::Get().Take(av_codec_, sample_rate, channels)) {
+      av_frame_unref(av_frame_);
+      Ps4XmaDecoderPool::Get().Retire(av_context_);
+      av_context_ = fresh;
+      decoder_reset_pending_ = false;
+      return 1;
+    }
+  }
+#endif
   const bool reset_requested = decoder_reset_pending_;
   const int result = PrepareXmaDecoderForStream(
       av_codec_, av_context_, av_frame_, decoder_reset_pending_, sample_rate, channels);

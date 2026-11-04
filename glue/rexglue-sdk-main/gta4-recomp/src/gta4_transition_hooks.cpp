@@ -8,6 +8,7 @@
 #include <rex/diagnostics/gta4_transition.h>
 #include <rex/thread.h>
 
+#include "gta4_ps4_crash_trace.h"
 #include "gta4_init.h"
 #include "gta4_gpu_pass_context.h"
 
@@ -38,12 +39,24 @@ uint64_t ReadLoadingStateBits(uint8_t* base) {
 }  // namespace
 
 extern "C" void sub_82144188(PPCContext& ctx, uint8_t* base) {
+  GTA4_Ps4LoadingStateTrace(
+      "before", REX_LOAD_U8(kLoadingActiveGlobal),
+      REX_LOAD_U32(kLoadingScreenIndexGlobal),
+      REX_LOAD_U8(kLoadingReadyGlobal), REX_LOAD_U8(kLoadingCompleteGlobal),
+      REX_LOAD_U8(kLoadingAudioGateGlobal),
+      REX_LOAD_U32(kFrontendStoredStateGlobal));
   rex::diagnostics::gta4_transition::NoteLoadingTick(
       0x82144188, static_cast<uint32_t>(ctx.lr),
       REX_LOAD_U8(kLoadingActiveGlobal) != 0,
       REX_LOAD_U32(kLoadingScreenIndexGlobal), ReadLoadingStateBits(base));
   rex::audio::handoff::Loading(0x82144188,uint32_t(ctx.lr),REX_LOAD_U8(kLoadingActiveGlobal)!=0,REX_LOAD_U32(kLoadingScreenIndexGlobal),ReadLoadingStateBits(base));
   __imp__sub_82144188(ctx, base);
+  GTA4_Ps4LoadingStateTrace(
+      "after", REX_LOAD_U8(kLoadingActiveGlobal),
+      REX_LOAD_U32(kLoadingScreenIndexGlobal),
+      REX_LOAD_U8(kLoadingReadyGlobal), REX_LOAD_U8(kLoadingCompleteGlobal),
+      REX_LOAD_U8(kLoadingAudioGateGlobal),
+      REX_LOAD_U32(kFrontendStoredStateGlobal));
   rex::audio::handoff::Loading(0x82144188,uint32_t(ctx.lr),REX_LOAD_U8(kLoadingActiveGlobal)!=0,REX_LOAD_U32(kLoadingScreenIndexGlobal),ReadLoadingStateBits(base));
   rex::diagnostics::gta4_transition::NoteLoadingTick(
       0x82144188, static_cast<uint32_t>(ctx.lr),
@@ -54,15 +67,24 @@ extern "C" void sub_82144188(PPCContext& ctx, uint8_t* base) {
 extern "C" void sub_8214B640(PPCContext& ctx, uint8_t* base) {
   const uint32_t caller = static_cast<uint32_t>(ctx.lr);
   const uint32_t stored_state = REX_LOAD_U32(kFrontendStoredStateGlobal);
+  GTA4_Ps4TransitionDispatchTrace("before", caller, stored_state, ctx);
   rex::diagnostics::gta4_transition::NoteStateDispatch(
       true, 0x8214B640, caller, stored_state);
   __imp__sub_8214B640(ctx, base);
+  const uint32_t returned_state = REX_LOAD_U32(kFrontendStoredStateGlobal);
+  GTA4_Ps4TransitionDispatchTrace("after", caller, returned_state, ctx);
   rex::diagnostics::gta4_transition::NoteStateDispatch(
-      false, 0x8214B640, caller, REX_LOAD_U32(kFrontendStoredStateGlobal),
+      false, 0x8214B640, caller, returned_state,
       stored_state);
 }
 
 extern "C" void sub_82141F00(PPCContext& ctx, uint8_t* base) {
+  GTA4_Ps4LoadingStateTrace(
+      "world-enter", REX_LOAD_U8(kLoadingActiveGlobal),
+      REX_LOAD_U32(kLoadingScreenIndexGlobal),
+      REX_LOAD_U8(kLoadingReadyGlobal), REX_LOAD_U8(kLoadingCompleteGlobal),
+      REX_LOAD_U8(kLoadingAudioGateGlobal),
+      REX_LOAD_U32(kFrontendStoredStateGlobal));
   rex::audio::handoff::Span handoff_world("world-activation",0x82141F00,ctx.lr,ctx.r3.u32);
   rex::audio::handoff::Record("world",0x82141F00,{ctx.lr,ctx.r3.u32},"begin");
   const uint32_t caller = static_cast<uint32_t>(ctx.lr);
@@ -73,6 +95,12 @@ extern "C" void sub_82141F00(PPCContext& ctx, uint8_t* base) {
   ++g_world_activation_depth;
   __imp__sub_82141F00(ctx, base);
   --g_world_activation_depth;
+  GTA4_Ps4LoadingStateTrace(
+      "world-exit", REX_LOAD_U8(kLoadingActiveGlobal),
+      REX_LOAD_U32(kLoadingScreenIndexGlobal),
+      REX_LOAD_U8(kLoadingReadyGlobal), REX_LOAD_U8(kLoadingCompleteGlobal),
+      REX_LOAD_U8(kLoadingAudioGateGlobal),
+      REX_LOAD_U32(kFrontendStoredStateGlobal));
   rex::audio::handoff::Record("world",0x82141F00,{ctx.lr,ctx.r3.u32},"end");
   rex::diagnostics::gta4_transition::NoteWorldActivationEnd(
       0x82141F00, caller, ctx.r3.u64);

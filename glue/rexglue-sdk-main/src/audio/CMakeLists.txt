@@ -13,7 +13,10 @@ add_library(rexaudio OBJECT
     # SDL backend
     sdl/sdl_audio_system.cpp
     sdl/sdl_audio_driver.cpp
-    $<$<BOOL:${PS5}>:ps5/ps5_audio_driver.cpp>
+    # (the PS4 uses the PS5 driver too: same sceAudioOut, with a queue)
+    $<$<OR:$<BOOL:${PS5}>,$<BOOL:${PS4}>>:ps5/ps5_audio_driver.cpp>
+    $<$<BOOL:${PS4}>:orbis/orbis_audio_driver.cpp>
+    $<$<BOOL:${PS4}>:orbis/orbis_audio_system.cpp>
 )
 add_library(rex::audio ALIAS rexaudio)
 
@@ -42,7 +45,7 @@ if(APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
     )
 endif()
 
-if(PS5)
+if(PS4 OR PS5)
     # [ps5 port] With the PS5 target, clang's implicit __va_list_tag from the
     # PCH and the one FFmpeg's <stdarg.h> use in this file don't unify
     # (va_list "__va_list_tag *" != "__va_list_tag *"): no PCH here.

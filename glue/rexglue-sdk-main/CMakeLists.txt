@@ -9,7 +9,7 @@ else()
 endif()
 
 project(ReXGlue
-    VERSION 0.9.0
+    VERSION 1.0.0
     LANGUAGES ${REXGLUE_LANGUAGES}
     DESCRIPTION "Xbox 360 Recompilation SDK"
 )
@@ -122,7 +122,7 @@ if(NOT WIN32)
     # Use appropriate code model based on architecture
     # [ps5 port] PS5: the default (small) code model, as the PS5 linker script
     # and signer expect.
-    if(CMAKE_SYSTEM_PROCESSOR MATCHES "AMD64|x86_64" AND NOT APPLE AND NOT PS5)
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "AMD64|x86_64" AND NOT APPLE AND NOT PS5 AND NOT PS4)
         # Large code model on Linux x86_64 for linking with very large recompiled executables (35MB+).
         add_compile_options(-mcmodel=large)
     else()
@@ -172,6 +172,11 @@ if(WIN32)
         message(FATAL_ERROR "Unsupported Windows architecture: ${REX_TARGET_PROCESSOR}")
     endif()
     add_compile_definitions(REX_PLATFORM_WINDOWS=1)
+elseif(PS4)
+    # Orbis homebrew uses the PS4-specific runtime backends below the POSIX
+    # layer; do not identify it as Linux even though both use x86-64.
+    set(REX_PLATFORM "ps4-amd64")
+    add_compile_definitions(REX_PLATFORM_PS4=1)
 elseif(UNIX AND NOT APPLE)
     if(REX_TARGET_PROCESSOR MATCHES "AMD64|x86_64")
         set(REX_PLATFORM "linux-amd64")

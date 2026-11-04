@@ -12,6 +12,17 @@ endif()
 
 add_subdirectory("${REXSDK_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/rexglue-sdk")
 
+# The Orbis bundle pairs its compatibility layer and RADV build. Its
+# vkloader supplies the Vulkan C ABI that a PS4 process cannot load at runtime.
+if(PS4)
+    if(NOT ORBIS_COMPAT_DIR OR NOT EXISTS "${ORBIS_COMPAT_DIR}/vkloader/CMakeLists.txt")
+        message(FATAL_ERROR
+            "PS4 Vulkan support requires ORBIS_COMPAT_DIR from the Orbis SDK bundle; "
+            "no vkloader/CMakeLists.txt was found there.")
+    endif()
+    add_subdirectory("${ORBIS_COMPAT_DIR}/vkloader" ps4-vkloader)
+endif()
+
 # The macOS consumer must package the workspace MoltenVK build.  The generic
 # RexGlue staging code still supplies the Vulkan loader and SDK support files,
 # but an installed MoltenVK may not contain the fixes carried by this tree.

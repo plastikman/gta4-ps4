@@ -73,6 +73,30 @@ elseif(APPLE)
         system_posix.cpp
         threading_mac.cpp
     )
+elseif(PS4)
+    target_sources(rexcore PRIVATE
+        atomic_posix.cpp
+        clock_posix.cpp
+        dbg_posix.cpp
+        exception_handler_posix.cpp
+        filesystem_posix.cpp
+        fiber_ps4.cpp
+        mapped_memory_posix.cpp
+        math_gcc.cpp
+        memory_ps4.cpp
+        net_ps4.cpp
+        orbis_link_compat.cpp
+        orbis_diag.cpp
+        platform/console_posix.cpp
+        platform/env_posix.cpp
+        seh_posix.cpp
+        socket_posix.cpp
+        system_posix.cpp
+        threading_posix.cpp
+        dynlib_ps4.cpp
+        logging_ps4.cpp
+        ucontext_ps4.c
+    )
 elseif(UNIX)
     if(ANDROID)
         set(REXCORE_POSIX_FIBER fiber_android.cpp)
@@ -132,7 +156,13 @@ if(REXGLUE_BUILD_TESTS)
     target_compile_definitions(rexcore PUBLIC REX_DIAGNOSTICS_TESTING=1)
 endif()
 
-if(PS5)
+if(PS4)
+    target_link_libraries(rexcore PUBLIC
+        SceSystemService SceSysmodule SceUserService ScePad SceAudioOut SceNet SceNetCtl)
+    # [ps4 port] the stack sampler: SIGPROF + a conservative stack scan, logged
+    # relative to Anchor() and symbolized offline against gta4.oelf.
+    target_sources(rexcore PRIVATE ps5_diag.cpp)
+elseif(PS5)
     # [ps5 port] the SDK's libc has pthreads; there is no librt / libdl.
     target_link_libraries(rexcore PUBLIC SceSystemService SceUserService ScePad SceAudioOut ps5platform)
     target_sources(rexcore PRIVATE ps5_libc_extras.c ps5_diag.cpp)

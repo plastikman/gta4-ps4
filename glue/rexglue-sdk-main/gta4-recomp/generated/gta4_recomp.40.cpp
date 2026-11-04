@@ -1,4 +1,55 @@
+
+
 #include "gta4_init.h"
+#include "gta4_ps4_crash_trace.h"
+void GTA4_Ps4GuestCallbackReadTrace(uint32_t address, uint32_t object,
+                                   uint32_t target, const PPCContext& ctx);
+bool GTA4_Ps4GuestReadGuardContext(uint32_t address, const char* operation,
+                                  const PPCContext& ctx);
+void GTA4_Ps4GuestStoreTrace(const char* site, uint32_t address, uint32_t base,
+							 uint32_t index, uint32_t value, uint32_t lr);
+#if REX_PLATFORM_PS4
+#undef REX_LOAD_U8
+#define REX_LOAD_U8(x) \
+	(GTA4_Ps4GuestReadGuardContext((u32)(x), "read8", ctx) \
+		? (REX_TRACE_GUEST_ADDR_OP(x, "read8"), \
+			*(volatile u8*)(base + (u32)(x) + REX_PHYS_HOST_OFFSET(x))) \
+		: 0u)
+#undef REX_LOAD_U16
+#define REX_LOAD_U16(x) \
+	(GTA4_Ps4GuestReadGuardContext((u32)(x), "read16", ctx) \
+		? (REX_TRACE_GUEST_ADDR_OP(x, "read16"), \
+			__builtin_bswap16(*(volatile u16*)(base + (u32)(x) + REX_PHYS_HOST_OFFSET(x)))) \
+		: 0u)
+#undef REX_LOAD_U32
+#define REX_LOAD_U32(x) \
+	(GTA4_Ps4GuestReadGuardContext((u32)(x), "read32", ctx) \
+		? (REX_TRACE_GUEST_ADDR_OP(x, "read32"), \
+			__builtin_bswap32(*(volatile u32*)(base + (u32)(x) + REX_PHYS_HOST_OFFSET(x)))) \
+		: 0u)
+#undef REX_LOAD_U64
+#define REX_LOAD_U64(x) \
+	(GTA4_Ps4GuestReadGuardContext((u32)(x), "read64", ctx) \
+		? (REX_TRACE_GUEST_ADDR_OP(x, "read64"), \
+			__builtin_bswap64(*(volatile u64*)(base + (u32)(x) + REX_PHYS_HOST_OFFSET(x)))) \
+		: 0ull)
+#endif
+#undef REX_STORE_U32
+#define REX_STORE_U32(x, y) \
+	(((u32)(x) >= 0x8285e000u && (u32)(x) < 0x82860000u) ? \
+		(GTA4_Ps4GuestStoreTrace("gta4_recomp.40-write32", (u32)(x), ctx.r1.u32, \
+			ctx.r3.u32, (u32)(y), static_cast<uint32_t>(ctx.lr)), \
+		 GTA4_Ps4GuestMemoryWriteAllowedContext((u32)(x), "write32", ctx, (u32)(y)), (u32)0) : \
+		(REX_TRACE_GUEST_ADDR_OP(x, "write32"), \
+		 *(volatile u32*)(base + (u32)(x) + REX_PHYS_HOST_OFFSET(x)) = __builtin_bswap32(y)))
+#if REX_PLATFORM_PS4 && defined(REX_PS4_GUEST_MEMORY_TRACE)  // bring-up tracing: every guest load and store
+#undef REX_TRACE_GUEST_ADDR
+#undef REX_TRACE_GUEST_ADDR_OP
+#define REX_TRACE_GUEST_ADDR(addr) \
+	((((u32)(addr) < 0x10000u || ((u32)(addr) >= 0x10a96000u && (u32)(addr) < 0x10a97000u) || ((u32)(addr) >= 0x10ac1000u && (u32)(addr) < 0x10ac2000u)) || ((u32)(addr) >= 0x3a000u && (u32)(addr) < 0x3b000u) || ((u32)(addr) >= 0x8285e000u && (u32)(addr) < 0x82860000u)) ? GTA4_Ps4GuestMemoryTraceContextSite((u32)(addr), "raw", ctx, __FILE__, __LINE__, __func__) : (void)0)
+#define REX_TRACE_GUEST_ADDR_OP(addr, op) \
+	(((u32)(addr) < 0x10000u || ((u32)(addr) >= 0x10a96000u && (u32)(addr) < 0x10a97000u) || ((u32)(addr) >= 0x10ac1000u && (u32)(addr) < 0x10ac2000u)) ? GTA4_Ps4GuestMemoryTraceContextSite((u32)(addr), op, ctx, __FILE__, __LINE__, __func__) : (void)0)
+#endif
 
 DEFINE_REX_FUNC(sub_8256A830) {
 	REX_FUNC_PROLOGUE();
@@ -6004,38 +6055,38 @@ loc_8256D00C:
 	// fmuls f7,f29,f0
 	ctx.f7.f64 = double(float(f29.f64 * ctx.f0.f64));
 	// fmsubs f10,f28,f0,f10
-	ctx.f10.f64 = double(float(std::fma(f28.f64, ctx.f0.f64, -ctx.f10.f64)));
+	ctx.f10.f64 = double(float(REX_FMA(f28.f64, ctx.f0.f64, -ctx.f10.f64)));
 	// fmadds f9,f30,f12,f9
-	ctx.f9.f64 = double(float(std::fma(f30.f64, ctx.f12.f64, ctx.f9.f64)));
+	ctx.f9.f64 = double(float(REX_FMA(f30.f64, ctx.f12.f64, ctx.f9.f64)));
 	// fmadds f8,f30,f0,f8
-	ctx.f8.f64 = double(float(std::fma(f30.f64, ctx.f0.f64, ctx.f8.f64)));
+	ctx.f8.f64 = double(float(REX_FMA(f30.f64, ctx.f0.f64, ctx.f8.f64)));
 	// fnmsubs f10,f30,f11,f10
-	ctx.f10.f64 = double(float(-std::fma(f30.f64, ctx.f11.f64, -ctx.f10.f64)));
+	ctx.f10.f64 = double(float(-REX_FMA(f30.f64, ctx.f11.f64, -ctx.f10.f64)));
 	// fmadds f9,f31,f0,f9
-	ctx.f9.f64 = double(float(std::fma(f31.f64, ctx.f0.f64, ctx.f9.f64)));
+	ctx.f9.f64 = double(float(REX_FMA(f31.f64, ctx.f0.f64, ctx.f9.f64)));
 	// fmadds f8,f29,f13,f8
-	ctx.f8.f64 = double(float(std::fma(f29.f64, ctx.f13.f64, ctx.f8.f64)));
+	ctx.f8.f64 = double(float(REX_FMA(f29.f64, ctx.f13.f64, ctx.f8.f64)));
 	// fnmsubs f0,f29,f12,f10
-	ctx.f0.f64 = double(float(-std::fma(f29.f64, ctx.f12.f64, -ctx.f10.f64)));
+	ctx.f0.f64 = double(float(-REX_FMA(f29.f64, ctx.f12.f64, -ctx.f10.f64)));
 	// stfs f0,92(r1)
 	temp.f32 = float(ctx.f0.f64);
 	REX_STORE_U32(ctx.r1.u32 + 92, temp.u32);
 	// fnmsubs f10,f29,f11,f9
-	ctx.f10.f64 = double(float(-std::fma(f29.f64, ctx.f11.f64, -ctx.f9.f64)));
+	ctx.f10.f64 = double(float(-REX_FMA(f29.f64, ctx.f11.f64, -ctx.f9.f64)));
 	// stfs f10,80(r1)
 	temp.f32 = float(ctx.f10.f64);
 	REX_STORE_U32(ctx.r1.u32 + 80, temp.u32);
 	// fnmsubs f9,f31,f12,f8
-	ctx.f9.f64 = double(float(-std::fma(f31.f64, ctx.f12.f64, -ctx.f8.f64)));
+	ctx.f9.f64 = double(float(-REX_FMA(f31.f64, ctx.f12.f64, -ctx.f8.f64)));
 	// stfs f9,84(r1)
 	temp.f32 = float(ctx.f9.f64);
 	REX_STORE_U32(ctx.r1.u32 + 84, temp.u32);
 	// fmadds f12,f28,f12,f7
-	ctx.f12.f64 = double(float(std::fma(f28.f64, ctx.f12.f64, ctx.f7.f64)));
+	ctx.f12.f64 = double(float(REX_FMA(f28.f64, ctx.f12.f64, ctx.f7.f64)));
 	// fmadds f12,f31,f11,f12
-	ctx.f12.f64 = double(float(std::fma(f31.f64, ctx.f11.f64, ctx.f12.f64)));
+	ctx.f12.f64 = double(float(REX_FMA(f31.f64, ctx.f11.f64, ctx.f12.f64)));
 	// fnmsubs f13,f30,f13,f12
-	ctx.f13.f64 = double(float(-std::fma(f30.f64, ctx.f13.f64, -ctx.f12.f64)));
+	ctx.f13.f64 = double(float(-REX_FMA(f30.f64, ctx.f13.f64, -ctx.f12.f64)));
 	// stfs f13,88(r1)
 	temp.f32 = float(ctx.f13.f64);
 	REX_STORE_U32(ctx.r1.u32 + 88, temp.u32);
@@ -7285,42 +7336,42 @@ loc_8256D7D8:
 	// mr r3,r31
 	ctx.r3.u64 = r31.u64;
 	// fmadds f8,f30,f12,f8
-	ctx.f8.f64 = double(float(std::fma(f30.f64, ctx.f12.f64, ctx.f8.f64)));
+	ctx.f8.f64 = double(float(REX_FMA(f30.f64, ctx.f12.f64, ctx.f8.f64)));
 	// stw r11,224(r1)
 	REX_STORE_U32(ctx.r1.u32 + 224, ctx.r11.u32);
 	// fmsubs f10,f28,f0,f10
-	ctx.f10.f64 = double(float(std::fma(f28.f64, ctx.f0.f64, -ctx.f10.f64)));
+	ctx.f10.f64 = double(float(REX_FMA(f28.f64, ctx.f0.f64, -ctx.f10.f64)));
 	// fmadds f9,f30,f0,f9
-	ctx.f9.f64 = double(float(std::fma(f30.f64, ctx.f0.f64, ctx.f9.f64)));
+	ctx.f9.f64 = double(float(REX_FMA(f30.f64, ctx.f0.f64, ctx.f9.f64)));
 	// fmadds f8,f31,f0,f8
-	ctx.f8.f64 = double(float(std::fma(f31.f64, ctx.f0.f64, ctx.f8.f64)));
+	ctx.f8.f64 = double(float(REX_FMA(f31.f64, ctx.f0.f64, ctx.f8.f64)));
 	// fmadds f0,f29,f0,f7
-	ctx.f0.f64 = double(float(std::fma(f29.f64, ctx.f0.f64, ctx.f7.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(f29.f64, ctx.f0.f64, ctx.f7.f64)));
 	// lfs f7,4(r30)
 	temp.u32 = REX_LOAD_U32(r30.u32 + 4);
 	ctx.f7.f64 = double(temp.f32);
 	// fnmsubs f10,f30,f11,f10
-	ctx.f10.f64 = double(float(-std::fma(f30.f64, ctx.f11.f64, -ctx.f10.f64)));
+	ctx.f10.f64 = double(float(-REX_FMA(f30.f64, ctx.f11.f64, -ctx.f10.f64)));
 	// fmadds f9,f28,f11,f9
-	ctx.f9.f64 = double(float(std::fma(f28.f64, ctx.f11.f64, ctx.f9.f64)));
+	ctx.f9.f64 = double(float(REX_FMA(f28.f64, ctx.f11.f64, ctx.f9.f64)));
 	// fmadds f0,f31,f11,f0
-	ctx.f0.f64 = double(float(std::fma(f31.f64, ctx.f11.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(f31.f64, ctx.f11.f64, ctx.f0.f64)));
 	// fnmsubs f10,f29,f12,f10
-	ctx.f10.f64 = double(float(-std::fma(f29.f64, ctx.f12.f64, -ctx.f10.f64)));
+	ctx.f10.f64 = double(float(-REX_FMA(f29.f64, ctx.f12.f64, -ctx.f10.f64)));
 	// fnmsubs f12,f31,f12,f9
-	ctx.f12.f64 = double(float(-std::fma(f31.f64, ctx.f12.f64, -ctx.f9.f64)));
+	ctx.f12.f64 = double(float(-REX_FMA(f31.f64, ctx.f12.f64, -ctx.f9.f64)));
 	// fnmsubs f9,f29,f11,f8
-	ctx.f9.f64 = double(float(-std::fma(f29.f64, ctx.f11.f64, -ctx.f8.f64)));
+	ctx.f9.f64 = double(float(-REX_FMA(f29.f64, ctx.f11.f64, -ctx.f8.f64)));
 	// fnmsubs f11,f30,f13,f0
-	ctx.f11.f64 = double(float(-std::fma(f30.f64, ctx.f13.f64, -ctx.f0.f64)));
+	ctx.f11.f64 = double(float(-REX_FMA(f30.f64, ctx.f13.f64, -ctx.f0.f64)));
 	// fmuls f0,f10,f10
 	ctx.f0.f64 = double(float(ctx.f10.f64 * ctx.f10.f64));
 	// fmadds f0,f12,f12,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f12.f64, ctx.f12.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f12.f64, ctx.f12.f64, ctx.f0.f64)));
 	// fmadds f0,f9,f9,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f9.f64, ctx.f9.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f9.f64, ctx.f9.f64, ctx.f0.f64)));
 	// fmadds f0,f11,f11,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f11.f64, ctx.f11.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f11.f64, ctx.f11.f64, ctx.f0.f64)));
 	// frsqrte f13,f0
 	ctx.f13.f64 = double(float(1.0 / sqrt(ctx.f0.f64)));
 	// fneg f3,f0
@@ -7330,7 +7381,7 @@ loc_8256D7D8:
 	// fmul f4,f13,f26
 	ctx.f4.f64 = ctx.f13.f64 * f26.f64;
 	// fnmsub f5,f8,f0,f27
-	ctx.f5.f64 = -std::fma(ctx.f8.f64, ctx.f0.f64, -f27.f64);
+	ctx.f5.f64 = -REX_FMA(ctx.f8.f64, ctx.f0.f64, -f27.f64);
 	// lfs f8,0(r30)
 	temp.u32 = REX_LOAD_U32(r30.u32 + 0);
 	ctx.f8.f64 = double(temp.f32);
@@ -7338,7 +7389,7 @@ loc_8256D7D8:
 	temp.f32 = float(ctx.f8.f64);
 	REX_STORE_U32(ctx.r1.u32 + 144, temp.u32);
 	// fmadd f13,f5,f4,f13
-	ctx.f13.f64 = std::fma(ctx.f5.f64, ctx.f4.f64, ctx.f13.f64);
+	ctx.f13.f64 = REX_FMA(ctx.f5.f64, ctx.f4.f64, ctx.f13.f64);
 	// lfs f5,176(r1)
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 176);
 	ctx.f5.f64 = double(temp.f32);
@@ -7374,17 +7425,17 @@ loc_8256D7D8:
 	temp.f32 = float(ctx.f6.f64);
 	REX_STORE_U32(ctx.r1.u32 + 152, temp.u32);
 	// fnmsub f8,f8,f0,f27
-	ctx.f8.f64 = -std::fma(ctx.f8.f64, ctx.f0.f64, -f27.f64);
+	ctx.f8.f64 = -REX_FMA(ctx.f8.f64, ctx.f0.f64, -f27.f64);
 	// fmadd f13,f8,f7,f13
-	ctx.f13.f64 = std::fma(ctx.f8.f64, ctx.f7.f64, ctx.f13.f64);
+	ctx.f13.f64 = REX_FMA(ctx.f8.f64, ctx.f7.f64, ctx.f13.f64);
 	// fmul f8,f13,f13
 	ctx.f8.f64 = ctx.f13.f64 * ctx.f13.f64;
 	// fmul f7,f13,f26
 	ctx.f7.f64 = ctx.f13.f64 * f26.f64;
 	// fnmsub f0,f8,f0,f27
-	ctx.f0.f64 = -std::fma(ctx.f8.f64, ctx.f0.f64, -f27.f64);
+	ctx.f0.f64 = -REX_FMA(ctx.f8.f64, ctx.f0.f64, -f27.f64);
 	// fmadd f0,f0,f7,f13
-	ctx.f0.f64 = std::fma(ctx.f0.f64, ctx.f7.f64, ctx.f13.f64);
+	ctx.f0.f64 = REX_FMA(ctx.f0.f64, ctx.f7.f64, ctx.f13.f64);
 	// fsel f0,f3,f25,f0
 	ctx.f0.f64 = ctx.f3.f64 >= 0.0 ? f25.f64 : ctx.f0.f64;
 	// frsp f0,f0
@@ -7713,15 +7764,11 @@ loc_8256DB64:
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3560(ctx, base);
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// addi r1,r1,112
 	ctx.r1.s64 = ctx.r1.s64 + 112;
@@ -9451,6 +9498,7 @@ loc_8256E6A0:
 	// bctrl 
 	ctx.lr = 0x8256E6D8;
 	{ ctx.v0 = v0; ctx.v1 = v1; ctx.v13 = v13; REX_CALL_INDIRECT_FUNC(ctr.u32); v0 = ctx.v0; v1 = ctx.v1; v13 = ctx.v13; }
+	GTA4_Ps4GuestCallbackReadTrace(r30.u32 + 32, r30.u32, ctr.u32, ctx);
 	// lwz r11,32(r30)
 	ctx.r11.u64 = REX_LOAD_U32(r30.u32 + 32);
 	// clrlwi r11,r11,31
@@ -10754,6 +10802,7 @@ loc_8256EFD8:
 
 DEFINE_REX_FUNC(sub_8256EFE0) {
 	REX_FUNC_PROLOGUE();
+	GTA4_Ps4WorldStepTrace("world-resource-validity-entry:sub_8256EFE0", ctx);
 	PPCXERRegister xer{};
 	PPCCRRegister cr6{};
 	PPCRegister r14{};
@@ -10778,6 +10827,44 @@ DEFINE_REX_FUNC(sub_8256EFE0) {
 	PPCVRegister v0 = ctx.v0;
 	PPCRegister temp{};
 	uint32_t ea{};
+	const uint32_t ps4_validity_input = ctx.r3.u32;
+	uint32_t ps4_validity_copy_bytes = 0;
+	auto ps4_validity_stage = [&](const char* name, uint32_t stage) {
+		const uint64_t saved_r4 = ctx.r4.u64;
+		const uint64_t saved_r5 = ctx.r5.u64;
+		ctx.r4.u64 = ps4_validity_input;
+		ctx.r5.u64 = stage;
+		GTA4_Ps4WorldStepTrace(name, ctx);
+		ctx.r4.u64 = saved_r4;
+		ctx.r5.u64 = saved_r5;
+	};
+	auto ps4_validity_item = [&](const char* name, uint32_t table, uint32_t index, uint32_t count) {
+		const uint64_t saved_r3 = ctx.r3.u64;
+		const uint64_t saved_r4 = ctx.r4.u64;
+		const uint64_t saved_r5 = ctx.r5.u64;
+		const uint64_t saved_r6 = ctx.r6.u64;
+		ctx.r3.u64 = ps4_validity_input;
+		ctx.r4.u64 = table;
+		ctx.r5.u64 = index;
+		ctx.r6.u64 = count;
+		GTA4_Ps4WorldStepTrace(name, ctx);
+		ctx.r3.u64 = saved_r3;
+		ctx.r4.u64 = saved_r4;
+		ctx.r5.u64 = saved_r5;
+		ctx.r6.u64 = saved_r6;
+	};
+	auto ps4_validity_header_word = [&](uint32_t header, uint32_t index) {
+		const uint64_t saved_r3 = ctx.r3.u64;
+		const uint64_t saved_r4 = ctx.r4.u64;
+		const uint64_t saved_r5 = ctx.r5.u64;
+		ctx.r3.u64 = header;
+		ctx.r4.u64 = index;
+		ctx.r5.u64 = REX_LOAD_U32(header + index * 4);
+		GTA4_Ps4WorldStepTrace("world-resource-validity-header-word:sub_8256EFE0", ctx);
+		ctx.r3.u64 = saved_r3;
+		ctx.r4.u64 = saved_r4;
+		ctx.r5.u64 = saved_r5;
+	};
 	// mflr r12
 	ctx.r12.u64 = ctx.lr;
 	// bl 0x829ff790
@@ -10808,8 +10895,21 @@ loc_8256F004:
 	REX_STORE_U8(ctx.r9.u32 + ctx.r11.u32, ctx.r10.u8);
 	// addi r11,r11,1
 	ctx.r11.s64 = ctx.r11.s64 + 1;
+	if ((++ps4_validity_copy_bytes & 0x3FFFu) == 0) {
+		const uint64_t saved_r3 = ctx.r3.u64;
+		const uint64_t saved_r4 = ctx.r4.u64;
+		const uint64_t saved_r5 = ctx.r5.u64;
+		ctx.r3.u64 = ctx.r11.u64;
+		ctx.r4.u64 = ps4_validity_copy_bytes;
+		ctx.r5.u64 = ctx.r10.u64;
+		GTA4_Ps4WorldStepTrace("world-resource-validity-copy-progress:sub_8256EFE0", ctx);
+		ctx.r3.u64 = saved_r3;
+		ctx.r4.u64 = saved_r4;
+		ctx.r5.u64 = saved_r5;
+	}
 	// bne cr6,0x8256f004
 	if (!cr6.eq) goto loc_8256F004;
+	ps4_validity_stage("world-resource-validity-copy-complete:sub_8256EFE0", 1);
 	// li r4,46
 	ctx.r4.s64 = 46;
 	// addi r3,r1,688
@@ -10817,6 +10917,7 @@ loc_8256F004:
 	// bl 0x82a02100
 	ctx.lr = 0x8256F024;
 	{ ctx.v0 = v0; rexcrt_strrchr(ctx, base); v0 = ctx.v0; }
+	ps4_validity_stage("world-resource-validity-after-extension-scan:sub_8256EFE0", 2);
 	// lis r10,-32254
 	ctx.r10.s64 = -2113798144;
 	// mr r11,r3
@@ -10839,7 +10940,9 @@ loc_8256F004:
 	REX_STORE_U8(ctx.r11.u32 + 0, r16.u8);
 	// bl 0x8284f538
 	ctx.lr = 0x8256F050;
+	ps4_validity_stage("world-resource-validity-before-name-open:sub_8256EFE0", 3);
 	{ ctx.v0 = v0; sub_8284F538(ctx, base); v0 = ctx.v0; }
+	ps4_validity_stage("world-resource-validity-after-name-open:sub_8256EFE0", 4);
 	// clrlwi r11,r3,24
 	ctx.r11.u64 = ctx.r3.u32 & 0xFF;
 	// cmplwi cr6,r11,0
@@ -10865,14 +10968,13 @@ loc_8256F06C:
 	ctx.r3.u64 = REX_LOAD_U32(r18.u32 + 0);
 	// bl 0x821b3560
 	ctx.lr = 0x8256F07C;
+	ps4_validity_stage("world-resource-validity-before-session-lock:sub_8256EFE0", 5);
 	{
 		const auto s_r16 = ctx.r16; ctx.r16 = r16;
 		const auto s_r18 = ctx.r18; ctx.r18 = r18;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; sub_821B3560(ctx, base); v0 = ctx.v0; }
 		r16 = ctx.r16;
 		ctx.r16 = s_r16;
@@ -10884,9 +10986,8 @@ loc_8256F06C:
 		ctx.r31 = s_r31;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
+	ps4_validity_stage("world-resource-validity-after-session-lock:sub_8256EFE0", 6);
 	// mr r10,r16
 	ctx.r10.u64 = r16.u64;
 	// lis r11,-32255
@@ -10965,7 +11066,12 @@ loc_8256F0E0:
 	ctx.r3.u64 = r30.u64;
 	// bl 0x8284f468
 	ctx.lr = 0x8256F110;
+	GTA4_Ps4WorldStepTrace("world-resource-validity-file-open-begin:sub_8256EFE0", ctx);
+	GTA4_Ps4WorldPathTrace("file-open-begin", ps4_validity_input, base, ctx);
+	ps4_validity_stage("world-resource-validity-before-path-open:sub_8256EFE0", 7);
 	{ ctx.v0 = v0; sub_8284F468(ctx, base); v0 = ctx.v0; }
+	ps4_validity_stage("world-resource-validity-after-path-open:sub_8256EFE0", 8);
+	GTA4_Ps4WorldPathTrace("file-open-return", ps4_validity_input, base, ctx);
 	// mr r31,r3
 	r31.u64 = ctx.r3.u64;
 	// cmplwi cr6,r31,0
@@ -10982,8 +11088,6 @@ loc_8256F0E0:
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; sub_821B3560(ctx, base); v0 = ctx.v0; }
 		r16 = ctx.r16;
 		ctx.r16 = s_r16;
@@ -10995,8 +11099,6 @@ loc_8256F0E0:
 		ctx.r31 = s_r31;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r11,r16
 	ctx.r11.u64 = r16.u64;
@@ -11014,7 +11116,15 @@ loc_8256F0E0:
 	REX_STORE_U16(r18.u32 + 6, ctx.r11.u16);
 	// bl 0x8285ad08
 	ctx.lr = 0x8256F144;
+	GTA4_Ps4WorldStepTrace("world-resource-validity-header-read-begin:sub_8256EFE0", ctx);
 	{ ctx.v0 = v0; sub_8285AD08(ctx, base); v0 = ctx.v0; }
+	GTA4_Ps4WorldStepTrace("world-resource-validity-header-read-return:sub_8256EFE0", ctx);
+	{
+		const uint32_t header = ctx.r4.u32;
+		for (uint32_t index = 0; index < 17; ++index) {
+			ps4_validity_header_word(header, index);
+		}
+	}
 	// lis r11,1489
 	ctx.r11.s64 = 97583104;
 	// mr r25,r16
@@ -11084,6 +11194,7 @@ loc_8256F0E0:
 loc_8256F1C8:
 	// bl 0x821b3510
 	ctx.lr = 0x8256F1CC;
+ GTA4_Ps4WorldStepTrace("world-resource-validity-table-alloc-0-begin:sub_8256EFE0", ctx);
 	{
 		const auto s_r14 = ctx.r14; ctx.r14 = r14;
 		const auto s_r15 = ctx.r15; ctx.r15 = r15;
@@ -11103,8 +11214,6 @@ loc_8256F1C8:
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; sub_821B3510(ctx, base); v0 = ctx.v0; }
 		r14 = ctx.r14;
 		ctx.r14 = s_r14;
@@ -11142,11 +11251,10 @@ loc_8256F1C8:
 		ctx.r31 = s_r31;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r27,r3
 	r27.u64 = ctx.r3.u64;
+ GTA4_Ps4WorldStepTrace("world-resource-validity-table-alloc-0-return:sub_8256EFE0", ctx);
 	// b 0x8256f208
 	goto loc_8256F208;
 loc_8256F1D4:
@@ -11174,6 +11282,7 @@ loc_8256F1F8:
 loc_8256F1FC:
 	// bl 0x821b3510
 	ctx.lr = 0x8256F200;
+ GTA4_Ps4WorldStepTrace("world-resource-validity-table-alloc-1-begin:sub_8256EFE0", ctx);
 	{
 		const auto s_r14 = ctx.r14; ctx.r14 = r14;
 		const auto s_r15 = ctx.r15; ctx.r15 = r15;
@@ -11193,8 +11302,6 @@ loc_8256F1FC:
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; sub_821B3510(ctx, base); v0 = ctx.v0; }
 		r14 = ctx.r14;
 		ctx.r14 = s_r14;
@@ -11232,11 +11339,10 @@ loc_8256F1FC:
 		ctx.r31 = s_r31;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r25,r3
 	r25.u64 = ctx.r3.u64;
+ GTA4_Ps4WorldStepTrace("world-resource-validity-table-alloc-1-return:sub_8256EFE0", ctx);
 	// stw r25,228(r1)
 	REX_STORE_U32(ctx.r1.u32 + 228, r25.u32);
 loc_8256F208:
@@ -11261,6 +11367,7 @@ loc_8256F208:
 loc_8256F22C:
 	// bl 0x821b3510
 	ctx.lr = 0x8256F230;
+ GTA4_Ps4WorldStepTrace("world-resource-validity-table-alloc-2-begin:sub_8256EFE0", ctx);
 	{
 		const auto s_r14 = ctx.r14; ctx.r14 = r14;
 		const auto s_r15 = ctx.r15; ctx.r15 = r15;
@@ -11280,8 +11387,6 @@ loc_8256F22C:
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; sub_821B3510(ctx, base); v0 = ctx.v0; }
 		r14 = ctx.r14;
 		ctx.r14 = s_r14;
@@ -11319,11 +11424,10 @@ loc_8256F22C:
 		ctx.r31 = s_r31;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r24,r3
 	r24.u64 = ctx.r3.u64;
+ GTA4_Ps4WorldStepTrace("world-resource-validity-table-alloc-2-return:sub_8256EFE0", ctx);
 	// stw r24,236(r1)
 	REX_STORE_U32(ctx.r1.u32 + 236, r24.u32);
 loc_8256F238:
@@ -11351,6 +11455,7 @@ loc_8256F25C:
 loc_8256F260:
 	// bl 0x821b3510
 	ctx.lr = 0x8256F264;
+ GTA4_Ps4WorldStepTrace("world-resource-validity-table-alloc-3-begin:sub_8256EFE0", ctx);
 	{
 		const auto s_r14 = ctx.r14; ctx.r14 = r14;
 		const auto s_r15 = ctx.r15; ctx.r15 = r15;
@@ -11370,8 +11475,6 @@ loc_8256F260:
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; sub_821B3510(ctx, base); v0 = ctx.v0; }
 		r14 = ctx.r14;
 		ctx.r14 = s_r14;
@@ -11409,11 +11512,10 @@ loc_8256F260:
 		ctx.r31 = s_r31;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r15,r3
 	r15.u64 = ctx.r3.u64;
+ GTA4_Ps4WorldStepTrace("world-resource-validity-table-alloc-3-return:sub_8256EFE0", ctx);
 loc_8256F268:
 	// lwz r11,160(r1)
 	ctx.r11.u64 = REX_LOAD_U32(ctx.r1.u32 + 160);
@@ -11436,6 +11538,7 @@ loc_8256F268:
 loc_8256F28C:
 	// bl 0x821b3510
 	ctx.lr = 0x8256F290;
+ GTA4_Ps4WorldStepTrace("world-resource-validity-table-alloc-4-begin:sub_8256EFE0", ctx);
 	{
 		const auto s_r14 = ctx.r14; ctx.r14 = r14;
 		const auto s_r15 = ctx.r15; ctx.r15 = r15;
@@ -11455,8 +11558,6 @@ loc_8256F28C:
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; sub_821B3510(ctx, base); v0 = ctx.v0; }
 		r14 = ctx.r14;
 		ctx.r14 = s_r14;
@@ -11494,11 +11595,10 @@ loc_8256F28C:
 		ctx.r31 = s_r31;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r23,r3
 	r23.u64 = ctx.r3.u64;
+ GTA4_Ps4WorldStepTrace("world-resource-validity-table-alloc-4-return:sub_8256EFE0", ctx);
 	// stw r23,232(r1)
 	REX_STORE_U32(ctx.r1.u32 + 232, r23.u32);
 loc_8256F298:
@@ -11519,6 +11619,7 @@ loc_8256F298:
 loc_8256F2B4:
 	// bl 0x821b3510
 	ctx.lr = 0x8256F2B8;
+ GTA4_Ps4WorldStepTrace("world-resource-validity-table-alloc-5-begin:sub_8256EFE0", ctx);
 	{
 		const auto s_r14 = ctx.r14; ctx.r14 = r14;
 		const auto s_r15 = ctx.r15; ctx.r15 = r15;
@@ -11538,8 +11639,6 @@ loc_8256F2B4:
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; sub_821B3510(ctx, base); v0 = ctx.v0; }
 		r14 = ctx.r14;
 		ctx.r14 = s_r14;
@@ -11577,11 +11676,10 @@ loc_8256F2B4:
 		ctx.r31 = s_r31;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r22,r3
 	r22.u64 = ctx.r3.u64;
+ GTA4_Ps4WorldStepTrace("world-resource-validity-table-alloc-5-return:sub_8256EFE0", ctx);
 	// stw r22,224(r1)
 	REX_STORE_U32(ctx.r1.u32 + 224, r22.u32);
 loc_8256F2C0:
@@ -11602,6 +11700,7 @@ loc_8256F2C0:
 loc_8256F2DC:
 	// bl 0x821b3510
 	ctx.lr = 0x8256F2E0;
+ GTA4_Ps4WorldStepTrace("world-resource-validity-table-alloc-6-begin:sub_8256EFE0", ctx);
 	{
 		const auto s_r14 = ctx.r14; ctx.r14 = r14;
 		const auto s_r15 = ctx.r15; ctx.r15 = r15;
@@ -11621,8 +11720,6 @@ loc_8256F2DC:
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; sub_821B3510(ctx, base); v0 = ctx.v0; }
 		r14 = ctx.r14;
 		ctx.r14 = s_r14;
@@ -11660,11 +11757,10 @@ loc_8256F2DC:
 		ctx.r31 = s_r31;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r20,r3
 	r20.u64 = ctx.r3.u64;
+ GTA4_Ps4WorldStepTrace("world-resource-validity-table-alloc-6-return:sub_8256EFE0", ctx);
 	// stw r20,212(r1)
 	REX_STORE_U32(ctx.r1.u32 + 212, r20.u32);
 loc_8256F2E8:
@@ -11696,6 +11792,7 @@ loc_8256F314:
 loc_8256F318:
 	// bl 0x821b3510
 	ctx.lr = 0x8256F31C;
+ GTA4_Ps4WorldStepTrace("world-resource-validity-table-alloc-7-begin:sub_8256EFE0", ctx);
 	{
 		const auto s_r14 = ctx.r14; ctx.r14 = r14;
 		const auto s_r15 = ctx.r15; ctx.r15 = r15;
@@ -11715,8 +11812,6 @@ loc_8256F318:
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; sub_821B3510(ctx, base); v0 = ctx.v0; }
 		r14 = ctx.r14;
 		ctx.r14 = s_r14;
@@ -11754,11 +11849,10 @@ loc_8256F318:
 		ctx.r31 = s_r31;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r14,r3
 	r14.u64 = ctx.r3.u64;
+ GTA4_Ps4WorldStepTrace("world-resource-validity-table-alloc-7-return:sub_8256EFE0", ctx);
 loc_8256F320:
 	// lwz r11,180(r1)
 	ctx.r11.u64 = REX_LOAD_U32(ctx.r1.u32 + 180);
@@ -11781,6 +11875,7 @@ loc_8256F320:
 loc_8256F344:
 	// bl 0x821b3510
 	ctx.lr = 0x8256F348;
+ GTA4_Ps4WorldStepTrace("world-resource-validity-table-alloc-8-begin:sub_8256EFE0", ctx);
 	{
 		const auto s_r14 = ctx.r14; ctx.r14 = r14;
 		const auto s_r15 = ctx.r15; ctx.r15 = r15;
@@ -11800,8 +11895,6 @@ loc_8256F344:
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; sub_821B3510(ctx, base); v0 = ctx.v0; }
 		r14 = ctx.r14;
 		ctx.r14 = s_r14;
@@ -11839,11 +11932,10 @@ loc_8256F344:
 		ctx.r31 = s_r31;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r21,r3
 	r21.u64 = ctx.r3.u64;
+ GTA4_Ps4WorldStepTrace("world-resource-validity-table-alloc-8-return:sub_8256EFE0", ctx);
 	// stw r21,220(r1)
 	REX_STORE_U32(ctx.r1.u32 + 220, r21.u32);
 loc_8256F350:
@@ -11868,6 +11960,7 @@ loc_8256F350:
 loc_8256F374:
 	// bl 0x821b3510
 	ctx.lr = 0x8256F378;
+ GTA4_Ps4WorldStepTrace("world-resource-validity-table-alloc-9-begin:sub_8256EFE0", ctx);
 	{
 		const auto s_r14 = ctx.r14; ctx.r14 = r14;
 		const auto s_r15 = ctx.r15; ctx.r15 = r15;
@@ -11887,8 +11980,6 @@ loc_8256F374:
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; sub_821B3510(ctx, base); v0 = ctx.v0; }
 		r14 = ctx.r14;
 		ctx.r14 = s_r14;
@@ -11926,11 +12017,10 @@ loc_8256F374:
 		ctx.r31 = s_r31;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r26,r3
 	r26.u64 = ctx.r3.u64;
+ GTA4_Ps4WorldStepTrace("world-resource-validity-table-alloc-9-return:sub_8256EFE0", ctx);
 	// stw r26,216(r1)
 	REX_STORE_U32(ctx.r1.u32 + 216, r26.u32);
 loc_8256F380:
@@ -11955,6 +12045,7 @@ loc_8256F380:
 loc_8256F3A4:
 	// bl 0x821b3510
 	ctx.lr = 0x8256F3A8;
+ GTA4_Ps4WorldStepTrace("world-resource-validity-table-alloc-10-begin:sub_8256EFE0", ctx);
 	{
 		const auto s_r14 = ctx.r14; ctx.r14 = r14;
 		const auto s_r15 = ctx.r15; ctx.r15 = r15;
@@ -11974,8 +12065,6 @@ loc_8256F3A4:
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; sub_821B3510(ctx, base); v0 = ctx.v0; }
 		r14 = ctx.r14;
 		ctx.r14 = s_r14;
@@ -12013,11 +12102,10 @@ loc_8256F3A4:
 		ctx.r31 = s_r31;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r17,r3
 	r17.u64 = ctx.r3.u64;
+ GTA4_Ps4WorldStepTrace("world-resource-validity-table-alloc-10-return:sub_8256EFE0", ctx);
 loc_8256F3AC:
 	// lwz r11,188(r1)
 	ctx.r11.u64 = REX_LOAD_U32(ctx.r1.u32 + 188);
@@ -12047,6 +12135,7 @@ loc_8256F3D8:
 loc_8256F3DC:
 	// bl 0x821b3510
 	ctx.lr = 0x8256F3E0;
+ GTA4_Ps4WorldStepTrace("world-resource-validity-table-alloc-11-begin:sub_8256EFE0", ctx);
 	{
 		const auto s_r14 = ctx.r14; ctx.r14 = r14;
 		const auto s_r15 = ctx.r15; ctx.r15 = r15;
@@ -12066,8 +12155,6 @@ loc_8256F3DC:
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; sub_821B3510(ctx, base); v0 = ctx.v0; }
 		r14 = ctx.r14;
 		ctx.r14 = s_r14;
@@ -12105,11 +12192,10 @@ loc_8256F3DC:
 		ctx.r31 = s_r31;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r16,r3
 	r16.u64 = ctx.r3.u64;
+ GTA4_Ps4WorldStepTrace("world-resource-validity-table-alloc-11-return:sub_8256EFE0", ctx);
 loc_8256F3E4:
 	// lwz r11,144(r1)
 	ctx.r11.u64 = REX_LOAD_U32(ctx.r1.u32 + 144);
@@ -12141,7 +12227,9 @@ loc_8256F404:
 loc_8256F418:
 	// bl 0x8285ad08
 	ctx.lr = 0x8256F41C;
+ GTA4_Ps4WorldStepTrace("world-resource-validity-body-read-0-begin:sub_8256EFE0", ctx);
 	{ ctx.v0 = v0; sub_8285AD08(ctx, base); v0 = ctx.v0; }
+ GTA4_Ps4WorldStepTrace("world-resource-validity-body-read-0-return:sub_8256EFE0", ctx);
 	// lwz r11,152(r1)
 	ctx.r11.u64 = REX_LOAD_U32(ctx.r1.u32 + 152);
 	// mr r4,r24
@@ -12152,7 +12240,9 @@ loc_8256F418:
 	ctx.r3.u64 = r31.u64;
 	// bl 0x8285ad08
 	ctx.lr = 0x8256F430;
+ GTA4_Ps4WorldStepTrace("world-resource-validity-body-read-1-begin:sub_8256EFE0", ctx);
 	{ ctx.v0 = v0; sub_8285AD08(ctx, base); v0 = ctx.v0; }
+ GTA4_Ps4WorldStepTrace("world-resource-validity-body-read-1-return:sub_8256EFE0", ctx);
 	// lwz r11,156(r1)
 	ctx.r11.u64 = REX_LOAD_U32(ctx.r1.u32 + 156);
 	// mr r4,r15
@@ -12167,7 +12257,9 @@ loc_8256F418:
 	ctx.r5.u64 = __builtin_rotateleft64(ctx.r11.u32 | (ctx.r11.u64 << 32), 4) & 0xFFFFFFF0;
 	// bl 0x8285ad08
 	ctx.lr = 0x8256F44C;
+ GTA4_Ps4WorldStepTrace("world-resource-validity-body-read-2-begin:sub_8256EFE0", ctx);
 	{ ctx.v0 = v0; sub_8285AD08(ctx, base); v0 = ctx.v0; }
+ GTA4_Ps4WorldStepTrace("world-resource-validity-body-read-2-return:sub_8256EFE0", ctx);
 	// lwz r11,160(r1)
 	ctx.r11.u64 = REX_LOAD_U32(ctx.r1.u32 + 160);
 	// mr r4,r23
@@ -12178,7 +12270,9 @@ loc_8256F418:
 	ctx.r3.u64 = r31.u64;
 	// bl 0x8285ad08
 	ctx.lr = 0x8256F460;
+ GTA4_Ps4WorldStepTrace("world-resource-validity-body-read-3-begin:sub_8256EFE0", ctx);
 	{ ctx.v0 = v0; sub_8285AD08(ctx, base); v0 = ctx.v0; }
+ GTA4_Ps4WorldStepTrace("world-resource-validity-body-read-3-return:sub_8256EFE0", ctx);
 	// lwz r11,164(r1)
 	ctx.r11.u64 = REX_LOAD_U32(ctx.r1.u32 + 164);
 	// mr r4,r22
@@ -12189,7 +12283,9 @@ loc_8256F418:
 	ctx.r3.u64 = r31.u64;
 	// bl 0x8285ad08
 	ctx.lr = 0x8256F474;
+ GTA4_Ps4WorldStepTrace("world-resource-validity-body-read-4-begin:sub_8256EFE0", ctx);
 	{ ctx.v0 = v0; sub_8285AD08(ctx, base); v0 = ctx.v0; }
+ GTA4_Ps4WorldStepTrace("world-resource-validity-body-read-4-return:sub_8256EFE0", ctx);
 	// lwz r11,168(r1)
 	ctx.r11.u64 = REX_LOAD_U32(ctx.r1.u32 + 168);
 	// mr r4,r20
@@ -12200,7 +12296,9 @@ loc_8256F418:
 	ctx.r3.u64 = r31.u64;
 	// bl 0x8285ad08
 	ctx.lr = 0x8256F488;
+ GTA4_Ps4WorldStepTrace("world-resource-validity-body-read-5-begin:sub_8256EFE0", ctx);
 	{ ctx.v0 = v0; sub_8285AD08(ctx, base); v0 = ctx.v0; }
+ GTA4_Ps4WorldStepTrace("world-resource-validity-body-read-5-return:sub_8256EFE0", ctx);
 	// lwz r11,172(r1)
 	ctx.r11.u64 = REX_LOAD_U32(ctx.r1.u32 + 172);
 	// mr r4,r14
@@ -12215,7 +12313,9 @@ loc_8256F418:
 	ctx.r5.u64 = __builtin_rotateleft64(ctx.r11.u32 | (ctx.r11.u64 << 32), 2) & 0xFFFFFFFC;
 	// bl 0x8285ad08
 	ctx.lr = 0x8256F4A4;
+ GTA4_Ps4WorldStepTrace("world-resource-validity-body-read-6-begin:sub_8256EFE0", ctx);
 	{ ctx.v0 = v0; sub_8285AD08(ctx, base); v0 = ctx.v0; }
+ GTA4_Ps4WorldStepTrace("world-resource-validity-body-read-6-return:sub_8256EFE0", ctx);
 	// lwz r11,208(r1)
 	ctx.r11.u64 = REX_LOAD_U32(ctx.r1.u32 + 208);
 	// mr r4,r26
@@ -12226,7 +12326,9 @@ loc_8256F418:
 	ctx.r3.u64 = r31.u64;
 	// bl 0x8285ad08
 	ctx.lr = 0x8256F4B8;
+ GTA4_Ps4WorldStepTrace("world-resource-validity-body-read-7-begin:sub_8256EFE0", ctx);
 	{ ctx.v0 = v0; sub_8285AD08(ctx, base); v0 = ctx.v0; }
+ GTA4_Ps4WorldStepTrace("world-resource-validity-body-read-7-return:sub_8256EFE0", ctx);
 	// lwz r11,180(r1)
 	ctx.r11.u64 = REX_LOAD_U32(ctx.r1.u32 + 180);
 	// mr r4,r21
@@ -12237,7 +12339,9 @@ loc_8256F418:
 	ctx.r3.u64 = r31.u64;
 	// bl 0x8285ad08
 	ctx.lr = 0x8256F4CC;
+ GTA4_Ps4WorldStepTrace("world-resource-validity-body-read-8-begin:sub_8256EFE0", ctx);
 	{ ctx.v0 = v0; sub_8285AD08(ctx, base); v0 = ctx.v0; }
+ GTA4_Ps4WorldStepTrace("world-resource-validity-body-read-8-return:sub_8256EFE0", ctx);
 	// lwz r11,184(r1)
 	ctx.r11.u64 = REX_LOAD_U32(ctx.r1.u32 + 184);
 	// mr r4,r17
@@ -12248,7 +12352,9 @@ loc_8256F418:
 	ctx.r3.u64 = r31.u64;
 	// bl 0x8285ad08
 	ctx.lr = 0x8256F4E0;
+ GTA4_Ps4WorldStepTrace("world-resource-validity-body-read-9-begin:sub_8256EFE0", ctx);
 	{ ctx.v0 = v0; sub_8285AD08(ctx, base); v0 = ctx.v0; }
+ GTA4_Ps4WorldStepTrace("world-resource-validity-body-read-9-return:sub_8256EFE0", ctx);
 	// lwz r11,188(r1)
 	ctx.r11.u64 = REX_LOAD_U32(ctx.r1.u32 + 188);
 	// mr r4,r16
@@ -12263,7 +12369,9 @@ loc_8256F418:
 	ctx.r5.u64 = __builtin_rotateleft64(ctx.r11.u32 | (ctx.r11.u64 << 32), 3) & 0xFFFFFFF8;
 	// bl 0x8285ad08
 	ctx.lr = 0x8256F4FC;
+ GTA4_Ps4WorldStepTrace("world-resource-validity-body-read-10-begin:sub_8256EFE0", ctx);
 	{ ctx.v0 = v0; sub_8285AD08(ctx, base); v0 = ctx.v0; }
+ GTA4_Ps4WorldStepTrace("world-resource-validity-body-read-10-return:sub_8256EFE0", ctx);
 	// mr r3,r31
 	ctx.r3.u64 = r31.u64;
 	// bl 0x8285b088
@@ -12294,8 +12402,6 @@ loc_8256F418:
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; sub_821B3510(ctx, base); v0 = ctx.v0; }
 		r14 = ctx.r14;
 		ctx.r14 = s_r14;
@@ -12333,8 +12439,6 @@ loc_8256F418:
 		ctx.r31 = s_r31;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// lwz r11,148(r1)
 	ctx.r11.u64 = REX_LOAD_U32(ctx.r1.u32 + 148);
@@ -12443,9 +12547,11 @@ loc_8256F5B8:
 	// mr r3,r28
 	ctx.r3.u64 = r28.u64;
 loc_8256F5BC:
+	ps4_validity_item("world-resource-validity-record-0-begin:sub_8256EFE0", 0, r29.u32, REX_LOAD_U32(ctx.r1.u32 + 148));
 	// bl 0x8256e378
 	ctx.lr = 0x8256F5C0;
 	{ ctx.v0 = v0; sub_8256E378(ctx, base); v0 = ctx.v0; }
+	ps4_validity_item("world-resource-validity-record-0-return:sub_8256EFE0", 0, r29.u32, REX_LOAD_U32(ctx.r1.u32 + 148));
 	// stw r3,0(r30)
 	REX_STORE_U32(r30.u32 + 0, ctx.r3.u32);
 	// lwz r11,148(r1)
@@ -12463,6 +12569,7 @@ loc_8256F5BC:
 	// blt cr6,0x8256f544
 	if (cr6.lt) goto loc_8256F544;
 loc_8256F5E0:
+	ps4_validity_stage("world-resource-validity-table-0-complete:sub_8256EFE0", 20);
 	// lwz r11,152(r1)
 	ctx.r11.u64 = REX_LOAD_U32(ctx.r1.u32 + 152);
 	// mr r30,r26
@@ -12473,6 +12580,7 @@ loc_8256F5E0:
 	if (!cr6.gt) goto loc_8256F62C;
 	// addi r31,r24,56
 	r31.s64 = r24.s64 + 56;
+	ps4_validity_stage("world-resource-validity-table-1-begin:sub_8256EFE0", 21);
 loc_8256F5F4:
 	// addi r10,r31,-32
 	ctx.r10.s64 = r31.s64 + -32;
@@ -12511,6 +12619,7 @@ loc_8256F5F4:
 	// blt cr6,0x8256f5f4
 	if (cr6.lt) goto loc_8256F5F4;
 loc_8256F62C:
+	ps4_validity_stage("world-resource-validity-table-1-complete:sub_8256EFE0", 22);
 	// lwz r11,156(r1)
 	ctx.r11.u64 = REX_LOAD_U32(ctx.r1.u32 + 156);
 	// mr r30,r26
@@ -12521,6 +12630,7 @@ loc_8256F62C:
 	if (!cr6.gt) goto loc_8256F690;
 	// addi r31,r15,40
 	r31.s64 = r15.s64 + 40;
+	ps4_validity_stage("world-resource-validity-table-2-begin:sub_8256EFE0", 23);
 loc_8256F640:
 	// lwz r11,-8(r31)
 	ctx.r11.u64 = REX_LOAD_U32(r31.u32 + -8);
@@ -12573,6 +12683,7 @@ loc_8256F640:
 	// blt cr6,0x8256f640
 	if (cr6.lt) goto loc_8256F640;
 loc_8256F690:
+	ps4_validity_stage("world-resource-validity-table-2-complete:sub_8256EFE0", 24);
 	// lwz r11,160(r1)
 	ctx.r11.u64 = REX_LOAD_U32(ctx.r1.u32 + 160);
 	// mr r30,r26
@@ -12583,6 +12694,7 @@ loc_8256F690:
 	if (!cr6.gt) goto loc_8256F6C4;
 	// mr r31,r23
 	r31.u64 = r23.u64;
+	ps4_validity_stage("world-resource-validity-table-3-begin:sub_8256EFE0", 25);
 loc_8256F6A4:
 	// li r4,0
 	ctx.r4.s64 = 0;
@@ -12602,6 +12714,7 @@ loc_8256F6A4:
 	// blt cr6,0x8256f6a4
 	if (cr6.lt) goto loc_8256F6A4;
 loc_8256F6C4:
+	ps4_validity_stage("world-resource-validity-table-3-complete:sub_8256EFE0", 26);
 	// lwz r11,164(r1)
 	ctx.r11.u64 = REX_LOAD_U32(ctx.r1.u32 + 164);
 	// mr r30,r26
@@ -12612,6 +12725,7 @@ loc_8256F6C4:
 	if (!cr6.gt) goto loc_8256F75C;
 	// addi r31,r22,16
 	r31.s64 = r22.s64 + 16;
+	ps4_validity_stage("world-resource-validity-table-4-begin:sub_8256EFE0", 27);
 loc_8256F6D8:
 	// lfs f0,-4(r31)
 	ctx.fpscr.disableFlushMode();
@@ -12700,6 +12814,7 @@ loc_8256F6D8:
 	// blt cr6,0x8256f6d8
 	if (cr6.lt) goto loc_8256F6D8;
 loc_8256F75C:
+	ps4_validity_stage("world-resource-validity-table-4-complete:sub_8256EFE0", 28);
 	// lwz r11,168(r1)
 	ctx.r11.u64 = REX_LOAD_U32(ctx.r1.u32 + 168);
 	// mr r30,r26
@@ -12718,6 +12833,7 @@ loc_8256F75C:
 	r31.s64 = r20.s64 + 40;
 	// lwz r5,-1776(r29)
 	ctx.r5.u64 = REX_LOAD_U32(r29.u32 + -1776);
+	ps4_validity_stage("world-resource-validity-table-5-begin:sub_8256EFE0", 29);
 loc_8256F780:
 	// lwz r10,-24(r31)
 	ctx.r10.u64 = REX_LOAD_U32(r31.u32 + -24);
@@ -12808,6 +12924,7 @@ loc_8256F780:
 	// blt cr6,0x8256f780
 	if (cr6.lt) goto loc_8256F780;
 loc_8256F824:
+	ps4_validity_stage("world-resource-validity-table-5-complete:sub_8256EFE0", 30);
 	// lwz r11,172(r1)
 	ctx.r11.u64 = REX_LOAD_U32(ctx.r1.u32 + 172);
 	// mr r30,r26
@@ -12818,6 +12935,7 @@ loc_8256F824:
 	if (!cr6.gt) goto loc_8256F874;
 	// addi r31,r14,16
 	r31.s64 = r14.s64 + 16;
+	ps4_validity_stage("world-resource-validity-table-6-begin:sub_8256EFE0", 31);
 loc_8256F838:
 	// li r10,0
 	ctx.r10.s64 = 0;
@@ -12853,6 +12971,7 @@ loc_8256F838:
 	// blt cr6,0x8256f838
 	if (cr6.lt) goto loc_8256F838;
 loc_8256F874:
+	ps4_validity_stage("world-resource-validity-table-6-complete:sub_8256EFE0", 32);
 	// lwz r11,180(r1)
 	ctx.r11.u64 = REX_LOAD_U32(ctx.r1.u32 + 180);
 	// mr r30,r26
@@ -12865,6 +12984,7 @@ loc_8256F874:
 	if (!cr6.gt) goto loc_8256F91C;
 	// addi r31,r21,24
 	r31.s64 = r21.s64 + 24;
+	ps4_validity_stage("world-resource-validity-table-7-begin:sub_8256EFE0", 33);
 loc_8256F88C:
 	// lwz r11,4(r31)
 	ctx.r11.u64 = REX_LOAD_U32(r31.u32 + 4);
@@ -12957,6 +13077,7 @@ loc_8256F88C:
 	// blt cr6,0x8256f88c
 	if (cr6.lt) goto loc_8256F88C;
 loc_8256F91C:
+	ps4_validity_stage("world-resource-validity-table-7-complete:sub_8256EFE0", 34);
 	// lwz r11,184(r1)
 	ctx.r11.u64 = REX_LOAD_U32(ctx.r1.u32 + 184);
 	// mr r21,r26
@@ -12981,6 +13102,7 @@ loc_8256F91C:
 	ctx.r11.s64 = -2113798144;
 	// addi r23,r11,25688
 	r23.s64 = ctx.r11.s64 + 25688;
+	ps4_validity_stage("world-resource-validity-table-8-begin:sub_8256EFE0", 35);
 loc_8256F94C:
 	// lwz r11,0(r29)
 	ctx.r11.u64 = REX_LOAD_U32(r29.u32 + 0);
@@ -13158,6 +13280,7 @@ loc_8256FA1C:
 	// blt cr6,0x8256f94c
 	if (cr6.lt) goto loc_8256F94C;
 loc_8256FA7C:
+	ps4_validity_stage("world-resource-validity-table-8-complete:sub_8256EFE0", 36);
 	// lwz r11,188(r1)
 	ctx.r11.u64 = REX_LOAD_U32(ctx.r1.u32 + 188);
 	// li r30,0
@@ -13168,6 +13291,7 @@ loc_8256FA7C:
 	if (!cr6.gt) goto loc_8256FAC0;
 	// addi r31,r16,16
 	r31.s64 = r16.s64 + 16;
+	ps4_validity_stage("world-resource-validity-table-9-begin:sub_8256EFE0", 37);
 loc_8256FA90:
 	// lfs f6,4(r31)
 	ctx.fpscr.disableFlushMode();
@@ -13202,6 +13326,7 @@ loc_8256FA90:
 	// blt cr6,0x8256fa90
 	if (cr6.lt) goto loc_8256FA90;
 loc_8256FAC0:
+	ps4_validity_stage("world-resource-validity-table-9-complete:sub_8256EFE0", 38);
 	// lwz r3,148(r1)
 	ctx.r3.u64 = REX_LOAD_U32(ctx.r1.u32 + 148);
 	// mr r31,r20
@@ -13230,6 +13355,7 @@ loc_8256FAC0:
 	if (!cr6.gt) goto loc_8256FB10;
 	// subf r9,r11,r19
 	ctx.r9.u64 = r19.u64 - ctx.r11.u64;
+	ps4_validity_stage("world-resource-validity-table-10-begin:sub_8256EFE0", 39);
 loc_8256FAF4:
 	// lwzx r8,r9,r11
 	ctx.r8.u64 = REX_LOAD_U32(ctx.r9.u32 + ctx.r11.u32);
@@ -13246,6 +13372,7 @@ loc_8256FAF4:
 	// blt cr6,0x8256faf4
 	if (cr6.lt) goto loc_8256FAF4;
 loc_8256FB10:
+	ps4_validity_stage("world-resource-validity-table-10-complete:sub_8256EFE0", 40);
 	// rlwinm r11,r3,2,0,29
 	ctx.r11.u64 = __builtin_rotateleft64(ctx.r3.u32 | (ctx.r3.u64 << 32), 2) & 0xFFFFFFFC;
 	// mr r4,r31
@@ -13256,19 +13383,25 @@ loc_8256FB10:
 	ctx.r3.s64 = ctx.r1.s64 + 688;
 	// bl 0x82514cc8
 	ctx.lr = 0x8256FB24;
+	ps4_validity_stage("world-resource-validity-finalize-0-begin:sub_8256EFE0", 41);
 	{ ctx.v0 = v0; sub_82514CC8(ctx, base); v0 = ctx.v0; }
+	ps4_validity_stage("world-resource-validity-finalize-0-return:sub_8256EFE0", 42);
 	// mr r5,r19
 	ctx.r5.u64 = r19.u64;
 	// lwz r4,148(r1)
 	ctx.r4.u64 = REX_LOAD_U32(ctx.r1.u32 + 148);
 	// bl 0x8256e008
 	ctx.lr = 0x8256FB30;
+	ps4_validity_stage("world-resource-validity-finalize-1-begin:sub_8256EFE0", 43);
 	{ ctx.v0 = v0; sub_8256E008(ctx, base); v0 = ctx.v0; }
+	ps4_validity_stage("world-resource-validity-finalize-1-return:sub_8256EFE0", 44);
 	// mr r3,r31
 	ctx.r3.u64 = r31.u64;
 	// bl 0x82514f38
 	ctx.lr = 0x8256FB38;
+	ps4_validity_stage("world-resource-validity-finalize-2-begin:sub_8256EFE0", 45);
 	{ ctx.v0 = v0; sub_82514F38(ctx, base); v0 = ctx.v0; }
+	ps4_validity_stage("world-resource-validity-finalize-2-return:sub_8256EFE0", 46);
 	// lwz r3,0(r18)
 	ctx.r3.u64 = REX_LOAD_U32(r18.u32 + 0);
 	// bl 0x821b3560
@@ -13293,8 +13426,6 @@ loc_8256FB10:
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; sub_821B3560(ctx, base); v0 = ctx.v0; }
 		r14 = ctx.r14;
 		ctx.r14 = s_r14;
@@ -13334,8 +13465,6 @@ loc_8256FB10:
 		ctx.r31 = s_r31;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// li r11,0
 	ctx.r11.s64 = 0;
@@ -13369,8 +13498,6 @@ loc_8256FB10:
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; sub_821B3560(ctx, base); v0 = ctx.v0; }
 		r14 = ctx.r14;
 		ctx.r14 = s_r14;
@@ -13410,8 +13537,6 @@ loc_8256FB10:
 		ctx.r31 = s_r31;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// lwz r3,228(r1)
 	ctx.r3.u64 = REX_LOAD_U32(ctx.r1.u32 + 228);
@@ -13437,8 +13562,6 @@ loc_8256FB10:
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; sub_821B3560(ctx, base); v0 = ctx.v0; }
 		r14 = ctx.r14;
 		ctx.r14 = s_r14;
@@ -13478,8 +13601,6 @@ loc_8256FB10:
 		ctx.r31 = s_r31;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// lwz r3,236(r1)
 	ctx.r3.u64 = REX_LOAD_U32(ctx.r1.u32 + 236);
@@ -13505,8 +13626,6 @@ loc_8256FB10:
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; sub_821B3560(ctx, base); v0 = ctx.v0; }
 		r14 = ctx.r14;
 		ctx.r14 = s_r14;
@@ -13546,8 +13665,6 @@ loc_8256FB10:
 		ctx.r31 = s_r31;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r3,r15
 	ctx.r3.u64 = r15.u64;
@@ -13573,8 +13690,6 @@ loc_8256FB10:
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; sub_821B3560(ctx, base); v0 = ctx.v0; }
 		r14 = ctx.r14;
 		ctx.r14 = s_r14;
@@ -13614,8 +13729,6 @@ loc_8256FB10:
 		ctx.r31 = s_r31;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// lwz r3,232(r1)
 	ctx.r3.u64 = REX_LOAD_U32(ctx.r1.u32 + 232);
@@ -13641,8 +13754,6 @@ loc_8256FB10:
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; sub_821B3560(ctx, base); v0 = ctx.v0; }
 		r14 = ctx.r14;
 		ctx.r14 = s_r14;
@@ -13682,8 +13793,6 @@ loc_8256FB10:
 		ctx.r31 = s_r31;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// lwz r3,224(r1)
 	ctx.r3.u64 = REX_LOAD_U32(ctx.r1.u32 + 224);
@@ -13709,8 +13818,6 @@ loc_8256FB10:
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; sub_821B3560(ctx, base); v0 = ctx.v0; }
 		r14 = ctx.r14;
 		ctx.r14 = s_r14;
@@ -13750,8 +13857,6 @@ loc_8256FB10:
 		ctx.r31 = s_r31;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// lwz r3,212(r1)
 	ctx.r3.u64 = REX_LOAD_U32(ctx.r1.u32 + 212);
@@ -13777,8 +13882,6 @@ loc_8256FB10:
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; sub_821B3560(ctx, base); v0 = ctx.v0; }
 		r14 = ctx.r14;
 		ctx.r14 = s_r14;
@@ -13818,8 +13921,6 @@ loc_8256FB10:
 		ctx.r31 = s_r31;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r3,r14
 	ctx.r3.u64 = r14.u64;
@@ -13845,8 +13946,6 @@ loc_8256FB10:
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; sub_821B3560(ctx, base); v0 = ctx.v0; }
 		r14 = ctx.r14;
 		ctx.r14 = s_r14;
@@ -13886,8 +13985,6 @@ loc_8256FB10:
 		ctx.r31 = s_r31;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// lwz r3,216(r1)
 	ctx.r3.u64 = REX_LOAD_U32(ctx.r1.u32 + 216);
@@ -13913,8 +14010,6 @@ loc_8256FB10:
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; sub_821B3560(ctx, base); v0 = ctx.v0; }
 		r14 = ctx.r14;
 		ctx.r14 = s_r14;
@@ -13954,8 +14049,6 @@ loc_8256FB10:
 		ctx.r31 = s_r31;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// lwz r3,220(r1)
 	ctx.r3.u64 = REX_LOAD_U32(ctx.r1.u32 + 220);
@@ -13981,8 +14074,6 @@ loc_8256FB10:
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; sub_821B3560(ctx, base); v0 = ctx.v0; }
 		r14 = ctx.r14;
 		ctx.r14 = s_r14;
@@ -14022,8 +14113,6 @@ loc_8256FB10:
 		ctx.r31 = s_r31;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r3,r17
 	ctx.r3.u64 = r17.u64;
@@ -14049,8 +14138,6 @@ loc_8256FB10:
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; sub_821B3560(ctx, base); v0 = ctx.v0; }
 		r14 = ctx.r14;
 		ctx.r14 = s_r14;
@@ -14090,8 +14177,6 @@ loc_8256FB10:
 		ctx.r31 = s_r31;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// li r3,1
 	ctx.r3.s64 = 1;
@@ -14420,6 +14505,7 @@ DEFINE_REX_FUNC(sub_8256FDC0) {
 	PPCRegister r30{};
 	PPCRegister r31{};
 	uint32_t ea{};
+	uint32_t ps4_trace_iteration = 0;
 	// mflr r12
 	ctx.r12.u64 = ctx.lr;
 	// bl 0x829ff7a8
@@ -14436,14 +14522,18 @@ DEFINE_REX_FUNC(sub_8256FDC0) {
 	ctx.r4.s64 = ctx.r11.s64 + -28500;
 	// bl 0x821b5600
 	ctx.lr = 0x8256FDDC;
+	GTA4_Ps4WorldStepTrace("begin-child:0x8256FDD8/sub_821B5600", ctx);
 	sub_821B5600(ctx, base);
+	GTA4_Ps4WorldStepTrace("end-child:0x8256FDD8/sub_821B5600", ctx);
 	// li r4,1
 	ctx.r4.s64 = 1;
 	// mr r20,r3
 	r20.u64 = ctx.r3.u64;
 	// bl 0x821b52f0
 	ctx.lr = 0x8256FDE8;
+	GTA4_Ps4WorldStepTrace("begin-child:0x8256FDE4/sub_821B52F0", ctx);
 	sub_821B52F0(ctx, base);
+	GTA4_Ps4WorldStepTrace("end-child:0x8256FDE4/sub_821B52F0", ctx);
 	// mr r31,r3
 	r31.u64 = ctx.r3.u64;
 	// cmplwi cr6,r31,0
@@ -14483,8 +14573,33 @@ DEFINE_REX_FUNC(sub_8256FDC0) {
 	// addi r23,r11,25832
 	r23.s64 = ctx.r11.s64 + 25832;
 loc_8256FE34:
+	if ((ps4_trace_iteration & 7u) == 0) {
+		const uint64_t saved_r3 = ctx.r3.u64;
+		const uint64_t saved_r4 = ctx.r4.u64;
+		const uint64_t saved_r5 = ctx.r5.u64;
+		ctx.r3.u64 = r31.u64;
+		ctx.r4.u64 = r21.u64;
+		ctx.r5.u64 = ps4_trace_iteration;
+		GTA4_Ps4WorldStepTrace("parser-loop-checkpoint:sub_8256FDC0", ctx);
+		ctx.r3.u64 = saved_r3;
+		ctx.r4.u64 = saved_r4;
+		ctx.r5.u64 = saved_r5;
+	}
+	++ps4_trace_iteration;
 	// lbz r11,0(r31)
 	ctx.r11.u64 = REX_LOAD_U8(r31.u32 + 0);
+	if (ps4_trace_iteration == 1) {
+		const uint64_t saved_r3 = ctx.r3.u64;
+		const uint64_t saved_r4 = ctx.r4.u64;
+		const uint64_t saved_r5 = ctx.r5.u64;
+		ctx.r3.u64 = r31.u64;
+		ctx.r4.u64 = ctx.r11.u64;
+		ctx.r5.u64 = ps4_trace_iteration - 1;
+		GTA4_Ps4WorldStepTrace("parser-byte-loaded:sub_8256FDC0", ctx);
+		ctx.r3.u64 = saved_r3;
+		ctx.r4.u64 = saved_r4;
+		ctx.r5.u64 = saved_r5;
+	}
 	// cmplwi cr6,r11,35
 	cr6.compare<uint32_t>(ctx.r11.u32, 35, xer);
 	// beq cr6,0x8256ffac
@@ -14497,7 +14612,9 @@ loc_8256FE34:
 	ctx.r3.u64 = r23.u64;
 	// bl 0x82a00c40
 	ctx.lr = 0x8256FE50;
+	GTA4_Ps4WorldStepTrace("begin-child:0x8256FE4C/rexcrt_strncmp", ctx);
 	rexcrt_strncmp(ctx, base);
+	GTA4_Ps4WorldStepTrace("end-child:0x8256FE4C/rexcrt_strncmp", ctx);
 	// cmpwi cr6,r3,0
 	cr6.compare<int32_t>(ctx.r3.s32, 0, xer);
 	// beq cr6,0x8256ffc4
@@ -14510,7 +14627,9 @@ loc_8256FE34:
 	ctx.r3.u64 = r24.u64;
 	// bl 0x82a00c40
 	ctx.lr = 0x8256FE68;
+	GTA4_Ps4WorldStepTrace("begin-child:0x8256FE64/rexcrt_strncmp", ctx);
 	rexcrt_strncmp(ctx, base);
+	GTA4_Ps4WorldStepTrace("end-child:0x8256FE64/rexcrt_strncmp", ctx);
 	// cmpwi cr6,r3,0
 	cr6.compare<int32_t>(ctx.r3.s32, 0, xer);
 	// bne cr6,0x8256fec0
@@ -14527,7 +14646,9 @@ loc_8256FE34:
 	ctx.r4.u64 = r31.u64;
 	// bl 0x822dec10
 	ctx.lr = 0x8256FE88;
+	GTA4_Ps4WorldStepTrace("begin-child:0x8256FE84/sub_822DEC10", ctx);
 	sub_822DEC10(ctx, base);
+	GTA4_Ps4WorldStepTrace("end-child:0x8256FE84/sub_822DEC10", ctx);
 	// clrlwi r11,r3,24
 	ctx.r11.u64 = ctx.r3.u32 & 0xFF;
 	// cmplwi cr6,r11,0
@@ -14546,7 +14667,9 @@ loc_8256FE34:
 	ctx.r3.u64 = r31.u64;
 	// bl 0x829ffc90
 	ctx.lr = 0x8256FEAC;
+	GTA4_Ps4WorldStepTrace("begin-child:0x8256FEA8/sub_829FFC90", ctx);
 	sub_829FFC90(ctx, base);
+	GTA4_Ps4WorldStepTrace("end-child:0x8256FEA8/sub_829FFC90", ctx);
 	// li r4,1
 	ctx.r4.s64 = 1;
 	// mr r3,r31
@@ -14555,7 +14678,9 @@ loc_8256FE34:
 	ctx.r5.u64 = REX_LOAD_U32(ctx.r1.u32 + 80);
 	// bl 0x822d28e0
 	ctx.lr = 0x8256FEBC;
+	GTA4_Ps4WorldStepTrace("begin-child:0x8256FEB8/sub_822D28E0", ctx);
 	sub_822D28E0(ctx, base);
+	GTA4_Ps4WorldStepTrace("end-child:0x8256FEB8/sub_822D28E0", ctx);
 	// b 0x8256ffac
 	goto loc_8256FFAC;
 loc_8256FEC0:
@@ -14567,7 +14692,9 @@ loc_8256FEC0:
 	ctx.r3.u64 = r25.u64;
 	// bl 0x82a00c40
 	ctx.lr = 0x8256FED0;
+	GTA4_Ps4WorldStepTrace("begin-child:0x8256FECC/rexcrt_strncmp", ctx);
 	rexcrt_strncmp(ctx, base);
+	GTA4_Ps4WorldStepTrace("end-child:0x8256FECC/rexcrt_strncmp", ctx);
 	// cmpwi cr6,r3,0
 	cr6.compare<int32_t>(ctx.r3.s32, 0, xer);
 	// bne cr6,0x8256ff08
@@ -14584,7 +14711,9 @@ loc_8256FEC0:
 	ctx.r4.u64 = r31.u64;
 	// bl 0x822dec10
 	ctx.lr = 0x8256FEF0;
+	GTA4_Ps4WorldStepTrace("begin-child:0x8256FEEC/sub_822DEC10", ctx);
 	sub_822DEC10(ctx, base);
+	GTA4_Ps4WorldStepTrace("end-child:0x8256FEEC/sub_822DEC10", ctx);
 	// clrlwi r11,r3,24
 	ctx.r11.u64 = ctx.r3.u32 & 0xFF;
 	// cmplwi cr6,r11,0
@@ -14595,7 +14724,9 @@ loc_8256FEC0:
 	ctx.r3.u64 = r31.u64;
 	// bl 0x8256a238
 	ctx.lr = 0x8256FF04;
+	GTA4_Ps4WorldStepTrace("begin-child:0x8256FF00/sub_8256A238", ctx);
 	sub_8256A238(ctx, base);
+	GTA4_Ps4WorldStepTrace("end-child:0x8256FF00/sub_8256A238", ctx);
 	// b 0x8256ffac
 	goto loc_8256FFAC;
 loc_8256FF08:
@@ -14607,7 +14738,9 @@ loc_8256FF08:
 	ctx.r3.u64 = r26.u64;
 	// bl 0x82a00c40
 	ctx.lr = 0x8256FF18;
+	GTA4_Ps4WorldStepTrace("begin-child:0x8256FF14/rexcrt_strncmp", ctx);
 	rexcrt_strncmp(ctx, base);
+	GTA4_Ps4WorldStepTrace("end-child:0x8256FF14/rexcrt_strncmp", ctx);
 	// cmpwi cr6,r3,0
 	cr6.compare<int32_t>(ctx.r3.s32, 0, xer);
 	// bne cr6,0x8256ff50
@@ -14624,7 +14757,9 @@ loc_8256FF08:
 	ctx.r4.u64 = r31.u64;
 	// bl 0x822dec10
 	ctx.lr = 0x8256FF38;
+	GTA4_Ps4WorldStepTrace("begin-child:0x8256FF34/sub_822DEC10", ctx);
 	sub_822DEC10(ctx, base);
+	GTA4_Ps4WorldStepTrace("end-child:0x8256FF34/sub_822DEC10", ctx);
 	// clrlwi r11,r3,24
 	ctx.r11.u64 = ctx.r3.u32 & 0xFF;
 	// cmplwi cr6,r11,0
@@ -14635,7 +14770,9 @@ loc_8256FF08:
 	ctx.r3.u64 = r31.u64;
 	// bl 0x8256e8f8
 	ctx.lr = 0x8256FF4C;
+	GTA4_Ps4WorldStepTrace("begin-child:0x8256FF48/sub_8256E8F8", ctx);
 	sub_8256E8F8(ctx, base);
+	GTA4_Ps4WorldStepTrace("end-child:0x8256FF48/sub_8256E8F8", ctx);
 	// b 0x8256ffac
 	goto loc_8256FFAC;
 loc_8256FF50:
@@ -14647,7 +14784,9 @@ loc_8256FF50:
 	ctx.r3.u64 = r27.u64;
 	// bl 0x82a00c40
 	ctx.lr = 0x8256FF60;
+	GTA4_Ps4WorldStepTrace("begin-child:0x8256FF5C/rexcrt_strncmp", ctx);
 	rexcrt_strncmp(ctx, base);
+	GTA4_Ps4WorldStepTrace("end-child:0x8256FF5C/rexcrt_strncmp", ctx);
 	// cmpwi cr6,r3,0
 	cr6.compare<int32_t>(ctx.r3.s32, 0, xer);
 	// bne cr6,0x8256ff98
@@ -14668,14 +14807,18 @@ loc_8256FF50:
 	ctx.r3.u64 = r31.u64;
 	// bl 0x829ffc90
 	ctx.lr = 0x8256FF88;
+	GTA4_Ps4WorldStepTrace("begin-child:0x8256FF84/sub_829FFC90", ctx);
 	sub_829FFC90(ctx, base);
+	GTA4_Ps4WorldStepTrace("end-child:0x8256FF84/sub_829FFC90", ctx);
 	// addi r4,r1,160
 	ctx.r4.s64 = ctx.r1.s64 + 160;
 	// addi r3,r1,96
 	ctx.r3.s64 = ctx.r1.s64 + 96;
 	// bl 0x82291148
 	ctx.lr = 0x8256FF94;
+	GTA4_Ps4WorldStepTrace("begin-child:0x8256FF90/sub_82291148", ctx);
 	sub_82291148(ctx, base);
+	GTA4_Ps4WorldStepTrace("end-child:0x8256FF90/sub_82291148", ctx);
 	// b 0x8256ffac
 	goto loc_8256FFAC;
 loc_8256FF98:
@@ -14689,7 +14832,9 @@ loc_8256FF98:
 	ctx.r3.u64 = REX_LOAD_U32(r30.u32 + 19920);
 	// bl 0x8256dba0
 	ctx.lr = 0x8256FFAC;
+	GTA4_Ps4WorldStepTrace("begin-child:0x8256FFA8/sub_8256DBA0", ctx);
 	sub_8256DBA0(ctx, base);
+	GTA4_Ps4WorldStepTrace("end-child:0x8256FFA8/sub_8256DBA0", ctx);
 loc_8256FFAC:
 	// li r4,1
 	ctx.r4.s64 = 1;
@@ -14697,7 +14842,9 @@ loc_8256FFAC:
 	ctx.r3.u64 = r20.u64;
 	// bl 0x821b52f0
 	ctx.lr = 0x8256FFB8;
+	GTA4_Ps4WorldStepTrace("begin-child:0x8256FFB4/sub_821B52F0", ctx);
 	sub_821B52F0(ctx, base);
+	GTA4_Ps4WorldStepTrace("end-child:0x8256FFB4/sub_821B52F0", ctx);
 	// mr r31,r3
 	r31.u64 = ctx.r3.u64;
 	// cmplwi cr6,r31,0
@@ -14709,7 +14856,9 @@ loc_8256FFC4:
 	ctx.r3.u64 = r20.u64;
 	// bl 0x821b53d0
 	ctx.lr = 0x8256FFCC;
+	GTA4_Ps4WorldStepTrace("begin-child:0x8256FFC8/sub_821B53D0", ctx);
 	sub_821B53D0(ctx, base);
+	GTA4_Ps4WorldStepTrace("end-child:0x8256FFC8/sub_821B53D0", ctx);
 	// addi r1,r1,656
 	ctx.r1.s64 = ctx.r1.s64 + 656;
 	// b 0x829ff7f8
@@ -14730,6 +14879,7 @@ DEFINE_REX_FUNC(sub_8256FFD8) {
 	PPCRegister r30{};
 	PPCRegister r31{};
 	uint32_t ea{};
+	uint32_t ps4_world_resource_iteration = 0;
 	// mflr r12
 	ctx.r12.u64 = ctx.lr;
 	// bl 0x829ff7b8
@@ -14740,6 +14890,17 @@ DEFINE_REX_FUNC(sub_8256FFD8) {
 	ctx.r1.u32 = ea;
 	// mr r25,r3
 	r25.u64 = ctx.r3.u64;
+	GTA4_Ps4WorldStepTrace("world-resource-entry:sub_8256FFD8", ctx);
+	GTA4_Ps4WorldPathTrace("world-resource-name:sub_8256FFD8", r25.u32, base, ctx);
+	auto ps4_resource_stage = [&](const char* name, uint32_t stage) {
+		const uint64_t saved_r4 = ctx.r4.u64;
+		const uint64_t saved_r5 = ctx.r5.u64;
+		ctx.r4.u64 = r25.u64;
+		ctx.r5.u64 = stage;
+		GTA4_Ps4WorldStepTrace(name, ctx);
+		ctx.r4.u64 = saved_r4;
+		ctx.r5.u64 = saved_r5;
+	};
 	// lis r11,-32254
 	ctx.r11.s64 = -2113798144;
 	// mr r4,r25
@@ -14749,11 +14910,13 @@ DEFINE_REX_FUNC(sub_8256FFD8) {
 	// bl 0x822bca90
 	ctx.lr = 0x8256FFF8;
 	sub_822BCA90(ctx, base);
+	ps4_resource_stage("world-resource-after-name-register:sub_8256FFD8", 1);
 	// mr r3,r25
 	ctx.r3.u64 = r25.u64;
 	// bl 0x8256efe0
 	ctx.lr = 0x82570000;
 	sub_8256EFE0(ctx, base);
+	ps4_resource_stage("world-resource-after-validity-check:sub_8256FFD8", 2);
 	// clrlwi r11,r3,24
 	ctx.r11.u64 = ctx.r3.u32 & 0xFF;
 	// cmplwi cr6,r11,0
@@ -14774,8 +14937,6 @@ DEFINE_REX_FUNC(sub_8256FFD8) {
 		const auto s_r25 = ctx.r25; ctx.r25 = r25;
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3510(ctx, base);
 		r25 = ctx.r25;
 		ctx.r25 = s_r25;
@@ -14783,9 +14944,8 @@ DEFINE_REX_FUNC(sub_8256FFD8) {
 		ctx.r29 = s_r29;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
+	ps4_resource_stage("world-resource-after-session-begin:sub_8256FFD8", 3);
 	// lis r11,-31992
 	ctx.r11.s64 = -2096627712;
 	// mr r27,r3
@@ -14802,8 +14962,6 @@ DEFINE_REX_FUNC(sub_8256FFD8) {
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3560(ctx, base);
 		r25 = ctx.r25;
 		ctx.r25 = s_r25;
@@ -14815,9 +14973,8 @@ DEFINE_REX_FUNC(sub_8256FFD8) {
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
+	ps4_resource_stage("world-resource-after-session-lock:sub_8256FFD8", 4);
 	// lis r11,-32244
 	ctx.r11.s64 = -2113142784;
 	// mr r3,r25
@@ -14835,6 +14992,7 @@ DEFINE_REX_FUNC(sub_8256FFD8) {
 	// bl 0x821b5600
 	ctx.lr = 0x82570054;
 	sub_821B5600(ctx, base);
+	ps4_resource_stage("world-resource-after-stream-open:sub_8256FFD8", 5);
 	// mr r24,r3
 	r24.u64 = ctx.r3.u64;
 	// cmplwi cr6,r24,0
@@ -14846,6 +15004,7 @@ DEFINE_REX_FUNC(sub_8256FFD8) {
 	// bl 0x825155f0
 	ctx.lr = 0x82570068;
 	sub_825155F0(ctx, base);
+	ps4_resource_stage("world-resource-after-resource-lookup:sub_8256FFD8", 6);
 	// cmpwi cr6,r3,-1
 	cr6.compare<int32_t>(ctx.r3.s32, -1, xer);
 	// beq cr6,0x82570078
@@ -14855,6 +15014,7 @@ DEFINE_REX_FUNC(sub_8256FFD8) {
 	// bl 0x82514c70
 	ctx.lr = 0x82570078;
 	sub_82514C70(ctx, base);
+	ps4_resource_stage("world-resource-after-resource-open:sub_8256FFD8", 7);
 loc_82570078:
 	// li r4,1
 	ctx.r4.s64 = 1;
@@ -14863,6 +15023,7 @@ loc_82570078:
 	// bl 0x821b52f0
 	ctx.lr = 0x82570084;
 	sub_821B52F0(ctx, base);
+	ps4_resource_stage("world-resource-after-enumerator-open:sub_8256FFD8", 8);
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
 	// beq cr6,0x8257063c
@@ -14874,10 +15035,32 @@ loc_82570078:
 	// addi r26,r11,23772
 	r26.s64 = ctx.r11.s64 + 23772;
 loc_82570098:
+	if ((ps4_world_resource_iteration++ & 0x0FFFu) == 0) {
+		const uint64_t saved_r3 = ctx.r3.u64;
+		const uint64_t saved_r4 = ctx.r4.u64;
+		const uint64_t saved_r5 = ctx.r5.u64;
+		ctx.r4.u64 = r31.u64;
+		ctx.r5.u64 = ps4_world_resource_iteration - 1;
+		GTA4_Ps4WorldStepTrace("world-resource-loop:sub_8256FFD8", ctx);
+		ctx.r3.u64 = saved_r3;
+		ctx.r4.u64 = saved_r4;
+		ctx.r5.u64 = saved_r5;
+	}
 	// lbz r11,0(r3)
 	ctx.r11.u64 = REX_LOAD_U8(ctx.r3.u32 + 0);
 	// extsb r11,r11
 	ctx.r11.s64 = ctx.r11.s8;
+	if ((ps4_world_resource_iteration & 0x0FFFu) == 1u) {
+		const uint64_t saved_r3 = ctx.r3.u64;
+		const uint64_t saved_r4 = ctx.r4.u64;
+		const uint64_t saved_r5 = ctx.r5.u64;
+		ctx.r4.u64 = ctx.r11.u64;
+		ctx.r5.u64 = ps4_world_resource_iteration;
+		GTA4_Ps4WorldStepTrace("world-resource-byte:sub_8256FFD8", ctx);
+		ctx.r3.u64 = saved_r3;
+		ctx.r4.u64 = saved_r4;
+		ctx.r5.u64 = saved_r5;
+	}
 	// cmpwi cr6,r11,0
 	cr6.compare<int32_t>(ctx.r11.s32, 0, xer);
 	// beq cr6,0x82570628
@@ -15051,6 +15234,15 @@ loc_825701B8:
 	r31.s64 = 15;
 	// stw r11,-1776(r28)
 	REX_STORE_U32(r28.u32 + -1776, ctx.r11.u32);
+	{
+		const uint64_t saved_r4 = ctx.r4.u64;
+		const uint64_t saved_r5 = ctx.r5.u64;
+		ctx.r4.u64 = 15; // "link" section
+		ctx.r5.u64 = ps4_world_resource_iteration;
+		GTA4_Ps4WorldStepTrace("world-resource-section-link:sub_8256FFD8", ctx);
+		ctx.r4.u64 = saved_r4;
+		ctx.r5.u64 = saved_r5;
+	}
 	// b 0x82570628
 	goto loc_82570628;
 loc_825701F4:
@@ -15650,7 +15842,13 @@ loc_82570628:
 	ctx.r3.u64 = r24.u64;
 	// bl 0x821b52f0
 	ctx.lr = 0x82570634;
+	if ((ps4_world_resource_iteration & 0x0FFFu) == 1) {
+		GTA4_Ps4WorldStepTrace("world-resource-next-begin:sub_8256FFD8", ctx);
+	}
 	sub_821B52F0(ctx, base);
+	if ((ps4_world_resource_iteration & 0x0FFFu) == 1) {
+		GTA4_Ps4WorldStepTrace("world-resource-next-end:sub_8256FFD8", ctx);
+	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
 	// bne cr6,0x82570098
@@ -15737,9 +15935,6 @@ loc_8257068C:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3560(ctx, base);
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -15757,9 +15952,6 @@ loc_8257068C:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// li r11,0
 	ctx.r11.s64 = 0;
@@ -15782,9 +15974,6 @@ loc_8257068C:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3560(ctx, base);
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -15802,11 +15991,17 @@ loc_8257068C:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 loc_825706D4:
+	{
+		const auto saved_r4 = ctx.r4;
+		const auto saved_r5 = ctx.r5;
+		ctx.r4.u32 = ps4_world_resource_iteration;
+		ctx.r5.u32 = r29.u32;
+		GTA4_Ps4WorldStepTrace("world-resource-return:sub_8256FFD8", ctx);
+		ctx.r4 = saved_r4;
+		ctx.r5 = saved_r5;
+	}
 	// addi r1,r1,176
 	ctx.r1.s64 = ctx.r1.s64 + 176;
 	// b 0x829ff808
@@ -16113,9 +16308,6 @@ loc_8257086C:
 		const auto s_f27 = ctx.f27; ctx.f27 = f27;
 		const auto s_v126 = ctx.v126; ctx.v126 = v126;
 		const auto s_v127 = ctx.v127; ctx.v127 = v127;
-		const auto s_cr0 = ctx.cr0; ctx.cr0 = cr0;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; ctx.v1 = v1; sub_826C4CA8(ctx, base); v0 = ctx.v0; v1 = ctx.v1; }
 		r17 = ctx.r17;
 		ctx.r17 = s_r17;
@@ -16151,9 +16343,6 @@ loc_8257086C:
 		ctx.v126 = s_v126;
 		v127 = ctx.v127;
 		ctx.v127 = s_v127;
-		ctx.cr0 = s_cr0;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// clrlwi r11,r3,24
 	ctx.r11.u64 = ctx.r3.u32 & 0xFF;
@@ -16362,38 +16551,38 @@ loc_82570948:
 	// fmuls f7,f28,f12
 	ctx.f7.f64 = double(float(f28.f64 * ctx.f12.f64));
 	// fmsubs f10,f28,f0,f10
-	ctx.f10.f64 = double(float(std::fma(f28.f64, ctx.f0.f64, -ctx.f10.f64)));
+	ctx.f10.f64 = double(float(REX_FMA(f28.f64, ctx.f0.f64, -ctx.f10.f64)));
 	// fmadds f8,f30,f0,f8
-	ctx.f8.f64 = double(float(std::fma(f30.f64, ctx.f0.f64, ctx.f8.f64)));
+	ctx.f8.f64 = double(float(REX_FMA(f30.f64, ctx.f0.f64, ctx.f8.f64)));
 	// fmadds f9,f30,f12,f9
-	ctx.f9.f64 = double(float(std::fma(f30.f64, ctx.f12.f64, ctx.f9.f64)));
+	ctx.f9.f64 = double(float(REX_FMA(f30.f64, ctx.f12.f64, ctx.f9.f64)));
 	// fmadds f0,f29,f0,f7
-	ctx.f0.f64 = double(float(std::fma(f29.f64, ctx.f0.f64, ctx.f7.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(f29.f64, ctx.f0.f64, ctx.f7.f64)));
 	// fnmsubs f10,f30,f11,f10
-	ctx.f10.f64 = double(float(-std::fma(f30.f64, ctx.f11.f64, -ctx.f10.f64)));
+	ctx.f10.f64 = double(float(-REX_FMA(f30.f64, ctx.f11.f64, -ctx.f10.f64)));
 	// fmadds f8,f29,f13,f8
-	ctx.f8.f64 = double(float(std::fma(f29.f64, ctx.f13.f64, ctx.f8.f64)));
+	ctx.f8.f64 = double(float(REX_FMA(f29.f64, ctx.f13.f64, ctx.f8.f64)));
 	// fmadds f9,f28,f13,f9
-	ctx.f9.f64 = double(float(std::fma(f28.f64, ctx.f13.f64, ctx.f9.f64)));
+	ctx.f9.f64 = double(float(REX_FMA(f28.f64, ctx.f13.f64, ctx.f9.f64)));
 	// fmadds f0,f31,f11,f0
-	ctx.f0.f64 = double(float(std::fma(f31.f64, ctx.f11.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(f31.f64, ctx.f11.f64, ctx.f0.f64)));
 	// fnmsubs f10,f29,f12,f10
-	ctx.f10.f64 = double(float(-std::fma(f29.f64, ctx.f12.f64, -ctx.f10.f64)));
+	ctx.f10.f64 = double(float(-REX_FMA(f29.f64, ctx.f12.f64, -ctx.f10.f64)));
 	// stfs f10,92(r1)
 	temp.f32 = float(ctx.f10.f64);
 	REX_STORE_U32(ctx.r1.u32 + 92, temp.u32);
 	// fnmsubs f12,f31,f12,f8
-	ctx.f12.f64 = double(float(-std::fma(f31.f64, ctx.f12.f64, -ctx.f8.f64)));
+	ctx.f12.f64 = double(float(-REX_FMA(f31.f64, ctx.f12.f64, -ctx.f8.f64)));
 	// stfs f12,84(r1)
 	temp.f32 = float(ctx.f12.f64);
 	REX_STORE_U32(ctx.r1.u32 + 84, temp.u32);
 	// fnmsubs f9,f29,f11,f9
-	ctx.f9.f64 = double(float(-std::fma(f29.f64, ctx.f11.f64, -ctx.f9.f64)));
+	ctx.f9.f64 = double(float(-REX_FMA(f29.f64, ctx.f11.f64, -ctx.f9.f64)));
 	// stfs f9,80(r1)
 	temp.f32 = float(ctx.f9.f64);
 	REX_STORE_U32(ctx.r1.u32 + 80, temp.u32);
 	// fnmsubs f0,f30,f13,f0
-	ctx.f0.f64 = double(float(-std::fma(f30.f64, ctx.f13.f64, -ctx.f0.f64)));
+	ctx.f0.f64 = double(float(-REX_FMA(f30.f64, ctx.f13.f64, -ctx.f0.f64)));
 	// stfs f0,88(r1)
 	temp.f32 = float(ctx.f0.f64);
 	REX_STORE_U32(ctx.r1.u32 + 88, temp.u32);
@@ -16671,6 +16860,9 @@ DEFINE_REX_FUNC(sub_82570BC0) {
 	PPCRegister r30{};
 	PPCRegister r31{};
 	uint32_t ea{};
+	uint32_t ps4_world_scan_a = 0;
+	uint32_t ps4_world_scan_b = 0;
+	uint32_t ps4_world_scan_c = 0;
 	// mflr r12
 	ctx.r12.u64 = ctx.lr;
 	// bl 0x829ff7b8
@@ -16685,6 +16877,20 @@ DEFINE_REX_FUNC(sub_82570BC0) {
 	r24.s64 = 0;
 	// mr r29,r3
 	r29.u64 = ctx.r3.u64;
+	GTA4_Ps4WorldStepTrace("world-init-entry:sub_82570BC0", ctx);
+	auto ps4_world_init_scan_trace = [&](const char* label, uint32_t value,
+	                                     uint32_t index, uint32_t count) {
+		const uint64_t saved_r3 = ctx.r3.u64;
+		const uint64_t saved_r4 = ctx.r4.u64;
+		const uint64_t saved_r5 = ctx.r5.u64;
+		ctx.r3.u64 = value;
+		ctx.r4.u64 = index;
+		ctx.r5.u64 = count;
+		GTA4_Ps4WorldStepTrace(label, ctx);
+		ctx.r3.u64 = saved_r3;
+		ctx.r4.u64 = saved_r4;
+		ctx.r5.u64 = saved_r5;
+	};
 	// mr r11,r24
 	ctx.r11.u64 = r24.u64;
 	// lwz r8,19920(r25)
@@ -16702,6 +16908,18 @@ DEFINE_REX_FUNC(sub_82570BC0) {
 loc_82570BF4:
 	// lwz r6,0(r10)
 	ctx.r6.u64 = REX_LOAD_U32(ctx.r10.u32 + 0);
+	{
+		const auto saved_r3 = ctx.r3;
+		const auto saved_r4 = ctx.r4;
+		const auto saved_r5 = ctx.r5;
+		ctx.r3.u32 = ctx.r6.u32;
+		ctx.r4.u32 = ctx.r9.u32;
+		ctx.r5.u32 = ctx.r11.u32;
+		GTA4_Ps4WorldStepTrace("world-init-list-A-item:sub_82570BC0", ctx);
+		ctx.r3 = saved_r3;
+		ctx.r4 = saved_r4;
+		ctx.r5 = saved_r5;
+	}
 	// cmpwi cr6,r6,0
 	cr6.compare<int32_t>(ctx.r6.s32, 0, xer);
 	// beq cr6,0x82570e00
@@ -16731,7 +16949,13 @@ loc_82570C24:
 	ctx.r3.u64 = r31.u64;
 	// bl 0x8256e8f8
 	ctx.lr = 0x82570C2C;
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("begin-child:0x82570C2C/sub_8256E8F8", ctx);
+#endif
 	sub_8256E8F8(ctx, base);
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("end-child:0x82570C2C/sub_8256E8F8", ctx);
+#endif
 	// lwz r9,19920(r25)
 	ctx.r9.u64 = REX_LOAD_U32(r25.u32 + 19920);
 	// lwz r11,0(r30)
@@ -16784,18 +17008,42 @@ loc_82570C78:
 loc_82570C88:
 	// bl 0x821ca1b0
 	ctx.lr = 0x82570C8C;
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("begin-child:0x82570C8C/sub_821CA1B0", ctx);
+#endif
 	sub_821CA1B0(ctx, base);
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("end-child:0x82570C8C/sub_821CA1B0", ctx);
+#endif
 	// bl 0x821cfe98
 	ctx.lr = 0x82570C90;
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("begin-child:0x82570C90/sub_821CFE98", ctx);
+#endif
 	sub_821CFE98(ctx, base);
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("end-child:0x82570C90/sub_821CFE98", ctx);
+#endif
 	// bl 0x8250af48
 	ctx.lr = 0x82570C94;
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("begin-child:0x82570C94/sub_8250AF48", ctx);
+#endif
 	sub_8250AF48(ctx, base);
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("end-child:0x82570C94/sub_8250AF48", ctx);
+#endif
 	// mr r3,r29
 	ctx.r3.u64 = r29.u64;
 	// bl 0x82662d98
 	ctx.lr = 0x82570C9C;
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("begin-child:0x82570C9C/sub_82662D98", ctx);
+#endif
 	sub_82662D98(ctx, base);
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("end-child:0x82570C9C/sub_82662D98", ctx);
+#endif
 	// lis r30,-31970
 	r30.s64 = -2095185920;
 	// lwz r31,19924(r30)
@@ -16804,7 +17052,13 @@ loc_82570C88:
 	ctx.r3.u64 = r31.u64;
 	// bl 0x82219ac0
 	ctx.lr = 0x82570CAC;
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("begin-child:0x82570CAC/sub_82219AC0", ctx);
+#endif
 	sub_82219AC0(ctx, base);
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("end-child:0x82570CAC/sub_82219AC0", ctx);
+#endif
 	// lbz r11,361(r31)
 	ctx.r11.u64 = REX_LOAD_U8(r31.u32 + 361);
 	// cmplwi cr6,r11,0
@@ -16815,7 +17069,13 @@ loc_82570C88:
 	ctx.r3.u64 = REX_LOAD_U32(r30.u32 + 19924);
 	// bl 0x82219d90
 	ctx.lr = 0x82570CC0;
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("begin-child:0x82570CC0/sub_82219D90", ctx);
+#endif
 	sub_82219D90(ctx, base);
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("end-child:0x82570CC0/sub_82219D90", ctx);
+#endif
 	// cmpldi cr6,r3,0
 	cr6.compare<uint64_t>(ctx.r3.u64, 0, xer);
 	// beq cr6,0x82570cd4
@@ -16829,19 +17089,49 @@ loc_82570C88:
 loc_82570CD4:
 	// bl 0x82662f48
 	ctx.lr = 0x82570CD8;
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("begin-child:0x82570CD8/sub_82662F48", ctx);
+#endif
 	sub_82662F48(ctx, base);
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("end-child:0x82570CD8/sub_82662F48", ctx);
+#endif
 	// bl 0x82289958
 	ctx.lr = 0x82570CDC;
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("begin-child:0x82570CDC/sub_82289958", ctx);
+#endif
 	sub_82289958(ctx, base);
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("end-child:0x82570CDC/sub_82289958", ctx);
+#endif
 	// bl 0x825fd0b8
 	ctx.lr = 0x82570CE0;
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("begin-child:0x82570CE0/sub_825FD0B8", ctx);
+#endif
 	sub_825FD0B8(ctx, base);
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("end-child:0x82570CE0/sub_825FD0B8", ctx);
+#endif
 	// bl 0x822bca90
 	ctx.lr = 0x82570CE4;
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("begin-child:0x82570CE4/sub_822BCA90", ctx);
+#endif
 	sub_822BCA90(ctx, base);
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("end-child:0x82570CE4/sub_822BCA90", ctx);
+#endif
 	// bl 0x82662800
 	ctx.lr = 0x82570CE8;
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("begin-child:0x82570CE8/sub_82662800", ctx);
+#endif
 	sub_82662800(ctx, base);
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("end-child:0x82570CE8/sub_82662800", ctx);
+#endif
 	// lwz r8,19920(r25)
 	ctx.r8.u64 = REX_LOAD_U32(r25.u32 + 19920);
 	// mr r11,r24
@@ -16857,6 +17147,15 @@ loc_82570CD4:
 	// addi r10,r7,128
 	ctx.r10.s64 = ctx.r7.s64 + 128;
 loc_82570D04:
+	if (ctx.r11.u32 < 4 || (ctx.r11.u32 & 0x3Fu) == 0) {
+		const auto saved_r4 = ctx.r4;
+		const auto saved_r5 = ctx.r5;
+		ctx.r4.u32 = ctx.r9.u32;
+		ctx.r5.u32 = ctx.r11.u32;
+		GTA4_Ps4WorldStepTrace("world-init-list-B:sub_82570BC0", ctx);
+		ctx.r4 = saved_r4;
+		ctx.r5 = saved_r5;
+	}
 	// lwz r6,0(r10)
 	ctx.r6.u64 = REX_LOAD_U32(ctx.r10.u32 + 0);
 	// cmpwi cr6,r6,2
@@ -16883,14 +17182,15 @@ loc_82570D24:
 	REX_STORE_U16(ctx.r1.u32 + 92, r24.u16);
 	// bl 0x821b3510
 	ctx.lr = 0x82570D34;
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("begin-child:0x82570D34/sub_821B3510", ctx);
+#endif
 	{
 		const auto s_r24 = ctx.r24; ctx.r24 = r24;
 		const auto s_r25 = ctx.r25; ctx.r25 = r25;
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3510(ctx, base);
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -16902,9 +17202,10 @@ loc_82570D24:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("end-child:0x82570D34/sub_821B3510", ctx);
+#endif
 	// mr r11,r3
 	ctx.r11.u64 = ctx.r3.u64;
 	// li r30,100
@@ -16917,14 +17218,15 @@ loc_82570D24:
 	REX_STORE_U16(ctx.r1.u32 + 86, r30.u16);
 	// bl 0x821b3510
 	ctx.lr = 0x82570D4C;
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("begin-child:0x82570D4C/sub_821B3510", ctx);
+#endif
 	{
 		const auto s_r24 = ctx.r24; ctx.r24 = r24;
 		const auto s_r25 = ctx.r25; ctx.r25 = r25;
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3510(ctx, base);
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -16936,9 +17238,10 @@ loc_82570D24:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("end-child:0x82570D4C/sub_821B3510", ctx);
+#endif
 	// mr r28,r3
 	r28.u64 = ctx.r3.u64;
 	// lwz r10,132(r31)
@@ -16962,7 +17265,13 @@ loc_82570D70:
 	ctx.r3.u64 = r31.u64;
 	// bl 0x8284e840
 	ctx.lr = 0x82570D78;
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("begin-child:0x82570D78/sub_8284E840", ctx);
+#endif
 	sub_8284E840(ctx, base);
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("end-child:0x82570D78/sub_8284E840", ctx);
+#endif
 	// mr r5,r3
 	ctx.r5.u64 = ctx.r3.u64;
 	// li r4,32
@@ -16971,14 +17280,27 @@ loc_82570D70:
 	ctx.r3.s64 = ctx.r1.s64 + 96;
 	// bl 0x8284e910
 	ctx.lr = 0x82570D88;
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("begin-child:0x82570D88/sub_8284E910", ctx);
+#endif
 	sub_8284E910(ctx, base);
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("end-child:0x82570D88/sub_8284E910", ctx);
+#endif
 	// li r4,1
 	ctx.r4.s64 = 1;
 	// mr r3,r31
 	ctx.r3.u64 = r31.u64;
 	// bl 0x82855460
 	ctx.lr = 0x82570D94;
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("begin-child:0x82570D94/sub_82855460", ctx);
+#endif
 	sub_82855460(ctx, base);
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("end-child:0x82570D94/sub_82855460", ctx);
+	GTA4_Ps4WorldStepTrace("world-init-post-82855460:sub_82570BC0", ctx);
+#endif
 	// mr r30,r3
 	r30.u64 = ctx.r3.u64;
 	// li r4,0
@@ -16987,7 +17309,14 @@ loc_82570D70:
 	ctx.r3.s64 = ctx.r1.s64 + 96;
 	// bl 0x8284e060
 	ctx.lr = 0x82570DA4;
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("begin-child:0x82570DA4/sub_8284E060", ctx);
+#endif
 	sub_8284E060(ctx, base);
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("end-child:0x82570DA4/sub_8284E060", ctx);
+	GTA4_Ps4WorldStepTrace("world-init-post-8284E060-A:sub_82570BC0", ctx);
+#endif
 	// lhz r9,84(r1)
 	ctx.r9.u64 = REX_LOAD_U16(ctx.r1.u32 + 84);
 	// mr r29,r3
@@ -17007,6 +17336,10 @@ loc_82570D70:
 loc_82570DC4:
 	// lwzx r7,r8,r11
 	ctx.r7.u64 = REX_LOAD_U32(ctx.r8.u32 + ctx.r11.u32);
+	if ((ps4_world_scan_a++ & 0xFFu) == 0) {
+		ps4_world_init_scan_trace("world-init-scan-A:sub_82570BC0",
+		                          ctx.r7.u32, ctx.r10.u32, ctx.r9.u32);
+	}
 	// cmplw cr6,r7,r30
 	cr6.compare<uint32_t>(ctx.r7.u32, r30.u32, xer);
 	// beq cr6,0x82570ddc
@@ -17027,6 +17360,8 @@ loc_82570DDC:
 	// blt cr6,0x82570dc4
 	if (cr6.lt) goto loc_82570DC4;
 loc_82570DEC:
+	ps4_world_init_scan_trace("world-init-scan-A-result:sub_82570BC0",
+	                          r30.u32, ctx.r10.u32, ctx.r9.u32);
 	// cmpw cr6,r10,r9
 	cr6.compare<int32_t>(ctx.r10.s32, ctx.r9.s32, xer);
 	// bne cr6,0x82570e24
@@ -17035,7 +17370,22 @@ loc_82570DEC:
 	ctx.r3.u64 = r31.u64;
 	// bl 0x8256ffd8
 	ctx.lr = 0x82570DFC;
+#if REX_PLATFORM_PS4
+	{
+		const auto saved_r4 = ctx.r4;
+		const auto saved_r5 = ctx.r5;
+		ctx.r4.u32 = ctx.r9.u32;
+		ctx.r5.u32 = ctx.r10.u32;
+		GTA4_Ps4WorldStepTrace("world-resource-select-A:sub_82570BC0", ctx);
+		ctx.r4 = saved_r4;
+		ctx.r5 = saved_r5;
+	}
+	GTA4_Ps4WorldStepTrace("begin-child:0x82570DFC/sub_8256FFD8", ctx);
+#endif
 	sub_8256FFD8(ctx, base);
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("end-child:0x82570DFC/sub_8256FFD8", ctx);
+#endif
 	// b 0x82570e30
 	goto loc_82570E30;
 loc_82570E00:
@@ -17066,7 +17416,13 @@ loc_82570E24:
 	ctx.r3.u64 = r26.u64;
 	// bl 0x822bca90
 	ctx.lr = 0x82570E30;
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("begin-child:0x82570E30/sub_822BCA90", ctx);
+#endif
 	sub_822BCA90(ctx, base);
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("end-child:0x82570E30/sub_822BCA90", ctx);
+#endif
 loc_82570E30:
 	// li r4,16
 	ctx.r4.s64 = 16;
@@ -17074,18 +17430,38 @@ loc_82570E30:
 	ctx.r3.s64 = ctx.r1.s64 + 80;
 	// bl 0x8265cb30
 	ctx.lr = 0x82570E3C;
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("begin-child:0x82570E3C/sub_8265CB30", ctx);
+#endif
 	sub_8265CB30(ctx, base);
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("end-child:0x82570E3C/sub_8265CB30", ctx);
+#endif
+	ps4_world_init_scan_trace("world-init-append-first-return:sub_82570BC0",
+	                          ctx.r3.u32, r30.u32, r29.u32);
 	// mr r11,r3
 	ctx.r11.u64 = ctx.r3.u64;
+	ps4_world_init_scan_trace("world-init-append-first-store-before:sub_82570BC0",
+	                          ctx.r11.u32, r30.u32, r29.u32);
 	// li r4,16
 	ctx.r4.s64 = 16;
 	// addi r3,r1,88
-	ctx.r3.s64 = ctx.r1.s64 + 88;
+	ctx.r3.s64 = ctx.r1.u32 + 88;
 	// stw r30,0(r11)
 	REX_STORE_U32(ctx.r11.u32 + 0, r30.u32);
+	ps4_world_init_scan_trace("world-init-append-first-store-after:sub_82570BC0",
+	                          ctx.r11.u32, r30.u32, r29.u32);
 	// bl 0x8265cb30
 	ctx.lr = 0x82570E50;
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("world-init-append-second-before:sub_82570BC0", ctx);
+	GTA4_Ps4WorldStepTrace("begin-child:0x82570E50/sub_8265CB30", ctx);
+#endif
 	sub_8265CB30(ctx, base);
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("end-child:0x82570E50/sub_8265CB30", ctx);
+	GTA4_Ps4WorldStepTrace("world-init-append-second-after:sub_82570BC0", ctx);
+#endif
 	// stw r29,0(r3)
 	REX_STORE_U32(ctx.r3.u32 + 0, r29.u32);
 	// lwz r8,19920(r25)
@@ -17165,6 +17541,15 @@ loc_82570EC8:
 	// addi r10,r7,128
 	ctx.r10.s64 = ctx.r7.s64 + 128;
 loc_82570EE0:
+	if (ctx.r11.u32 < 4 || (ctx.r11.u32 & 0x3Fu) == 0) {
+		const auto saved_r4 = ctx.r4;
+		const auto saved_r5 = ctx.r5;
+		ctx.r4.u32 = ctx.r9.u32;
+		ctx.r5.u32 = ctx.r11.u32;
+		GTA4_Ps4WorldStepTrace("world-init-list-C:sub_82570BC0", ctx);
+		ctx.r4 = saved_r4;
+		ctx.r5 = saved_r5;
+	}
 	// lwz r6,0(r10)
 	ctx.r6.u64 = REX_LOAD_U32(ctx.r10.u32 + 0);
 	// cmpwi cr6,r6,1
@@ -17198,7 +17583,13 @@ loc_82570F14:
 	ctx.r3.u64 = r30.u64;
 	// bl 0x8284e840
 	ctx.lr = 0x82570F1C;
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("begin-child:0x82570F1C/sub_8284E840", ctx);
+#endif
 	sub_8284E840(ctx, base);
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("end-child:0x82570F1C/sub_8284E840", ctx);
+#endif
 	// mr r5,r3
 	ctx.r5.u64 = ctx.r3.u64;
 	// li r4,32
@@ -17207,14 +17598,26 @@ loc_82570F14:
 	ctx.r3.s64 = ctx.r1.s64 + 96;
 	// bl 0x8284e910
 	ctx.lr = 0x82570F2C;
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("begin-child:0x82570F2C/sub_8284E910", ctx);
+#endif
 	sub_8284E910(ctx, base);
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("end-child:0x82570F2C/sub_8284E910", ctx);
+#endif
 	// li r4,1
 	ctx.r4.s64 = 1;
 	// mr r3,r30
 	ctx.r3.u64 = r30.u64;
 	// bl 0x82855460
 	ctx.lr = 0x82570F38;
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("begin-child:0x82570F38/sub_82855460", ctx);
+#endif
 	sub_82855460(ctx, base);
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("end-child:0x82570F38/sub_82855460", ctx);
+#endif
 	// mr r31,r3
 	r31.u64 = ctx.r3.u64;
 	// li r4,0
@@ -17223,7 +17626,14 @@ loc_82570F14:
 	ctx.r3.s64 = ctx.r1.s64 + 96;
 	// bl 0x8284e060
 	ctx.lr = 0x82570F48;
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("begin-child:0x82570F48/sub_8284E060", ctx);
+#endif
 	sub_8284E060(ctx, base);
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("end-child:0x82570F48/sub_8284E060", ctx);
+	GTA4_Ps4WorldStepTrace("world-init-post-8284E060-B:sub_82570BC0", ctx);
+#endif
 	// lhz r9,84(r1)
 	ctx.r9.u64 = REX_LOAD_U16(ctx.r1.u32 + 84);
 	// mr r29,r3
@@ -17243,6 +17653,10 @@ loc_82570F14:
 loc_82570F68:
 	// lwzx r7,r11,r8
 	ctx.r7.u64 = REX_LOAD_U32(ctx.r11.u32 + ctx.r8.u32);
+	if ((ps4_world_scan_b++ & 0xFFu) == 0) {
+		ps4_world_init_scan_trace("world-init-scan-B:sub_82570BC0",
+		                          ctx.r7.u32, ctx.r10.u32, ctx.r9.u32);
+	}
 	// cmplw cr6,r7,r31
 	cr6.compare<uint32_t>(ctx.r7.u32, r31.u32, xer);
 	// beq cr6,0x82570f80
@@ -17263,6 +17677,8 @@ loc_82570F80:
 	// blt cr6,0x82570f68
 	if (cr6.lt) goto loc_82570F68;
 loc_82570F90:
+	ps4_world_init_scan_trace("world-init-scan-B-result:sub_82570BC0",
+	                          r31.u32, ctx.r10.u32, ctx.r9.u32);
 	// cmpw cr6,r10,r9
 	cr6.compare<int32_t>(ctx.r10.s32, ctx.r9.s32, xer);
 	// bne cr6,0x82570fb0
@@ -17271,7 +17687,22 @@ loc_82570F90:
 	ctx.r3.u64 = r30.u64;
 	// bl 0x8256ffd8
 	ctx.lr = 0x82570FA0;
+#if REX_PLATFORM_PS4
+	{
+		const auto saved_r4 = ctx.r4;
+		const auto saved_r5 = ctx.r5;
+		ctx.r4.u32 = ctx.r9.u32;
+		ctx.r5.u32 = ctx.r10.u32;
+		GTA4_Ps4WorldStepTrace("world-resource-select-B:sub_82570BC0", ctx);
+		ctx.r4 = saved_r4;
+		ctx.r5 = saved_r5;
+	}
+	GTA4_Ps4WorldStepTrace("begin-child:0x82570FA0/sub_8256FFD8", ctx);
+#endif
 	sub_8256FFD8(ctx, base);
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("end-child:0x82570FA0/sub_8256FFD8", ctx);
+#endif
 	// b 0x82570fbc
 	goto loc_82570FBC;
 loc_82570FA4:
@@ -17288,7 +17719,13 @@ loc_82570FB0:
 	ctx.r3.u64 = r26.u64;
 	// bl 0x822bca90
 	ctx.lr = 0x82570FBC;
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("begin-child:0x82570FBC/sub_822BCA90", ctx);
+#endif
 	sub_822BCA90(ctx, base);
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("end-child:0x82570FBC/sub_822BCA90", ctx);
+#endif
 loc_82570FBC:
 	// li r4,16
 	ctx.r4.s64 = 16;
@@ -17296,7 +17733,13 @@ loc_82570FBC:
 	ctx.r3.s64 = ctx.r1.s64 + 80;
 	// bl 0x8265cb30
 	ctx.lr = 0x82570FC8;
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("begin-child:0x82570FC8/sub_8265CB30", ctx);
+#endif
 	sub_8265CB30(ctx, base);
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("end-child:0x82570FC8/sub_8265CB30", ctx);
+#endif
 	// mr r11,r3
 	ctx.r11.u64 = ctx.r3.u64;
 	// li r4,16
@@ -17307,7 +17750,13 @@ loc_82570FBC:
 	REX_STORE_U32(ctx.r11.u32 + 0, r31.u32);
 	// bl 0x8265cb30
 	ctx.lr = 0x82570FDC;
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("begin-child:0x82570FDC/sub_8265CB30", ctx);
+#endif
 	sub_8265CB30(ctx, base);
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("end-child:0x82570FDC/sub_8265CB30", ctx);
+#endif
 	// stw r29,0(r3)
 	REX_STORE_U32(ctx.r3.u32 + 0, r29.u32);
 	// lwz r9,19920(r25)
@@ -17335,6 +17784,10 @@ loc_82570FBC:
 loc_8257100C:
 	// lwz r5,0(r10)
 	ctx.r5.u64 = REX_LOAD_U32(ctx.r10.u32 + 0);
+	if ((ps4_world_scan_c++ & 0xFFu) == 0) {
+		ps4_world_init_scan_trace("world-init-scan-C:sub_82570BC0",
+		                          ctx.r5.u32, ctx.r11.u32, ctx.r8.u32);
+	}
 	// cmpw cr6,r5,r6
 	cr6.compare<int32_t>(ctx.r5.s32, ctx.r6.s32, xer);
 	// beq cr6,0x825710b8
@@ -17364,10 +17817,22 @@ loc_8257102C:
 loc_82571040:
 	// bl 0x825156a0
 	ctx.lr = 0x82571044;
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("begin-child:0x82571044/sub_825156A0", ctx);
+#endif
 	sub_825156A0(ctx, base);
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("end-child:0x82571044/sub_825156A0", ctx);
+#endif
 	// bl 0x8256d4a0
 	ctx.lr = 0x82571048;
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("begin-child:0x82571048/sub_8256D4A0", ctx);
+#endif
 	sub_8256D4A0(ctx, base);
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("end-child:0x82571048/sub_8256D4A0", ctx);
+#endif
 	// lis r10,-32086
 	ctx.r10.s64 = -2102788096;
 	// mr r11,r24
@@ -17376,17 +17841,35 @@ loc_82571040:
 	REX_STORE_U8(ctx.r10.u32 + -29660, ctx.r11.u8);
 	// bl 0x8256d370
 	ctx.lr = 0x82571058;
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("begin-child:0x82571058/sub_8256D370", ctx);
+#endif
 	sub_8256D370(ctx, base);
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("end-child:0x82571058/sub_8256D370", ctx);
+#endif
 	// li r3,0
 	ctx.r3.s64 = 0;
 	// bl 0x82289330
 	ctx.lr = 0x82571060;
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("begin-child:0x82571060/sub_82289330", ctx);
+#endif
 	sub_82289330(ctx, base);
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("end-child:0x82571060/sub_82289330", ctx);
+#endif
 	// li r3,0
 	ctx.r3.s64 = 0;
 	// bl 0x8256da50
 	ctx.lr = 0x82571068;
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("begin-child:0x82571068/sub_8256DA50", ctx);
+#endif
 	sub_8256DA50(ctx, base);
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("end-child:0x82571068/sub_8256DA50", ctx);
+#endif
 	// lhz r11,94(r1)
 	ctx.r11.u64 = REX_LOAD_U16(ctx.r1.u32 + 94);
 	// cmplwi cr6,r11,0
@@ -17397,6 +17880,9 @@ loc_82571040:
 	ctx.r3.u64 = r28.u64;
 	// bl 0x821b3560
 	ctx.lr = 0x8257107C;
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("begin-child:0x8257107C/sub_821B3560", ctx);
+#endif
 	{
 		const auto s_r24 = ctx.r24; ctx.r24 = r24;
 		const auto s_r25 = ctx.r25; ctx.r25 = r25;
@@ -17406,8 +17892,6 @@ loc_82571040:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3560(ctx, base);
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -17425,9 +17909,10 @@ loc_82571040:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("end-child:0x8257107C/sub_821B3560", ctx);
+#endif
 loc_8257107C:
 	// lhz r11,86(r1)
 	ctx.r11.u64 = REX_LOAD_U16(ctx.r1.u32 + 86);
@@ -17439,6 +17924,9 @@ loc_8257107C:
 	ctx.r3.u64 = REX_LOAD_U32(ctx.r1.u32 + 80);
 	// bl 0x821b3560
 	ctx.lr = 0x82571090;
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("begin-child:0x82571090/sub_821B3560", ctx);
+#endif
 	{
 		const auto s_r24 = ctx.r24; ctx.r24 = r24;
 		const auto s_r25 = ctx.r25; ctx.r25 = r25;
@@ -17448,8 +17936,6 @@ loc_8257107C:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3560(ctx, base);
 		r24 = ctx.r24;
 		ctx.r24 = s_r24;
@@ -17467,18 +17953,31 @@ loc_8257107C:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("end-child:0x82571090/sub_821B3560", ctx);
+#endif
 loc_82571090:
 	// li r3,0
 	ctx.r3.s64 = 0;
 	// bl 0x821d00d0
 	ctx.lr = 0x82571098;
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("begin-child:0x82571098/sub_821D00D0", ctx);
+#endif
 	sub_821D00D0(ctx, base);
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("end-child:0x82571098/sub_821D00D0", ctx);
+#endif
 	// bl 0x821c7908
 	ctx.lr = 0x8257109C;
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("begin-child:0x8257109C/sub_821C7908", ctx);
+#endif
 	sub_821C7908(ctx, base);
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("end-child:0x8257109C/sub_821C7908", ctx);
+#endif
 	// lis r11,-32086
 	ctx.r11.s64 = -2102788096;
 	// li r10,1
@@ -17489,7 +17988,14 @@ loc_82571090:
 	REX_STORE_U8(ctx.r11.u32 + 84, ctx.r10.u8);
 	// bl 0x823b32b8
 	ctx.lr = 0x825710B0;
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("begin-child:0x825710B0/sub_823B32B8", ctx);
+#endif
 	sub_823B32B8(ctx, base);
+#if REX_PLATFORM_PS4
+	GTA4_Ps4WorldStepTrace("end-child:0x825710B0/sub_823B32B8", ctx);
+#endif
+	GTA4_Ps4WorldStepTrace("world-init-return:sub_82570BC0", ctx);
 	// addi r1,r1,208
 	ctx.r1.s64 = ctx.r1.s64 + 208;
 	// b 0x829ff808
@@ -23181,8 +23687,6 @@ DEFINE_REX_FUNC(sub_82573808) {
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3510(ctx, base);
 		r21 = ctx.r21;
 		ctx.r21 = s_r21;
@@ -23204,8 +23708,6 @@ DEFINE_REX_FUNC(sub_82573808) {
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -23258,8 +23760,6 @@ loc_82573874:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3510(ctx, base);
 		r20 = ctx.r20;
 		ctx.r20 = s_r20;
@@ -23285,8 +23785,6 @@ loc_82573874:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -23534,15 +24032,11 @@ DEFINE_REX_FUNC(sub_82573A18) {
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3510(ctx, base);
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -23627,8 +24121,6 @@ loc_82573AA8:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3510(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -23638,8 +24130,6 @@ loc_82573AA8:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -23754,8 +24244,6 @@ loc_82573B10:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3510(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -23767,8 +24255,6 @@ loc_82573B10:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -23907,8 +24393,6 @@ loc_82573BFC:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3510(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -23928,8 +24412,6 @@ loc_82573BFC:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -24066,8 +24548,6 @@ loc_82573CE8:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3510(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -24087,8 +24567,6 @@ loc_82573CE8:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -24180,8 +24658,6 @@ loc_82573D84:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3510(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -24201,8 +24677,6 @@ loc_82573D84:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -24263,8 +24737,6 @@ loc_82573DFC:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3510(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -24284,8 +24756,6 @@ loc_82573DFC:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -24346,8 +24816,6 @@ loc_82573E50:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3510(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -24367,8 +24835,6 @@ loc_82573E50:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -24427,8 +24893,6 @@ loc_82573EA4:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3510(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -24448,8 +24912,6 @@ loc_82573EA4:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -24510,8 +24972,6 @@ loc_82573EF4:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3510(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -24531,8 +24991,6 @@ loc_82573EF4:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -24595,8 +25053,6 @@ loc_82573F48:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3510(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -24616,8 +25072,6 @@ loc_82573F48:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -24678,8 +25132,6 @@ loc_82573FA0:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3510(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -24699,8 +25151,6 @@ loc_82573FA0:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -24761,8 +25211,6 @@ loc_82573FF4:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3510(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -24782,8 +25230,6 @@ loc_82573FF4:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -24844,8 +25290,6 @@ loc_82574048:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3510(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -24865,8 +25309,6 @@ loc_82574048:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -24927,8 +25369,6 @@ loc_8257409C:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3510(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -24948,8 +25388,6 @@ loc_8257409C:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -25012,8 +25450,6 @@ loc_825740F0:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3510(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -25033,8 +25469,6 @@ loc_825740F0:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -25097,8 +25531,6 @@ loc_82574148:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3510(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -25118,8 +25550,6 @@ loc_82574148:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -25178,8 +25608,6 @@ loc_825741A0:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3510(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -25199,8 +25627,6 @@ loc_825741A0:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -25259,8 +25685,6 @@ loc_825741F0:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3510(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -25280,8 +25704,6 @@ loc_825741F0:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -25342,8 +25764,6 @@ loc_82574240:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3510(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -25363,8 +25783,6 @@ loc_82574240:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -25425,8 +25843,6 @@ loc_82574294:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3510(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -25446,8 +25862,6 @@ loc_82574294:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -25508,8 +25922,6 @@ loc_825742E8:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3510(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -25529,8 +25941,6 @@ loc_825742E8:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -25591,8 +26001,6 @@ loc_8257433C:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3510(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -25612,8 +26020,6 @@ loc_8257433C:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -25672,8 +26078,6 @@ loc_82574390:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3510(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -25693,8 +26097,6 @@ loc_82574390:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -25753,8 +26155,6 @@ loc_825743E0:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3510(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -25774,8 +26174,6 @@ loc_825743E0:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -25836,8 +26234,6 @@ loc_82574430:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3510(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -25857,8 +26253,6 @@ loc_82574430:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -25919,8 +26313,6 @@ loc_82574484:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3510(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -25940,8 +26332,6 @@ loc_82574484:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -26002,8 +26392,6 @@ loc_825744D8:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3510(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -26023,8 +26411,6 @@ loc_825744D8:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -26083,8 +26469,6 @@ loc_8257452C:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3510(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -26104,8 +26488,6 @@ loc_8257452C:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -26166,8 +26548,6 @@ loc_8257457C:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3510(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -26187,8 +26567,6 @@ loc_8257457C:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -26249,8 +26627,6 @@ loc_825745D0:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3510(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -26270,8 +26646,6 @@ loc_825745D0:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -26332,8 +26706,6 @@ loc_82574624:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3510(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -26353,8 +26725,6 @@ loc_82574624:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -26415,8 +26785,6 @@ loc_82574678:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3510(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -26436,8 +26804,6 @@ loc_82574678:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -26498,8 +26864,6 @@ loc_825746CC:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3510(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -26519,8 +26883,6 @@ loc_825746CC:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -26581,8 +26943,6 @@ loc_82574720:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3510(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -26602,8 +26962,6 @@ loc_82574720:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -26664,8 +27022,6 @@ loc_82574774:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3510(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -26685,8 +27041,6 @@ loc_82574774:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -26747,8 +27101,6 @@ loc_825747C8:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3510(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -26768,8 +27120,6 @@ loc_825747C8:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -26830,8 +27180,6 @@ loc_8257481C:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3510(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -26851,8 +27199,6 @@ loc_8257481C:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -26913,8 +27259,6 @@ loc_82574870:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_821B3510(ctx, base);
 		r23 = ctx.r23;
 		ctx.r23 = s_r23;
@@ -26934,8 +27278,6 @@ loc_82574870:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -28108,13 +28450,9 @@ loc_82574FCC:
 	ctx.lr = 0x82574FD0;
 	{
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_8225CF80(ctx, base);
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// lwz r11,540(r3)
 	ctx.r11.u64 = REX_LOAD_U32(ctx.r3.u32 + 540);
@@ -28319,15 +28657,11 @@ loc_82575118:
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_8225CF80(ctx, base);
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -28344,15 +28678,11 @@ loc_82575118:
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_8225D108(ctx, base);
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// lis r11,-32070
 	ctx.r11.s64 = -2101739520;
@@ -28443,13 +28773,9 @@ DEFINE_REX_FUNC(sub_82575178) {
 	ctx.lr = 0x825751BC;
 	{
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_8225D108(ctx, base);
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// lis r11,-32070
 	ctx.r11.s64 = -2101739520;
@@ -28905,15 +29231,11 @@ loc_82575488:
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_8225CF68(ctx, base);
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r31,r3
 	r31.u64 = ctx.r3.u64;
@@ -29058,13 +29380,9 @@ loc_82575570:
 	ctx.lr = 0x82575580;
 	{
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82718AE8(ctx, base);
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmpwi cr6,r3,-1
 	cr6.compare<int32_t>(ctx.r3.s32, -1, xer);
@@ -29162,9 +29480,6 @@ DEFINE_REX_FUNC(sub_825755A0) {
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82718AE8(ctx, base);
 		r29 = ctx.r29;
 		ctx.r29 = s_r29;
@@ -29172,9 +29487,6 @@ DEFINE_REX_FUNC(sub_825755A0) {
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// lbz r11,496(r30)
 	ctx.r11.u64 = REX_LOAD_U8(r30.u32 + 496);
@@ -29208,9 +29520,6 @@ loc_82575638:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_8225CF68(ctx, base);
 		r29 = ctx.r29;
 		ctx.r29 = s_r29;
@@ -29218,9 +29527,6 @@ loc_82575638:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -29814,8 +30120,6 @@ DEFINE_REX_FUNC(sub_825759B8) {
 		const auto s_r28 = ctx.r28; ctx.r28 = r28;
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826ED600(ctx, base);
 		r28 = ctx.r28;
 		ctx.r28 = s_r28;
@@ -29823,8 +30127,6 @@ DEFINE_REX_FUNC(sub_825759B8) {
 		ctx.r29 = s_r29;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r30,r3
 	r30.u64 = ctx.r3.u64;
@@ -30024,8 +30326,6 @@ DEFINE_REX_FUNC(sub_82575AC8) {
 		const auto s_r27 = ctx.r27; ctx.r27 = r27;
 		const auto s_r28 = ctx.r28; ctx.r28 = r28;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826FEBE8(ctx, base);
 		r27 = ctx.r27;
 		ctx.r27 = s_r27;
@@ -30033,8 +30333,6 @@ DEFINE_REX_FUNC(sub_82575AC8) {
 		ctx.r28 = s_r28;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r29,r3
 	r29.u64 = ctx.r3.u64;
@@ -30312,8 +30610,6 @@ DEFINE_REX_FUNC(sub_82575CA0) {
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826C4CA8(ctx, base);
 		r29 = ctx.r29;
 		ctx.r29 = s_r29;
@@ -30321,8 +30617,6 @@ DEFINE_REX_FUNC(sub_82575CA0) {
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// clrlwi r11,r3,24
 	ctx.r11.u64 = ctx.r3.u32 & 0xFF;
@@ -30444,15 +30738,11 @@ DEFINE_REX_FUNC(sub_82575D58) {
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826C4CA8(ctx, base);
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// clrlwi r11,r3,24
 	ctx.r11.u64 = ctx.r3.u32 & 0xFF;
@@ -30988,13 +31278,9 @@ DEFINE_REX_FUNC(sub_825760E0) {
 	ctx.lr = 0x825760FC;
 	{
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_8225CF68(ctx, base);
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -31497,15 +31783,11 @@ DEFINE_REX_FUNC(sub_825763E0) {
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826FE9C8(ctx, base);
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -31516,15 +31798,11 @@ DEFINE_REX_FUNC(sub_825763E0) {
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82701F88(ctx, base);
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// extsb r31,r3
 	r31.s64 = ctx.r3.s8;
@@ -31769,13 +32047,9 @@ loc_825765B0:
 	ctx.lr = 0x825765BC;
 	{
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82701F88(ctx, base);
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// extsb r3,r3
 	ctx.r3.s64 = ctx.r3.s8;
@@ -32752,15 +33026,11 @@ loc_82576B84:
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82702CA0(ctx, base);
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// clrlwi r11,r3,24
 	ctx.r11.u64 = ctx.r3.u32 & 0xFF;
@@ -32775,15 +33045,11 @@ loc_82576B84:
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82702D08(ctx, base);
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// clrlwi r11,r3,24
 	ctx.r11.u64 = ctx.r3.u32 & 0xFF;
@@ -33459,15 +33725,11 @@ DEFINE_REX_FUNC(sub_82576F50) {
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826DCE68(ctx, base);
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// b 0x82576fd0
 	goto loc_82576FD0;
@@ -34248,9 +34510,9 @@ DEFINE_REX_FUNC(sub_825773E0) {
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + 88);
 	ctx.f13.f64 = double(temp.f32);
 	// fmadds f0,f0,f0,f12
-	ctx.f0.f64 = double(float(std::fma(ctx.f0.f64, ctx.f0.f64, ctx.f12.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f0.f64, ctx.f12.f64)));
 	// fmadds f13,f13,f13,f0
-	ctx.f13.f64 = double(float(std::fma(ctx.f13.f64, ctx.f13.f64, ctx.f0.f64)));
+	ctx.f13.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f13.f64, ctx.f0.f64)));
 	// lfs f0,-21004(r11)
 	temp.u32 = REX_LOAD_U32(ctx.r11.u32 + -21004);
 	ctx.f0.f64 = double(temp.f32);
@@ -34279,15 +34541,11 @@ DEFINE_REX_FUNC(sub_825773E0) {
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; ctx.v13 = v13; sub_828BD310(ctx, base); v0 = ctx.v0; v13 = ctx.v13; }
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cntlzw r11,r3
 	ctx.r11.u64 = ctx.r3.u32 == 0 ? 32 : __builtin_clz(ctx.r3.u32);
@@ -35218,6 +35476,7 @@ DEFINE_REX_FUNC(sub_82577A20) {
 
 DEFINE_REX_FUNC(sub_82577A58) {
 	REX_FUNC_PROLOGUE();
+	GTA4_Ps4CrashTrace("sub_82577A58-entry", ctx, base);
 	uint32_t ea{};
 	// mflr r12
 	ctx.r12.u64 = ctx.lr;
@@ -35237,9 +35496,11 @@ DEFINE_REX_FUNC(sub_82577A58) {
 	ctx.r4.s64 = 0;
 	// li r3,11
 	ctx.r3.s64 = 11;
+	GTA4_Ps4CrashTrace("sub_82577A58-before-826D0138", ctx, base);
 	// bl 0x826d0138
 	ctx.lr = 0x82577A7C;
 	sub_826D0138(ctx, base);
+	GTA4_Ps4CrashTrace("sub_82577A58-after-826D0138", ctx, base);
 	// lis r11,-32253
 	ctx.r11.s64 = -2113732608;
 	// li r3,0
@@ -35896,9 +36157,6 @@ loc_82577E20:
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; sub_82702F90(ctx, base); v0 = ctx.v0; }
 		r29 = ctx.r29;
 		ctx.r29 = s_r29;
@@ -35908,9 +36166,6 @@ loc_82577E20:
 		ctx.r31 = s_r31;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
-		ctx.ctr = s_ctr;
-		ctx.xer = s_xer;
 	}
 loc_82577E68:
 	// lis r11,-31984
@@ -36072,15 +36327,11 @@ loc_82577F68:
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_8225CF68(ctx, base);
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r30,r3
 	r30.u64 = ctx.r3.u64;
@@ -36120,15 +36371,11 @@ loc_82577F9C:
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82701F88(ctx, base);
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r4,r3
 	ctx.r4.u64 = ctx.r3.u64;
@@ -36139,15 +36386,11 @@ loc_82577F9C:
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82702CD8(ctx, base);
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// clrlwi r11,r3,24
 	ctx.r11.u64 = ctx.r3.u32 & 0xFF;
@@ -36252,15 +36495,11 @@ loc_82578058:
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_8225CF68(ctx, base);
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r30,r3
 	r30.u64 = ctx.r3.u64;
@@ -36300,15 +36539,11 @@ loc_8257808C:
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82701F88(ctx, base);
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r4,r3
 	ctx.r4.u64 = ctx.r3.u64;
@@ -36319,15 +36554,11 @@ loc_8257808C:
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82702CD8(ctx, base);
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// clrlwi r11,r3,24
 	ctx.r11.u64 = ctx.r3.u32 & 0xFF;
@@ -36432,15 +36663,11 @@ loc_82578148:
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_8225CF68(ctx, base);
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r30,r3
 	r30.u64 = ctx.r3.u64;
@@ -36480,15 +36707,11 @@ loc_8257817C:
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82701F88(ctx, base);
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// mr r4,r3
 	ctx.r4.u64 = ctx.r3.u64;
@@ -36499,15 +36722,11 @@ loc_8257817C:
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_82702CD8(ctx, base);
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// clrlwi r11,r3,24
 	ctx.r11.u64 = ctx.r3.u32 & 0xFF;
@@ -37151,9 +37370,7 @@ loc_8257855C:
 	// bl 0x826e7b50
 	ctx.lr = 0x825785B0;
 	{
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
 		{ ctx.v0 = v0; sub_826E7B50(ctx, base); v0 = ctx.v0; }
-		ctx.cr6 = s_cr6;
 	}
 	// addi r1,r1,160
 	ctx.r1.s64 = ctx.r1.s64 + 160;
@@ -37799,6 +38016,7 @@ DEFINE_REX_FUNC(sub_82578978) {
 
 DEFINE_REX_FUNC(sub_825789B8) {
 	REX_FUNC_PROLOGUE();
+	GTA4_Ps4CrashTrace("sub_825789B8-entry", ctx, base);
 	PPCRegister r31{};
 	uint32_t ea{};
 	// mflr r12
@@ -37817,9 +38035,11 @@ DEFINE_REX_FUNC(sub_825789B8) {
 	ctx.r11.u64 = REX_LOAD_U32(r31.u32 + 8);
 	// lwz r3,0(r11)
 	ctx.r3.u64 = REX_LOAD_U32(ctx.r11.u32 + 0);
+	GTA4_Ps4CrashTrace("sub_825789B8-before-82575680", ctx, base);
 	// bl 0x82575680
 	ctx.lr = 0x825789D8;
 	sub_82575680(ctx, base);
+	GTA4_Ps4CrashTrace("sub_825789B8-after-82575680", ctx, base);
 	// lwz r11,0(r31)
 	ctx.r11.u64 = REX_LOAD_U32(r31.u32 + 0);
 	// clrlwi r10,r3,24
@@ -40293,6 +40513,7 @@ DEFINE_REX_FUNC(sub_825798B8) {
 
 DEFINE_REX_FUNC(sub_82579910) {
 	REX_FUNC_PROLOGUE();
+	GTA4_Ps4CrashTrace("sub_82579910-entry", ctx, base);
 	PPCXERRegister xer{};
 	PPCCRRegister cr6{};
 	PPCRegister r31{};
@@ -40309,10 +40530,13 @@ DEFINE_REX_FUNC(sub_82579910) {
 	ctx.r1.u32 = ea;
 	// mr r31,r3
 	r31.u64 = ctx.r3.u64;
+	GTA4_Ps4CrashTrace("sub_82579910-before-object-pointer", ctx, base);
 	// lwz r11,8(r31)
 	ctx.r11.u64 = REX_LOAD_U32(r31.u32 + 8);
+	GTA4_Ps4CrashTrace("sub_82579910-after-object-pointer", ctx, base);
 	// lwz r3,0(r11)
 	ctx.r3.u64 = REX_LOAD_U32(ctx.r11.u32 + 0);
+	GTA4_Ps4CrashTrace("sub_82579910-after-target-pointer", ctx, base);
 	// bl 0x8225cf68
 	ctx.lr = 0x82579930;
 	{
@@ -40321,6 +40545,7 @@ DEFINE_REX_FUNC(sub_82579910) {
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
 	}
+	GTA4_Ps4CrashTrace("sub_82579910-after-8225CF68", ctx, base);
 	// lis r11,-32254
 	ctx.r11.s64 = -2113798144;
 	// mr r10,r3
@@ -40358,10 +40583,13 @@ loc_8257996C:
 	// li r3,0
 	ctx.r3.s64 = 0;
 loc_82579970:
+	GTA4_Ps4CrashTrace("sub_82579910-before-output-pointer", ctx, base);
 	// lwz r11,0(r31)
 	ctx.r11.u64 = REX_LOAD_U32(r31.u32 + 0);
+	GTA4_Ps4CrashTrace("sub_82579910-after-output-pointer", ctx, base);
 	// clrlwi r10,r3,24
 	ctx.r10.u64 = ctx.r3.u32 & 0xFF;
+	GTA4_Ps4CrashTrace("sub_82579910-before-output-store", ctx, base);
 	// stw r10,0(r11)
 	REX_STORE_U32(ctx.r11.u32 + 0, ctx.r10.u32);
 	// addi r1,r1,112
@@ -40378,6 +40606,7 @@ loc_82579970:
 
 DEFINE_REX_FUNC(sub_82579990) {
 	REX_FUNC_PROLOGUE();
+	GTA4_Ps4GuestStoreContextTrace("sub_82579990-entry", 0, ctx, 0);
 	PPCXERRegister xer{};
 	PPCCRRegister cr6{};
 	PPCRegister r31{};
@@ -40467,6 +40696,7 @@ DEFINE_REX_FUNC(sub_82579A10) {
 	PPCCRRegister cr6{};
 	PPCRegister r31{};
 	uint32_t ea{};
+	GTA4_Ps4CrashTrace("sub_82579A10-entry", ctx, base);
 	// mflr r12
 	ctx.r12.u64 = ctx.lr;
 	// stw r12,-8(r1)
@@ -40483,6 +40713,7 @@ DEFINE_REX_FUNC(sub_82579A10) {
 	ctx.r11.u64 = REX_LOAD_U32(r31.u32 + 8);
 	// lwz r3,0(r11)
 	ctx.r3.u64 = REX_LOAD_U32(ctx.r11.u32 + 0);
+	GTA4_Ps4CrashTrace("sub_82579A10-before-8225CF68", ctx, base);
 	// bl 0x8225cf68
 	ctx.lr = 0x82579A30;
 	{
@@ -40491,6 +40722,7 @@ DEFINE_REX_FUNC(sub_82579A10) {
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
 	}
+	GTA4_Ps4CrashTrace("sub_82579A10-after-8225CF68", ctx, base);
 	// lis r11,-32254
 	ctx.r11.s64 = -2113798144;
 	// mr r10,r3
@@ -40499,18 +40731,22 @@ DEFINE_REX_FUNC(sub_82579A10) {
 	ctx.r4.s64 = ctx.r11.s64 + 30528;
 	// li r3,0
 	ctx.r3.s64 = 0;
+	GTA4_Ps4CrashTrace("sub_82579A10-before-822BCA90", ctx, base);
 	// bl 0x822bca90
 	ctx.lr = 0x82579A44;
 	sub_822BCA90(ctx, base);
+	GTA4_Ps4CrashTrace("sub_82579A10-after-822BCA90", ctx, base);
 	// cmplwi cr6,r10,0
 	cr6.compare<uint32_t>(ctx.r10.u32, 0, xer);
 	// beq cr6,0x82579a6c
 	if (cr6.eq) goto loc_82579A6C;
 	// mr r3,r10
 	ctx.r3.u64 = ctx.r10.u64;
+	GTA4_Ps4CrashTrace("sub_82579A10-before-829DBAA8", ctx, base);
 	// bl 0x829dbaa8
 	ctx.lr = 0x82579A54;
 	sub_829DBAA8(ctx, base);
+	GTA4_Ps4CrashTrace("sub_82579A10-after-829DBAA8", ctx, base);
 	// lis r11,-31983
 	ctx.r11.s64 = -2096037888;
 	// mr r4,r3
@@ -40519,9 +40755,11 @@ DEFINE_REX_FUNC(sub_82579A10) {
 	ctx.r11.s64 = ctx.r11.s64 + -25464;
 	// mr r3,r11
 	ctx.r3.u64 = ctx.r11.u64;
+	GTA4_Ps4CrashTrace("sub_82579A10-before-826FED80", ctx, base);
 	// bl 0x826fed80
 	ctx.lr = 0x82579A68;
 	sub_826FED80(ctx, base);
+	GTA4_Ps4CrashTrace("sub_82579A10-after-826FED80", ctx, base);
 	// b 0x82579a70
 	goto loc_82579A70;
 loc_82579A6C:
@@ -43561,6 +43799,7 @@ DEFINE_REX_FUNC(sub_8257AD68) {
 	PPCCRRegister cr6{};
 	PPCRegister r31{};
 	uint32_t ea{};
+	GTA4_Ps4CrashTrace("sub_8257AD68-entry", ctx, base);
 	// mflr r12
 	ctx.r12.u64 = ctx.lr;
 	// stw r12,-8(r1)
@@ -43578,6 +43817,7 @@ DEFINE_REX_FUNC(sub_8257AD68) {
 	// bl 0x826c5a18
 	ctx.lr = 0x8257AD84;
 	sub_826C5A18(ctx, base);
+	GTA4_Ps4CrashTrace("sub_8257AD68-after-826C5A18", ctx, base);
 	// lis r11,-32253
 	ctx.r11.s64 = -2113732608;
 	// li r3,0
@@ -43587,11 +43827,13 @@ DEFINE_REX_FUNC(sub_8257AD68) {
 	// bl 0x822bca90
 	ctx.lr = 0x8257AD94;
 	sub_822BCA90(ctx, base);
+	GTA4_Ps4CrashTrace("sub_8257AD68-after-822BCA90", ctx, base);
 	// addi r3,r1,96
 	ctx.r3.s64 = ctx.r1.s64 + 96;
 	// bl 0x826c4be8
 	ctx.lr = 0x8257AD9C;
 	sub_826C4BE8(ctx, base);
+	GTA4_Ps4CrashTrace("sub_8257AD68-after-826C4BE8", ctx, base);
 	// clrlwi r11,r3,24
 	ctx.r11.u64 = ctx.r3.u32 & 0xFF;
 	// cmplwi cr6,r11,0
@@ -46001,8 +46243,6 @@ DEFINE_REX_FUNC(sub_8257BC38) {
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826C4CA8(ctx, base);
 		r29 = ctx.r29;
 		ctx.r29 = s_r29;
@@ -46010,8 +46250,6 @@ DEFINE_REX_FUNC(sub_8257BC38) {
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// clrlwi r11,r3,24
 	ctx.r11.u64 = ctx.r3.u32 & 0xFF;
@@ -46031,8 +46269,6 @@ DEFINE_REX_FUNC(sub_8257BC38) {
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_8216D490(ctx, base);
 		r29 = ctx.r29;
 		ctx.r29 = s_r29;
@@ -46040,8 +46276,6 @@ DEFINE_REX_FUNC(sub_8257BC38) {
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 loc_8257BC98:
 	// lis r11,-32253
@@ -52218,15 +52452,11 @@ loc_8257E500:
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_8225CF80(ctx, base);
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// cmplwi cr6,r3,0
 	cr6.compare<uint32_t>(ctx.r3.u32, 0, xer);
@@ -52237,15 +52467,11 @@ loc_8257E500:
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_8225CF80(ctx, base);
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// lis r11,-32256
 	ctx.r11.s64 = -2113929216;
@@ -52405,11 +52631,7 @@ DEFINE_REX_FUNC(sub_8257E5E8) {
 	// bl 0x8225cf80
 	ctx.lr = 0x8257E624;
 	{
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_8225CF80(ctx, base);
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// lis r11,-32256
 	ctx.r11.s64 = -2113929216;
@@ -52474,11 +52696,7 @@ DEFINE_REX_FUNC(sub_8257E640) {
 	// bl 0x8225cf80
 	ctx.lr = 0x8257E67C;
 	{
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_8225CF80(ctx, base);
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// lis r11,-32256
 	ctx.r11.s64 = -2113929216;
@@ -55039,7 +55257,6 @@ loc_8257F6B8:
 		const auto s_f29 = ctx.f29; ctx.f29 = f29;
 		const auto s_f30 = ctx.f30; ctx.f30 = f30;
 		const auto s_f31 = ctx.f31; ctx.f31 = f31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
 		sub_826C4CA8(ctx, base);
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
@@ -55049,7 +55266,6 @@ loc_8257F6B8:
 		ctx.f30 = s_f30;
 		f31 = ctx.f31;
 		ctx.f31 = s_f31;
-		ctx.cr6 = s_cr6;
 	}
 	// clrlwi r11,r3,24
 	ctx.r11.u64 = ctx.r3.u32 & 0xFF;
@@ -55553,13 +55769,9 @@ loc_8257F9B4:
 	ctx.lr = 0x8257F9C4;
 	{
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		{ ctx.v0 = v0; sub_826C4CA8(ctx, base); v0 = ctx.v0; }
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// clrlwi r11,r3,24
 	ctx.r11.u64 = ctx.r3.u32 & 0xFF;
@@ -57658,8 +57870,6 @@ loc_82580708:
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_823D5800(ctx, base);
 		r29 = ctx.r29;
 		ctx.r29 = s_r29;
@@ -57667,8 +57877,6 @@ loc_82580708:
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	// clrlwi r11,r29,24
 	ctx.r11.u64 = r29.u32 & 0xFF;
@@ -62045,11 +62253,7 @@ loc_82582384:
 	if (cr6.lt) goto loc_82582384;
 	// b 0x823bc0b8
 	{
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_823BC0B8(ctx, base);
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 	return;
 }
@@ -64443,7 +64647,7 @@ loc_825831EC:
 	// fmuls f12,f13,f13
 	ctx.f12.f64 = double(float(ctx.f13.f64 * ctx.f13.f64));
 	// fmadds f12,f0,f0,f12
-	ctx.f12.f64 = double(float(std::fma(ctx.f0.f64, ctx.f0.f64, ctx.f12.f64)));
+	ctx.f12.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f0.f64, ctx.f12.f64)));
 	// fsqrts f12,f12
 	ctx.f12.f64 = double(float(sqrt(ctx.f12.f64)));
 	// fdivs f12,f11,f12
@@ -64725,7 +64929,7 @@ loc_82583378:
 	temp.u32 = REX_LOAD_U32(ctx.r11.u32 + 3400);
 	ctx.f11.f64 = double(temp.f32);
 	// fmadds f12,f0,f0,f12
-	ctx.f12.f64 = double(float(std::fma(ctx.f0.f64, ctx.f0.f64, ctx.f12.f64)));
+	ctx.f12.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f0.f64, ctx.f12.f64)));
 	// fsqrts f12,f12
 	ctx.f12.f64 = double(float(sqrt(ctx.f12.f64)));
 	// fdivs f12,f11,f12
@@ -64990,7 +65194,7 @@ loc_8258351C:
 	temp.u32 = REX_LOAD_U32(ctx.r11.u32 + 3400);
 	ctx.f11.f64 = double(temp.f32);
 	// fmadds f12,f0,f0,f12
-	ctx.f12.f64 = double(float(std::fma(ctx.f0.f64, ctx.f0.f64, ctx.f12.f64)));
+	ctx.f12.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f0.f64, ctx.f12.f64)));
 	// fsqrts f12,f12
 	ctx.f12.f64 = double(float(sqrt(ctx.f12.f64)));
 	// fdivs f12,f11,f12
@@ -70925,9 +71129,7 @@ DEFINE_REX_FUNC(sub_82585970) {
 	ctr.u64 = ctx.r8.u64;
 	// bctr 
 	{
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
 		REX_CALL_INDIRECT_FUNC(ctr.u32);
-		ctx.ctr = s_ctr;
 	}
 	return;
 }
@@ -76697,8 +76899,6 @@ DEFINE_REX_FUNC(sub_82587D60) {
 		const auto s_r29 = ctx.r29; ctx.r29 = r29;
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826DD2C0(ctx, base);
 		r29 = ctx.r29;
 		ctx.r29 = s_r29;
@@ -76706,8 +76906,6 @@ DEFINE_REX_FUNC(sub_82587D60) {
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 loc_82587DB0:
 	// addi r1,r1,112
@@ -76773,15 +76971,11 @@ DEFINE_REX_FUNC(sub_82587DB8) {
 	{
 		const auto s_r30 = ctx.r30; ctx.r30 = r30;
 		const auto s_r31 = ctx.r31; ctx.r31 = r31;
-		const auto s_cr6 = ctx.cr6; ctx.cr6 = cr6;
-		const auto s_xer = ctx.xer; ctx.xer = xer;
 		sub_826DEAB8(ctx, base);
 		r30 = ctx.r30;
 		ctx.r30 = s_r30;
 		r31 = ctx.r31;
 		ctx.r31 = s_r31;
-		ctx.cr6 = s_cr6;
-		ctx.xer = s_xer;
 	}
 loc_82587E00:
 	// addi r1,r1,112
@@ -79379,9 +79573,9 @@ loc_82588DD4:
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + -16);
 	ctx.f13.f64 = double(temp.f32);
 	// fmadds f0,f0,f0,f11
-	ctx.f0.f64 = double(float(std::fma(ctx.f0.f64, ctx.f0.f64, ctx.f11.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f0.f64, ctx.f11.f64)));
 	// fmadds f0,f13,f13,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f13.f64, ctx.f13.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f13.f64, ctx.f0.f64)));
 	// fsqrts f0,f0
 	ctx.f0.f64 = double(float(sqrt(ctx.f0.f64)));
 	// fcmpu cr6,f0,f12
@@ -79629,9 +79823,9 @@ loc_82588F40:
 	temp.u32 = REX_LOAD_U32(ctx.r1.u32 + -16);
 	ctx.f13.f64 = double(temp.f32);
 	// fmadds f0,f0,f0,f11
-	ctx.f0.f64 = double(float(std::fma(ctx.f0.f64, ctx.f0.f64, ctx.f11.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f0.f64, ctx.f0.f64, ctx.f11.f64)));
 	// fmadds f0,f13,f13,f0
-	ctx.f0.f64 = double(float(std::fma(ctx.f13.f64, ctx.f13.f64, ctx.f0.f64)));
+	ctx.f0.f64 = double(float(REX_FMA(ctx.f13.f64, ctx.f13.f64, ctx.f0.f64)));
 	// fsqrts f0,f0
 	ctx.f0.f64 = double(float(sqrt(ctx.f0.f64)));
 	// fcmpu cr6,f0,f12
@@ -79990,9 +80184,7 @@ DEFINE_REX_FUNC(sub_82589160) {
 	ctr.u64 = ctx.r9.u64;
 	// bctr 
 	{
-		const auto s_ctr = ctx.ctr; ctx.ctr = ctr;
 		REX_CALL_INDIRECT_FUNC(ctr.u32);
-		ctx.ctr = s_ctr;
 	}
 	return;
 }

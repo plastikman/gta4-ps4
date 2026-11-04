@@ -1,7 +1,10 @@
 #include "gta4_install_dialog.h"
 
 #include <algorithm>
+#include <cctype>
+#include <system_error>
 #include <utility>
+#include <vector>
 
 #include <SDL3/SDL_dialog.h>
 #include <imgui.h>
@@ -68,6 +71,7 @@ void InstallDialog::Preselect(std::filesystem::path game, std::filesystem::path 
 }
 
 void InstallDialog::OnClose() {
+  native_picker_open_ = false;
   picker_state_->inspection_worker.Stop();
   progress_.cancel_requested = true;
   if (install_thread_.joinable()) {
@@ -114,6 +118,10 @@ std::filesystem::path InstallDialog::PathFor(PickerTarget target) const {
 }
 
 void InstallDialog::ShowFilePicker(PickerTarget target) {
+#if REX_PLATFORM_PS4
+  OpenNativePicker(target, false);
+  return;
+#endif
   auto weak_state = std::weak_ptr<PickerState>(picker_state_);
   auto* request =
       new PickerRequest{[weak_state, target](std::filesystem::path path, std::string error) {
@@ -160,6 +168,10 @@ void InstallDialog::ShowFilePicker(PickerTarget target) {
 }
 
 void InstallDialog::ShowFolderPicker(PickerTarget target) {
+#if REX_PLATFORM_PS4
+  OpenNativePicker(target, true);
+  return;
+#endif
   auto weak_state = std::weak_ptr<PickerState>(picker_state_);
   auto* request =
       new PickerRequest{[weak_state, target](std::filesystem::path path, std::string error) {
@@ -193,6 +205,154 @@ void InstallDialog::ShowFolderPicker(PickerTarget target) {
         }
       }};
   SDL_ShowOpenFolderDialog(OnPathPicked, request, nullptr, nullptr, false);
+}
+
+void InstallDialog::OpenNativePicker(PickerTarget target, bool folder) {
+  native_picker_target_ = target;
+  native_picker_folder_ = folder;
+  native_picker_selection_ = -1;
+  native_picker_error_.clear();
+  native_picker_open_ = true;
+
+  // Removable media is the usual source for console installs. Keep these as
+  // quick jumps, but allow browsing from / when the mount name differs.
+  const std::filesystem::path roots[] = {"/mnt/usb0", "/mnt/usb1", "/data", "/"};
+  native_picker_directory_ = "/";
+  for (const auto& root : roots) {
+    std::error_code error;
+    if (std::filesystem::is_directory(root, error)) {
+      native_picker_directory_ = root;
+      break;
+    }
+  }
+  RefreshNativePickerEntries();
+}
+
+void InstallDialog::RefreshNativePickerEntries() {
+  native_picker_entries_.clear();
+  native_picker_selection_ = -1;
+  std::error_code error;
+  std::filesystem::directory_iterator iterator(
+      native_picker_directory_, std::filesystem::directory_options::skip_permission_denied, error);
+  if (error) {
+    native_picker_error_ = error.message();
+    return;
+  }
+  for (const auto& entry : iterator) {
+    std::error_code entry_error;
+    const auto symlink_status = entry.symlink_status(entry_error);
+    if (entry_error || std::filesystem::is_symlink(symlink_status)) {
+      continue;
+    }
+    const bool is_directory = std::filesystem::is_directory(symlink_status);
+    if (!is_directory && !native_picker_folder_ && native_picker_target_ == PickerTarget::kGame) {
+      std::string extension = entry.path().extension().string();
+      std::transform(extension.begin(), extension.end(), extension.begin(),
+                     [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+      if (extension != ".iso" && extension != ".xiso") {
+        continue;
+      }
+    }
+    native_picker_entries_.push_back({entry.path(), is_directory});
+  }
+  std::sort(native_picker_entries_.begin(), native_picker_entries_.end(),
+            [](const BrowserEntry& a, const BrowserEntry& b) {
+              if (a.directory != b.directory) return a.directory;
+              return a.path.filename().string() < b.path.filename().string();
+            });
+  native_picker_error_.clear();
+}
+
+void InstallDialog::ChooseNativePath(const std::filesystem::path& path) {
+  native_picker_open_ = false;
+  {
+    std::lock_guard lock(picker_state_->mutex);
+    picker_state_->error.clear();
+  }
+  AssignPickedPath(native_picker_target_, path);
+}
+
+void InstallDialog::DrawNativePicker() {
+  if (!native_picker_open_) {
+    return;
+  }
+
+  ImGui::SetNextWindowSize(ImVec2(ImGui::GetIO().DisplaySize.x * 0.72f,
+                                  ImGui::GetIO().DisplaySize.y * 0.76f),
+                           ImGuiCond_Always);
+  ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Always,
+                          ImVec2(0.5f, 0.5f));
+  constexpr ImGuiWindowFlags flags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings;
+  if (!ImGui::Begin(native_picker_folder_ ? "Select Folder##native-picker"
+                                         : "Select File##native-picker",
+                    nullptr, flags)) {
+    ImGui::End();
+    return;
+  }
+
+  ImGui::TextWrapped("%s", native_picker_directory_.string().c_str());
+  if (ImGui::Button("Up") && native_picker_directory_ != native_picker_directory_.root_path()) {
+    native_picker_directory_ = native_picker_directory_.parent_path();
+    RefreshNativePickerEntries();
+  }
+  ImGui::SameLine();
+  const std::filesystem::path quick_roots[] = {"/mnt/usb0", "/mnt/usb1", "/data", "/"};
+  for (size_t i = 0; i < std::size(quick_roots); ++i) {
+    std::error_code error;
+    if (!std::filesystem::is_directory(quick_roots[i], error)) continue;
+    ImGui::SameLine();
+    ImGui::PushID(static_cast<int>(i));
+    if (ImGui::SmallButton(quick_roots[i] == "/" ? "/" : quick_roots[i].filename().string().c_str())) {
+      native_picker_directory_ = quick_roots[i];
+      RefreshNativePickerEntries();
+    }
+    ImGui::PopID();
+  }
+
+  ImGui::Separator();
+  if (ImGui::BeginChild("##native-picker-entries", ImVec2(0.0f, -ImGui::GetFrameHeightWithSpacing() * 2.2f),
+                        ImGuiChildFlags_Borders)) {
+    for (size_t i = 0; i < native_picker_entries_.size(); ++i) {
+      const auto& entry = native_picker_entries_[i];
+      const std::string name = (entry.directory ? "[DIR] " : "      ") +
+                               entry.path.filename().string();
+      if (ImGui::Selectable(name.c_str(), native_picker_selection_ == static_cast<int>(i))) {
+        native_picker_selection_ = static_cast<int>(i);
+      }
+    }
+  }
+  ImGui::EndChild();
+
+  if (!native_picker_error_.empty()) {
+    ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.35f, 1.0f), "%s", native_picker_error_.c_str());
+  }
+  bool can_open = native_picker_selection_ >= 0 &&
+                  native_picker_entries_[native_picker_selection_].directory;
+  bool can_choose_file = !native_picker_folder_ && native_picker_selection_ >= 0 &&
+                         !native_picker_entries_[native_picker_selection_].directory;
+  if (!can_open && !can_choose_file) ImGui::BeginDisabled();
+  if (ImGui::Button(native_picker_folder_ ? "Open Folder" : "Open Folder") && can_open) {
+    native_picker_directory_ = native_picker_entries_[native_picker_selection_].path;
+    RefreshNativePickerEntries();
+  }
+  if (!can_open && !can_choose_file) ImGui::EndDisabled();
+  if (can_choose_file) {
+    ImGui::SameLine();
+    if (ImGui::Button("Choose File")) {
+      ChooseNativePath(native_picker_entries_[native_picker_selection_].path);
+    }
+  }
+  if (native_picker_folder_) {
+    ImGui::SameLine();
+    if (ImGui::Button("Choose This Folder")) {
+      ChooseNativePath(native_picker_directory_);
+    }
+  }
+  ImGui::SameLine();
+  if (ImGui::Button("Cancel")) {
+    native_picker_open_ = false;
+  }
+  ImGui::End();
 }
 
 void InstallDialog::DrawSourceRow(const char* label, PickerTarget target,
@@ -420,6 +580,7 @@ void InstallDialog::OnDraw(ImGuiIO& io) {
   }
 
   ImGui::End();
+  DrawNativePicker();
 }
 
 }  // namespace gta4::install

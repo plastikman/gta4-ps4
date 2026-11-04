@@ -348,6 +348,12 @@ u32 XamVoiceHeadsetPresent_entry(u32 voice_handle) {
 }
 
 u32 XamVoiceSubmitPacket_entry(u32 voice_handle, u32 mode, u32 packet_ptr) {
+#if REX_PLATFORM_PS4
+  // Voice chat is not needed on PS4 startup. Avoid touching guest packet
+  // memory or voice state until its guest address mapping is understood.
+  return X_ERROR_SUCCESS;
+#endif
+
   if (mode > 1 || !IsGuestRangeValid(packet_ptr, kVoicePacketHeaderSize)) {
     return X_E_INVALIDARG;
   }

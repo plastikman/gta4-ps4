@@ -10,10 +10,13 @@
 #include "ps4_input_driver.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cstring>
+#include <cstdio>
 
 #include <orbis/Pad.h>
 #include <orbis/UserService.h>
+#include <orbis/libkernel.h>
 
 #include <rex/input/flags.h>
 #include <rex/input/input.h>
@@ -22,6 +25,12 @@
 namespace rex::input::ps4 {
 
 namespace {
+
+std::atomic<uint32_t> g_ps4_pad_trace_polls{0};
+
+void Ps4PadTrace(const char* message) {
+  sceKernelDebugOutText(0, message);
+}
 
 // Expand an unsigned [0..255] stick axis to signed [-32768..32767] Xbox range.
 // 0x80 (128) is the neutral midpoint on DS4; output 0 there.
@@ -66,6 +75,7 @@ X_STATUS PS4InputDriver::Setup() {
     return X_STATUS_UNSUCCESSFUL;
   }
   pad_initialized_ = true;
+  Ps4PadTrace("[PS4 pad probe] scePadInit succeeded\n");
 
   RefreshUsers();
   REXLOG_INFO("PS4 input driver initialized");
@@ -127,6 +137,11 @@ void PS4InputDriver::RefreshUsers() {
       slot.packet_number = 1;
       REXLOG_INFO("PS4: opened pad for user {} at slot {} (handle={})", uid,
                   si, handle);
+      char trace[128];
+      std::snprintf(trace, sizeof(trace),
+                    "[PS4 pad probe] open user=%d slot=%zu handle=%d\n",
+                    uid, si, handle);
+      Ps4PadTrace(trace);
       break;
     }
   }
@@ -239,7 +254,50 @@ X_RESULT PS4InputDriver::GetState(uint32_t user_index, X_INPUT_STATE* out_state)
   std::memset(out_state, 0, sizeof(*out_state));
   out_state->packet_number = slot.packet_number;
   TranslatePadState(pad, out_state->gamepad);
+  if ((g_ps4_pad_trace_polls.fetch_add(1, std::memory_order_relaxed) % 120) == 0) {
+    char trace[192];
+    std::snprintf(
+        trace, sizeof(trace),
+        "[PS4 pad probe] poll user=%u handle=%d connected=%u buttons=0x%08X raw=(%u,%u)/(%u,%u) xinput=(%d,%d)/(%d,%d)\n",
+        user_index, handle, static_cast<unsigned>(pad.connected), pad.buttons,
+        static_cast<unsigned>(pad.leftStick.x), static_cast<unsigned>(pad.leftStick.y),
+        static_cast<unsigned>(pad.rightStick.x), static_cast<unsigned>(pad.rightStick.y),
+        static_cast<int16_t>(out_state->gamepad.thumb_lx),
+        static_cast<int16_t>(out_state->gamepad.thumb_ly),
+        static_cast<int16_t>(out_state->gamepad.thumb_rx),
+        static_cast<int16_t>(out_state->gamepad.thumb_ry));
+    Ps4PadTrace(trace);
+  }
   return X_ERROR_SUCCESS;
+}
+
+// Setup screens may start reading before the active user's pad was visible to
+// UserService during driver initialization. Refresh here because UI polling
+// bypasses the game's normal capabilities enumeration.
+X_RESULT PS4InputDriver::GetStateUi(uint32_t user_index, X_INPUT_STATE* out_state) {
+  RefreshUsers();
+  const X_RESULT result = GetState(user_index, out_state);
+  if (user_index == 0) {
+    static std::atomic<uint32_t> ui_poll_count{0};
+    if ((ui_poll_count.fetch_add(1, std::memory_order_relaxed) % 120) == 0) {
+      char trace[176];
+      if (result == X_ERROR_SUCCESS && out_state) {
+        std::snprintf(trace, sizeof(trace),
+                      "[PS4 pad probe] UI poll result=0 axes=(%d,%d)/(%d,%d) buttons=0x%04X\n",
+                      static_cast<int16_t>(out_state->gamepad.thumb_lx),
+                      static_cast<int16_t>(out_state->gamepad.thumb_ly),
+                      static_cast<int16_t>(out_state->gamepad.thumb_rx),
+                      static_cast<int16_t>(out_state->gamepad.thumb_ry),
+                      static_cast<uint16_t>(out_state->gamepad.buttons));
+      } else {
+        std::snprintf(trace, sizeof(trace),
+                      "[PS4 pad probe] UI poll result=0x%08X\n",
+                      static_cast<unsigned>(result));
+      }
+      Ps4PadTrace(trace);
+    }
+  }
+  return result;
 }
 
 X_RESULT PS4InputDriver::SetState(uint32_t user_index,

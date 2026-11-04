@@ -80,6 +80,8 @@ elseif(ANDROID)
     set(REXUI_PLATFORM_SOURCES surface_android.cpp)
 elseif(PS5)  # [ps5 port] the TV through VK_KHR_display; SDL (dummy video) runs the app loop
     set(REXUI_PLATFORM_SOURCES surface_ps5.cpp)
+elseif(PS4)  # Orbis RADV headless WSI presents swapchain images through VideoOut
+    set(REXUI_PLATFORM_SOURCES surface_ps4.cpp)
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set(REXUI_PLATFORM_SOURCES
         surface_gnulinux.cpp

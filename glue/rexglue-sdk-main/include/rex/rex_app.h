@@ -34,6 +34,10 @@ struct ImFontAtlas;
 
 namespace rex {
 
+namespace input {
+class InputSystem;
+}
+
 class LogCaptureSink;
 
 /// Content path configuration, passed to OnConfigurePaths().
@@ -311,6 +315,9 @@ class ReXApp : public ui::WindowedApp, public ui::WindowListener, public ui::Win
   std::filesystem::path marketplace_content_root_;
   std::filesystem::path saved_game_root_;
   std::unique_ptr<Runtime> runtime_;
+  // On PS4, controller input is also needed by the pre-runtime installer UI.
+  // The same object is transferred to Runtime when the game data is ready.
+  std::unique_ptr<input::InputSystem> pre_runtime_input_system_;
   std::unique_ptr<ui::Window> window_;
   std::thread module_thread_;
   std::atomic<bool> shutting_down_{false};
@@ -330,6 +337,9 @@ class ReXApp : public ui::WindowedApp, public ui::WindowListener, public ui::Win
   std::unique_ptr<ui::ConsoleDialog> console_overlay_;
   std::unique_ptr<ui::SettingsDialog> settings_overlay_;
   std::unique_ptr<ui::ImGuiDialog> achievements_overlay_;
+#if REX_PLATFORM_PS4
+  std::unique_ptr<ui::ImGuiDialog> ps4_fps_counter_;
+#endif
   std::shared_ptr<ui::AchievementNotificationDialog> achievement_notification_;
   uint64_t achievement_notification_listener_ = 0;
   ui::DebugOverlayDialog::FrameStatsProvider frame_stats_provider_;

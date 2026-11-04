@@ -6,7 +6,7 @@ index b6a504a..0a1d111 100644
  #else
  #include "config_linux_x86_64.h"
  #endif
-+#elif defined(__PROSPERO__)  // [ps5 port]
++#elif defined(__PROSPERO__) || defined(__ORBIS__)  // [PS5/PS4 ports]
 +#include "config_ps5_x86_64.h"
  #elif defined(__ANDROID__)
  #if defined(__aarch64__)
