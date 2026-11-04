@@ -1,94 +1,202 @@
-# GTA IV for PS5
+# GTA IV on PS4
 
-**Grand Theft Auto IV, The Lost and Damned and The Ballad of Gay Tony (Xbox 360) running natively on a jailbroken PS5**, in 4K with 120 Hz and VRR support, PlayStation buttons and DualSense features.
+**Grand Theft Auto IV (Xbox 360) running natively on a jailbroken PS4**, through
+[Liberty Recompiled](https://github.com/OZORDI/LibertyRecomp)'s static
+recompilation, built with the OpenOrbis toolchain and drawn with Mesa's RADV
+Vulkan driver on the PS4's GPU. This is a port of
+[gta4-ps5](https://github.com/elripalda/gta4-ps5) to the PS4. Work in progress.
 
-> ### Built on Liberty Recompiled by OZORDI
-> This port exists because of **[Liberty Recompiled](https://github.com/OZORDI/LibertyRecomp)**, OZORDI's native recompilation of GTA IV, and **[LibertyRecompAndroid](https://github.com/vaduur/LibertyRecompAndroid)**, vaduur's fork that this port starts from. The recompiled game, its renderer and most of what it does come from their work, with **[ReXGlue](https://github.com/rexglue/rexglue-sdk)** underneath. This release takes that work to the PS5.
->
-> All the credit goes to them. Go star the original projects and support them.
+> No game files are included. You need your own copy of the game.
 
-## Get it on Recomp Store
-The easiest way to play is **[Recomp Store](https://recompstore.com)**. It installs the app, downloads Title Update 8 for you and keeps it up to date.
+## Status (2026-11-04, build CX)
 
-## What's in it
-- GTA IV and both Episodes from Liberty City, recompiled to run natively on the PS5
-- 4K with a 60 FPS limit. Most of the city holds 60, the busiest streets can dip into the high 40s and 50s
-- 120 Hz and VRR support, plus a 40 FPS mode for 120 Hz TVs
-- PlayStation button prompts
-- DualSense light bar (police lights when you're wanted), adaptive triggers and extra rumble
-- A hub to pick GTA IV or either episode, each with its own look and menu music
-- Installs the game and the episodes from your own files, imports your Xbox 360 saves, backs up and restores saves, and has trophies
-- Graphics settings: resolution, draw distance, city population, anti-aliasing, texture filtering, shadows, reflections, motion blur, film grain and FusionFix's enhanced effects
-- Centered car camera, and how quickly the car camera returns and follows
-- An FPS counter, off by default
-- English, French, German, Spanish and Italian
+Playable, not yet smooth. From the start of a new game to Roman's apartment it
+runs at 20-25 FPS while driving and 17-20 in busy streets, with sound that is
+clean in cutscenes and slightly slow in busy driving.
+
+## What has been tested
+
+On one PS4 Pro (firmware 9.60, GoldHEN, boost mode), USA disc with Title Update 8:
+
+| Area | Result |
+|---|---|
+| Boot, menus, starting a new game | works |
+| Opening cutscenes | ~30 FPS (the frame limit); audio clean |
+| Taxi ride from the docks to Roman's apartment | ~20-25 FPS; traffic and pedestrians present |
+| On-screen text and help messages | works; a lot of text on screen costs a few FPS (it adds draws) |
+| Busy city streets | ~17-20 FPS |
+| Idle outside Roman's apartment | ~23-26 FPS |
+| Driving audio (music, voices, traffic) | clear, but about 90% of real time with lots going on: slightly slow |
+| 720p instead of 1080p | same frame rate (the build is CPU-bound) |
+| Stability over the test runs | no crashes in the recent runs |
+
+Not tested yet: missions past Roman's apartment, The Lost and Damned and The
+Ballad of Gay Tony, Xbox 360 save import, multiplayer, a base (non-Pro) PS4, other
+firmware versions, long play sessions.
+
+Known gaps:
+- the radar map is missing;
+- the crisp vector fonts are not loaded (the game looks for the atlases at a
+  host path);
+- textures are detiled on the CPU (`gta4_native_gpu_detile = false`; the GPU
+  path hung the PS4 GPU early in bring-up).
+
+## Performance
+
+Where it came from: on 2026-11-03 the same route ran at 8-15 FPS with garbled
+audio. Removing leftover bring-up instrumentation (a range check on every
+memory access of the recompiled code), overlapping the CPU's command recording
+with the GPU's drawing, redrawing the shadow map every second frame and a series
+of audio fixes brought it here (each step and its measurement is in
+`ps4/HANDOFF-2026-11-02.md`).
+
+Where the time goes now (per frame, idle, ~1000 draws; Jaguar at 2.13 GHz):
+
+| Thread | Work |
+|---|---|
+| Game render thread | ~21 ms game code + ~13 ms handing draws to our renderer + ~10 ms waiting on the game's main thread |
+| Our recorder thread (Vulkan command recording) | ~40-50 ms, nearly a full core |
+| Game audio mixer (own core) | ~5.8 ms per 5.3 ms sound frame in busy driving |
+
+So several threads are each near the limit of a Jaguar core. The game's own
+code is mostly real work: in the hottest functions about 36% is loads and
+stores of game data, 23% arithmetic, and only ~10% recompiler call overhead.
+Already tried without a gain: 720p, asynchronous XMA decoding, moving our
+capture work to another thread (it would save ~4 ms of a ~55 ms frame).
+For comparison, the PS5 port of the same code holds ~60 FPS on a CPU core
+roughly three times faster, and the original Xbox 360 version capped at 30 with
+dips into the 20s.
+
+## Help wanted
+
+This is a small hobby port and help from the community is very welcome,
+especially with:
+
+- **Renderer CPU cost per draw.** Our hand-off (~11 us per draw on the game's
+  thread) and Vulkan recording (`graphics_system.cpp`) are spread over many small
+  costs; the line-level profiles and tooling are described in the handoff notes.
+- **Recompiled code speed.** Ideas for cheaper guest memory access or calls in the
+  generated code (ReXGlue's code generator).
+- **Audio.** The game's mixer needs a little more than one Jaguar core in busy
+  scenes; FFmpeg's x86 assembly is not built yet (needs NASM in the toolchain).
+- **GPU texture detiling** on RADV for the PS4, the **radar map**, and the
+  **vector fonts**.
+- **Testing:** base PS4s, other firmware versions, the episodes and later missions.
+  Logs from `/data/Liberty Recompiled/logs/` help most.
+
+Issues and pull requests are welcome.
 
 ## What you need
-- A jailbroken PS5 that runs homebrew apps from `/data/homebrew/`
-- Your **own** copy of GTA IV for the **USA Xbox 360** as an `.iso`, and its Title Update 8 (Recomp Store gets it for you). No game files are included.
-- For the episodes, their package from your Xbox 360
-- About 17 GB free
 
-> [!TIP]
-> ### 💙 Enjoying the port?
-> If you've gotten some enjoyment out of this project, donations and love are always appreciated. Every bit helps keep these ports growing. Thank you!
->
-> [![Support me on Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/ripalda)
+- A PS4 running [GoldHEN](https://github.com/GoldHEN/GoldHEN). A PS4 Pro in boost
+  mode is what this was tested on.
+- Your own copy of GTA IV for Xbox 360 (USA) with Title Update 8, installed as
+  game data on the console at `/data/LibertyRecomp/game`.
+- A Linux build host with the ps4-gladius Orbis SDK bundle (the OpenOrbis SDK,
+  matching Mesa headers, the RADV archive and the Vulkan entry-point shim).
 
-## Install by hand
-1. Download `PPSA94004.zip` from [Releases](../../releases) and copy the `PPSA94004` folder to `/data/homebrew/` on your PS5.
-2. Put your disc image and Title Update 8 in its `install` folder:
+## Building
+
+```sh
+git submodule update --init --recursive
+# then apply the submodule patches: see ps4/patches/README.md
+
+cmake -S ps4 -B out/ps4 -G Ninja -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_TOOLCHAIN_FILE="$HOME/ps4-gladius/sdk/orbis-sdk-v1/toolchain/orbis-sdk.cmake"
+cmake --build out/ps4 --target gta4 --parallel 1
+```
+
+The Orbis executable is `out/ps4/glue/gta4-recomp/eboot.bin`. On a host with
+little memory (7 GB here), build with `--parallel 1` whenever the renderer
+rebuilds; `--parallel 2` is fine for the recompiled game code alone (see
+`AGENTS.md`). `out/ps4/glue/gta4-recomp/gta4` is the unstripped ELF: keep it for
+symbolizing logs, and **never package it as `eboot.bin`**.
+
+## Packaging
+
+The package staging directory is not in this repository (it holds Sony system
+modules and a key file from your own copy of the game). It looks like this:
 
 ```
-/data/homebrew/PPSA94004/install/Grand Theft Auto IV (USA).iso
-/data/homebrew/PPSA94004/install/TU_1A581VI_000000K000000.0000000000205
+stage/
+  pkg.gp4                 GP4 project, title ID LBTY00001
+  eboot.bin               out/ps4/glue/gta4-recomp/eboot.bin
+  sce_sys/param.sfo, icon0.png
+  sce_module/libc.prx, libSceFios2.prx
+  Resources/button_prompts/, font_atlases/, aes_key.bin
 ```
 
-3. Launch it and press X on Home. With a payload loader running (etaHEN, elfldr or any other) the install runs at the drive's full speed. Without one it still works, just much slower. You can delete both files afterwards.
-4. For the episodes, copy their package from your 360's drive (`Content/0000000000000000/545407F2/00000002`) into the same `install` folder and install them from the Episodes page.
+Build and validate it with the SDK's `PkgTool.Core`:
 
-To update, copy the new `PPSA94004` folder over the old one. The installed game, your saves and your settings stay.
+```sh
+PkgTool.Core pkg_build pkg.gp4 out/
+PkgTool.Core pkg_validate out/IV0000-LBTY00001_00-GTA4PS4000000000.pkg
+```
 
-## Xbox 360 saves
-Copy your saves off the 360 (`Content/<your profile>/545407F2/00000001/`) into `/data/homebrew/PPSA94004/import/`, then pick Import on the hub's Saves page.
+Keep game files out of the package: the GP4 must have no `game/` entries.
+Install the PKG with GoldHEN's package installer.
 
-## The hub
-| Button | Does |
-|---|---|
-| L1 / R1 | Switch pages |
-| Left / Right | Pick a game on Home, change a setting |
-| Cross | Play, or select |
-| Options | Play from any page |
-| Triangle | Reset the settings |
-| Circle | Back to Home |
+## Configuration
 
-## Known issues
-- The busiest streets can drop below 60 FPS at 4K.
-- Only the USA disc and Title Update 8 are supported.
+Settings are read at start-up from `/data/LibertyRecomp/native.toml`.
+`ps4/configs/native.toml` is the config used with build CX. The settings that
+matter most on the PS4:
 
-## Reporting a problem
-Report bugs on the **[RIPALDA Discord](https://discord.gg/GgDE5Vynyu)**. Send the newest file from `/data/homebrew/PPSA94004/logs/`, with what you were doing and your settings.
+| Setting | Value used | Effect |
+|---|---|---|
+| `gta4_draw_distance_scale` | 0.5 | fewer draws, the main cost per frame (0.6 looks fuller, 1-2 FPS less) |
+| `gta4_*_density_scale` | 0.5 | fewer cars and pedestrians: fewer draws and fewer sounds to mix |
+| `gta4_native_shadow_interval` | 2 | redraws the sun shadow map every second frame |
+| `gta4_frame_limit` | 30 | frame limit, kept on the game's thread |
+| `ps4_audio_core` | -1 (core 5) | the audio threads' own core; -2 turns the layout off |
+| `ps4_cpu_sampler` | false | the 100 Hz CPU profiler; true to profile |
+| `ps4_capture_split` | false | timing of the render thread's hand-off; true to measure |
+| `resolution` | (display) | e.g. `"720p"`; no faster on this CPU-bound build |
 
-## Building from source
-The whole source is in this repository. Its root is [LibertyRecompAndroid](https://github.com/vaduur/LibertyRecompAndroid) as vaduur made it (his README is [README-LibertyRecompAndroid.md](README-LibertyRecompAndroid.md), Liberty Recompiled's is [README_UPSTREAM.md](README_UPSTREAM.md)), with the PS5 changes marked `[ps5 port]`. The PS5 port itself is in [`ps5/`](ps5) and `glue/rexglue-sdk-main/gta4-recomp/src/ps5/`: the hub, the PS5 start-up, the trophies, the build and the packaging. [`patches/liberty-ps5.patch`](patches/liberty-ps5.patch) has every change against LibertyRecompAndroid in one file.
+## Logs
 
-Run `./setup.sh` to fetch the third-party code (git submodules) and patch it, then follow [ps5/BUILD.md](ps5/BUILD.md). You don't need the game to build it, and nothing from the game is stored here. The hub's Helvetica Neue Heavy can't be shared, so put your own `HelveticaNeue-Heavy.ttf` in `ps5/assets/fonts/` (without it the tabs use the hub's usual type).
+The runtime log is `/data/Liberty Recompiled/logs/Liberty Recompiled_NNN.log`
+(over FTP). Useful lines, all at warning level:
 
-A few big reference copies in LibertyRecompAndroid's `tools/` aren't used to build and are left out here: Ghidra, FusionFix's source, the FidelityFX SDK and a copy of Xenia. They're in LibertyRecompAndroid and their own projects.
+- `PS5 audio: N gaps in 10 s (… ms of silence) … frames submitted, … mixer callbacks`:
+  1875 frames in 10 s is real time;
+- `ps4 waits: render|main|audio|audio-mix thread waited …`: where each thread
+  blocks, by the game code that waits;
+- `PS4 cores: process 0x3f, audio core 5: …`: the audio core layout;
+- `ps4 capture split: …` (with `ps4_capture_split = true`).
+
+## How the PS4 build differs
+
+The build history, with the measurement behind each change, is in
+`ps4/HANDOFF-2026-11-02.md`. In short:
+
+- **Recompiled code:** bring-up memory traces and the executable-page store
+  guard made opt-in, no read-back after guest stores, no save/restore of the
+  volatile XER/CTR/CR0/CR6 registers around calls, multiply-add without FMA3.
+- **Renderer:** the PS5 port's capture paths and decoupled presentation, sun
+  shadow rest frames, native shader-constant setters.
+- **Audio:** the queued `sceAudioOut` driver, event-driven multi-object waits
+  (the PS4's 1 ms sleeps last 1-2 ms), XMA decoding on the requesting thread,
+  FFmpeg decoders opened ahead of time, the audio threads on their own core.
+- **Memory:** malloc-family wrapping with a flexible-memory rescue path.
+- **Submodules:** their PS4 edits are patches in `ps4/patches`.
 
 ## Credits
-- **[OZORDI](https://github.com/OZORDI)**: [Liberty Recompiled](https://github.com/OZORDI/LibertyRecomp), the GTA IV recompilation this is built on, with its contributors
-- **[vaduur](https://github.com/vaduur)**: [LibertyRecompAndroid](https://github.com/vaduur/LibertyRecompAndroid), the fork this port starts from
-- **[ReXGlue](https://github.com/rexglue/rexglue-sdk)**: the static recompiler and runtime, which builds on [Xenia](https://github.com/xenia-project/xenia) and [XenonRecomp](https://github.com/hedge-dev/XenonRecomp)
-- **[ThirteenAG](https://github.com/ThirteenAG)**: [FusionFix](https://github.com/ThirteenAG/GTAIV.EFLC.FusionFix), whose shaders are the Enhanced Effects option and whose camera options the car camera settings follow
-- **[elripalda](https://github.com/elripalda)**: the PS5 port, the hub, the PlayStation buttons and the art
-- **[mihawk-99](https://github.com/mihawk-99)**: [PS5_Mesa](https://github.com/mihawk-99/PS5_Mesa), the PS5 Vulkan driver
-- **[Nazky](https://github.com/Nazky)**: [ps5-plume-triangle](https://github.com/Nazky/ps5-plume-triangle), the PS5 Vulkan app setup this builds on
-- **[ps5-payload-dev](https://github.com/ps5-payload-dev)**: the PS5 payload SDK
-- AMD FidelityFX, [SDL3](https://github.com/libsdl-org/SDL), [Dear ImGui](https://github.com/ocornut/imgui), [FFmpeg](https://ffmpeg.org), [stb](https://github.com/nothings/stb), [dr_libs](https://github.com/mackron/dr_libs), and the TeX Gyre Heros, Oswald and Inter fonts
-- Thanks to everyone who played the betas
 
-## License
-Liberty Recompiled, LibertyRecompAndroid and this port are under the [GPL-3.0](LICENSE). ReXGlue keeps its own BSD-style license. None of these cover the game, its artwork or its music.
+- **[Liberty Recompiled](https://github.com/OZORDI/LibertyRecomp)** by OZORDI
+  and contributors: the recompilation of GTA IV this runs.
+- **[LibertyRecompAndroid](https://github.com/vaduur/LibertyRecompAndroid)** by
+  vaduur, and **[gta4-ps5](https://github.com/elripalda/gta4-ps5)** by
+  elripalda, which this port starts from (its README is
+  `README-gta4-ps5.md`).
+- **[ReXGlue](https://github.com/rexglue/rexglue-sdk)**, derived in part from
+  **[Xenia](https://xenia.jp)**.
+- **[Mesa](https://mesa3d.org)** (RADV), the
+  **[OpenOrbis PS4 Toolchain](https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain)**
+  and **[GoldHEN](https://github.com/GoldHEN/GoldHEN)**.
+- [PS4Liberty](https://github.com/iHaiDeeZ/PS4Liberty), an earlier PS4 port on
+  the same stack, was a useful reference.
 
-*An unofficial fan project, not affiliated with or endorsed by Rockstar Games, Take-Two Interactive, Microsoft or Sony. No game files are included.*
+This is a fan project with no ties to Rockstar Games, Take-Two Interactive,
+Microsoft or Sony Interactive Entertainment. Grand Theft Auto is a trademark of
+Take-Two Interactive. Please only play games you own.
