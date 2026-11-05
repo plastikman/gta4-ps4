@@ -36,7 +36,7 @@
 #include <rex/logging.h>
 #include <rex/math.h>
 #include <rex/platform.h>
-#if REX_PLATFORM_PS5
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
 #include <rex/frame_stats.h>
 #endif
 #if REX_PLATFORM_MAC || REX_PLATFORM_GNU_LINUX || REX_PLATFORM_ANDROID
@@ -1286,11 +1286,11 @@ bool VulkanPresenter::RefreshGuestOutputImpl(
     hdr_headroom = std::max(1.0f, window->GetHDRHeadroom());
     sdr_white_level = std::max(1.0f, window->GetSDRWhiteLevel());
   }
-#if REX_PLATFORM_PS5
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
   const int64_t acquire_begin_ns = rex::frame_stats::NowNs();
 #endif
   auto image_access = image_instance.image->AcquireAccess();
-#if REX_PLATFORM_PS5
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
   rex::frame_stats::g_output_image_wait_us.fetch_add(
       uint64_t(rex::frame_stats::NowNs() - acquire_begin_ns) / 1000, std::memory_order_relaxed);
 #endif

@@ -47,6 +47,7 @@
 #include "native_constant_upload.h"
 #include "native_working_set.h"
 #include "native_immutable_bindings.h"
+#include "native_spin_mutex.h"
 #include "native_texture_protection.h"
 #include "native_prepared_bindings.h"
 #include "native_image_reuse.h"
@@ -2118,7 +2119,13 @@ class Gta4NativeGraphicsSystem final : public system::IGraphicsSystem {
   // counted twice (queue index and staging or worker batch), which only
   // widens the protected set. Lock order: render_mutex_, then this.
   NativeTextureProtectionIndex queued_texture_protection_;
+#if REX_PLATFORM_PS4
+  // Taken for every draw with textures (PS4 capture split: ~2 us a draw as a
+  // std::mutex, "protect").
+  mutable NativeSpinMutex queued_protection_mutex_;
+#else
   mutable std::mutex queued_protection_mutex_;
+#endif
   uint32_t queued_title_presents_ = 0;
   bool producer_waiting_ = false;
   uint64_t diagnostic_submit_sequence_ = 0;
@@ -2391,35 +2398,10 @@ class Gta4NativeGraphicsSystem final : public system::IGraphicsSystem {
   bool texture_watch_stop_ = false;
   std::thread texture_watch_thread_;
   std::atomic<uint64_t> texture_watch_changes_{0};
-#if REX_PLATFORM_PS5
+#if REX_PLATFORM_PS5 || REX_PLATFORM_PS4
   // [ps5 port] Taken for every command the game submits (12,000-16,000 a
-  // frame in the city) and almost never contended: a spin lock instead of
-  // two libkernel calls each time.
-  class CaptureMutex {
-   public:
-    void lock() {
-      int spins = 0;
-      while (locked_.exchange(true, std::memory_order_acquire)) {
-        while (locked_.load(std::memory_order_relaxed)) {
-          if (++spins < 1024) {
-            __builtin_ia32_pause();
-          } else {
-            std::this_thread::yield();
-            spins = 0;
-          }
-        }
-      }
-    }
-    bool try_lock() {
-      return !locked_.load(std::memory_order_relaxed) &&
-             !locked_.exchange(true, std::memory_order_acquire);
-    }
-    void unlock() { locked_.store(false, std::memory_order_release); }
-
-   private:
-    std::atomic<bool> locked_{false};
-  };
-  CaptureMutex command_capture_mutex_;
+  // frame in the city) and almost never contended.
+  NativeSpinMutex command_capture_mutex_;
 #else
   std::mutex command_capture_mutex_;
 #endif

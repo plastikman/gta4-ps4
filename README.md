@@ -57,15 +57,22 @@ Where the time goes now (per frame, idle, ~1000 draws; Jaguar at 2.13 GHz):
 
 | Thread | Work |
 |---|---|
-| Game render thread | ~21 ms game code + ~13 ms handing draws to our renderer + ~10 ms waiting on the game's main thread |
-| Our recorder thread (Vulkan command recording) | ~40-50 ms, nearly a full core |
+| Game render thread | ~25 ms game code + ~10.5 ms handing draws to our renderer; the critical path (the game's main thread waits ~48% of the time on it) |
+| Our recorder thread (Vulkan command recording) | ~35-41 ms at ~1000-1350 draws, all CPU (GPU wait ~0): ~25-30 us per draw |
 | Game audio mixer (own core) | ~5.8 ms per 5.3 ms sound frame in busy driving |
 
-So several threads are each near the limit of a Jaguar core. The game's own
+So two threads are each near the limit of a Jaguar core, and making either one
+faster only moves the limit to the other (measured on 2026-11-05: the CXII lock
+fixes cut the render thread's hand-off by 1.5-3 ms and the time went to waiting
+on the recorder). The game's own
 code is mostly real work: in the hottest functions about 36% is loads and
 stores of game data, 23% arithmetic, and only ~10% recompiler call overhead.
 Already tried without a gain: 720p, asynchronous XMA decoding, moving our
-capture work to another thread (it would save ~4 ms of a ~55 ms frame).
+capture work to another thread (it would save ~4 ms of a ~55 ms frame), a
+faster `memcmp`, keeping the render thread, worker and recorder on one CPU
+module. The recorder's time is spread over a very large per-command loop and is
+mostly waiting on memory; `ps4/RENDERER-REWORK-SCOPE.md` has the measurements
+and what a rework would take (estimate: +2-3 FPS for weeks of work).
 For comparison, the PS5 port of the same code holds ~60 FPS on a CPU core
 roughly three times faster, and the original Xbox 360 version capped at 30 with
 dips into the 20s.
@@ -75,9 +82,10 @@ dips into the 20s.
 This is a small hobby port and help from the community is very welcome,
 especially with:
 
-- **Renderer CPU cost per draw.** Our hand-off (~11 us per draw on the game's
-  thread) and Vulkan recording (`graphics_system.cpp`) are spread over many small
-  costs; the line-level profiles and tooling are described in the handoff notes.
+- **Renderer CPU cost per draw.** Our hand-off (~10 us per draw on the game's
+  thread) and Vulkan recording (~25-30 us per draw, `graphics_system.cpp`) are
+  spread over many small costs; `ps4/RENDERER-REWORK-SCOPE.md` has the per-stage
+  timings (`ps4_capture_split = true` logs them) and the profiling tooling.
 - **Recompiled code speed.** Ideas for cheaper guest memory access or calls in the
   generated code (ReXGlue's code generator).
 - **Audio.** The game's mixer needs a little more than one Jaguar core in busy

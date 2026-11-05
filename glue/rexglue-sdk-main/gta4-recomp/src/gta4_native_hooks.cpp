@@ -5524,7 +5524,7 @@ std::string ShadowTargetFetch(uint8_t* base, uint32_t texture) {
 
 bool ShadowTraceActive(uint8_t* base) {
   const uint32_t frames = REXCVAR_GET(gta4_trace_shadow_targets);
-#if !REX_PLATFORM_PS5  // [ps5 port] (six warnings a second in every PS5 log)
+#if !REX_PLATFORM_PS5 && !REX_PLATFORM_PS4  // [ps5 port] (six warnings a second in every PS5 log)
   static std::atomic<uint32_t> heartbeat{0};
   if ((heartbeat.fetch_add(1, std::memory_order_relaxed) & 0x3FFF) == 0) {
     SHADOW_TRACE("shadow-trace: heartbeat value={} frame={}", frames,

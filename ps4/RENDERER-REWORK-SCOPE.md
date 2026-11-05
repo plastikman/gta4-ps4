@@ -1,4 +1,4 @@
-# Renderer rework: scope (2026-11-04)
+# Renderer rework: scope (2026-11-04) and results (2026-11-05)
 
 Goal: more frame rate by cutting the per-draw CPU work of the two threads that
 set the pace. Everything below comes from the sampling profiles of log 497
@@ -96,3 +96,32 @@ In order 0, 1, 2, 3, 4, each with one console run and the same measurements
 profiles, the frame timeline for the recorder), and a stop/go decision after
 each from the numbers. 0 and 1 are cheap and safe; 2 and 3 are where the real
 gain is and where the risk is.
+
+## Results (2026-11-05, builds CXI-CXIV; stopped here)
+
+Each build was one console run on the same route with the sampler and the
+timers on (`ps4_cpu_sampler`, `ps4_capture_split`, `gta4_native_frame_timeline`).
+
+- **CXI, fast `memcmp`:** FPS unchanged (the worker is not a limit).
+- **CXII, spin locks:** the PS5 port's spin lock for the per-command capture
+  lock on the PS4 too (it was PS5-only), and for the per-draw texture
+  protection lock. Render thread hand-off: `protect` 2.0 -> 0.7 ms (idle),
+  2.4-4.0 -> 0.8-1.0 ms (city); `lock` 0.65 -> 0.26 ms. The lock was contended on
+  only ~1-2% of draws: the libkernel mutex itself was the cost. FPS unchanged:
+  the saved time became waiting on the recorder (`renderer-full` 2 -> 3-7 ms).
+- **CXIII, recorder timers** (`ps4 recorder split`, with `ps4_capture_split`):
+  the recorder is all CPU (GPU and output-image waits ~0). At ~1350 draws,
+  ~41 ms: per-command loop 10.5-14, draw recording 8-10.7, draw-state binding
+  7.6-9.7, texture preparation 4-5.8, outside the loop (submit, publish) ~5,
+  render target 1.5-1.9, pipeline lookup 1.4-2.2, resolves 1.5-2 ms.
+  Line profile of the loop: ~20% in the prefetch loads at its top (dependent
+  pointer loads of commands the worker wrote), the rest spread thinly over a
+  ~6,000-line body; not a diagnostics problem.
+- **CXIV, `ps4_renderer_cores = 15`** (render thread, worker and recorder on
+  cores 0-3, one L2): no change in recorder time per draw. Setting kept, default
+  off.
+
+Conclusion: both critical threads cost ~25-30 us of CPU per draw. Steps 2-4
+above would take the recorder to ~25-30 ms, but the render thread (~25 ms of
+the game's own recompiled code plus our hand-off) then limits at ~35-38 ms:
+an estimated +2-3 FPS for weeks of work with rendering risk. Not pursued.

@@ -27,6 +27,7 @@ static inline int rex_diag_thread_id() { return pthread_getthreadid_np(); }
 
 #include <rex/chrono/clock.h>
 #include <rex/cvar.h>
+#include <rex/frame_stats.h>
 #include <rex/logging.h>
 
 // The PS4 log runs at "warn": the reports are warnings there.
@@ -523,6 +524,15 @@ REXCVAR_DEFINE_INT32(ps4_audio_core, -1, "PS4",
                      "Core for the audio threads, every other thread kept off it (-1: core 5, "
                      "-2: no layout, every thread anywhere)")
     .range(-2, 6);
+REXCVAR_DEFINE_INT32(ps4_renderer_cores, 0, "PS4",
+                     "CPU mask for the game's render thread and the renderer's worker and recorder "
+                     "(0: anywhere but the audio core). 0x0f keeps them on one module (cores 0-3), "
+                     "whose shared L2 then holds the commands they hand on")
+    .range(0, 0x7F);
+REXCVAR_DEFINE_INT32(ps4_other_cores, 0, "PS4",
+                     "CPU mask for every other thread but the audio threads (0: anywhere but the "
+                     "audio core)")
+    .range(0, 0x7F);
 namespace rex::ps5diag {
 void MarkAudioThread() {
   if (my_entry) my_entry->audio = true;
@@ -543,24 +553,36 @@ void ApplyPs4AudioCoreLayout() {
   }
   const int core = setting >= 0 ? setting : (process_mask & (1u << 5)) ? 5 : 63 - __builtin_clzll(process_mask);
   const uint64_t audio_mask = uint64_t(1) << core;
-  const uint64_t other_mask = process_mask & ~audio_mask;
+  uint64_t other_mask = process_mask & ~audio_mask;
   if (!other_mask || !(process_mask & audio_mask)) return;
+  // [ps4 port] The renderer's chain (game render thread -> worker -> recorder)
+  // passes every command on: on one module, the next thread finds it in the
+  // shared L2 instead of fetching it from the other module.
+  uint64_t renderer_mask = other_mask & uint64_t(REXCVAR_GET(ps4_renderer_cores));
+  if (!renderer_mask) renderer_mask = other_mask;
+  if (const uint64_t others = other_mask & uint64_t(REXCVAR_GET(ps4_other_cores))) other_mask = others;
+  const uintptr_t title_thread = rex::frame_stats::g_title_thread.load(std::memory_order_relaxed);
   int count = next_thread.load();
   if (count > kThreads) count = kThreads;
-  int moved_audio = 0, moved_other = 0, failed = 0;
+  int moved_audio = 0, moved_renderer = 0, moved_other = 0, failed = 0;
   for (int i = 0; i < count; ++i) {
     ThreadEntry& e = threads[i];
     if (!e.used.load(std::memory_order_acquire)) continue;
-    const uint64_t want = e.audio ? audio_mask : other_mask;
+    const bool renderer = !std::strcmp(e.what, "worker") || !std::strcmp(e.what, "recorder") ||
+                          (title_thread && reinterpret_cast<uintptr_t>(e.pthread) == title_thread);
+    const uint64_t want = e.audio ? audio_mask : renderer ? renderer_mask : other_mask;
     if (e.applied_mask == want) continue;
     e.applied_mask = want;
     if (ps4_pthread_setaffinity(e.pthread, want) != 0) ++failed;
     else if (e.audio) ++moved_audio;
+    else if (renderer) ++moved_renderer;
     else ++moved_other;
   }
-  if (moved_audio || moved_other || failed) {
-    PS5DIAG_LOG("PS4 cores: process {:#x}, audio core {}: moved {} audio and {} other threads ({} failed)",
-                process_mask, core, moved_audio, moved_other, failed);
+  if (moved_audio || moved_renderer || moved_other || failed) {
+    PS5DIAG_LOG("PS4 cores: process {:#x}, audio core {}, renderer {:#x}, others {:#x}: moved {} audio, "
+                "{} renderer and {} other threads ({} failed)",
+                process_mask, core, renderer_mask, other_mask, moved_audio, moved_renderer, moved_other,
+                failed);
   }
 }
 #endif

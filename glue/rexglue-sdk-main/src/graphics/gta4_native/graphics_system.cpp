@@ -4170,7 +4170,7 @@ struct Window {
   uint64_t ticks[kCount];
   uint64_t texture_lock_ticks, offthread_ticks;
   uint32_t commands, draws, coalesced, buffer_captures, texture_captures, texture_locks,
-      offthread_commands, frames;
+      offthread_commands, frames, protect_contended;
   uint64_t frame_us;
 };
 Window g_window{};
@@ -4213,7 +4213,8 @@ void ReportIfDue() {
       "up {:.2f}) + could-move {:.2f} (buffers {:.2f} textures {:.2f} protect {:.2f} present {:.2f} "
       "resolve {:.2f}) + ordering {:.2f} + queue {:.2f} + renderer-full {:.2f} + other {:.2f}; "
       "texture locks {:.1f} {:.2f} ms; guest waits {:.2f} ms; per frame {:.0f} commands, {:.0f} draws, "
-      "{:.0f} coalesced, {:.0f} buffer and {:.0f} texture captures; off-thread {:.0f} commands {:.2f} ms",
+      "{:.0f} coalesced, {:.0f} buffer and {:.0f} texture captures; off-thread {:.0f} commands {:.2f} ms; "
+      "protect lock contended {:.1f}",
       w.frames, double(w.frame_us) / 1000.0 / frames, ms(submit), ms(stay), ms(w.ticks[kLock]),
       ms(w.ticks[kCoalesce]), ms(w.ticks[kAlloc]), ms(w.ticks[kValidate]), ms(w.ticks[kCopy]),
       ms(w.ticks[kState]), ms(w.ticks[kUpPayload]), ms(move), ms(w.ticks[kBuffers]),
@@ -4221,7 +4222,8 @@ void ReportIfDue() {
       ms(w.ticks[kOrdering]), ms(w.ticks[kQueue]), ms(w.ticks[kBackpressure]), ms(w.ticks[kOther]),
       w.texture_locks / frames, ms(w.texture_lock_ticks), ms(guest_wait - g_guest_wait_start),
       w.commands / frames, w.draws / frames, w.coalesced / frames, w.buffer_captures / frames,
-      w.texture_captures / frames, w.offthread_commands / frames, ms(w.offthread_ticks));
+      w.texture_captures / frames, w.offthread_commands / frames, ms(w.offthread_ticks),
+      w.protect_contended / frames);
   g_window_start_ns = now_ns;
   g_guest_wait_start = guest_wait;
   g_window = {};
@@ -4264,9 +4266,89 @@ class Scope {
 }  // namespace ps4_split
 #define PS4_SPLIT(bucket) ps4_split::Enter(ps4_split::bucket)
 #define PS4_SPLIT_COUNT(field) (ps4_split::g_on ? ++ps4_split::g_window.field : 0)
+
+// The recorder's frame (ps4_capture_split too): where its time per frame goes,
+// by the functions it spends it in. A scope charges its function's time, less
+// the scopes inside it, to its bucket; the rest of the per-command loop is
+// "loop", the rest of the frame "outside".
+namespace ps4_rsplit {
+enum Bucket : uint32_t {
+  kOutside, kLoop, kTarget, kDraw, kBind, kPipeline, kClear, kResolve, kPrepare, kCount
+};
+thread_local bool g_on = false;
+thread_local Bucket g_current = kOutside;
+thread_local uint64_t g_mark = 0;
+struct Window {
+  uint64_t ticks[kCount];
+  uint64_t paced_us, gpu_wait_us, image_wait_us;
+  uint32_t frames, draws;
+};
+Window g_window{};  // recorder thread only
+int64_t g_window_start_ns = 0;
+uint64_t g_gpu_wait_start = 0, g_image_wait_start = 0;
+inline void Enter(Bucket next) {
+  if (!g_on) return;
+  const uint64_t now = ps4_split::Tsc();
+  g_window.ticks[g_current] += now - g_mark;
+  g_mark = now;
+  g_current = next;
+}
+class Scope {
+ public:
+  explicit Scope(Bucket bucket) : prior_(g_current) { Enter(bucket); }
+  ~Scope() { Enter(prior_); }
+ private:
+  Bucket prior_;
+};
+inline void BeginFrame() {
+  g_on = ps4_split::g_enabled;
+  g_current = kOutside;
+  g_mark = ps4_split::Tsc();
+}
+void EndFrame(uint64_t paced_us) {
+  if (!g_on) return;
+  Enter(kOutside);
+  g_on = false;
+  ++g_window.frames;
+  g_window.paced_us += paced_us;
+  const int64_t now_ns = rex::frame_stats::NowNs();
+  const uint64_t gpu = rex::frame_stats::g_gpu_wait_us.load(std::memory_order_relaxed);
+  const uint64_t image = rex::frame_stats::g_output_image_wait_us.load(std::memory_order_relaxed);
+  if (!g_window_start_ns || now_ns - g_window_start_ns < 5000000000ll) {
+    if (!g_window_start_ns) {
+      g_window_start_ns = now_ns, g_gpu_wait_start = gpu, g_image_wait_start = image;
+      g_window = {};
+    }
+    return;
+  }
+  static const double tsc_per_ms = double(ps4_split::sceKernelGetTscFrequency()) / 1000.0;
+  const double frames = g_window.frames;
+  const auto ms = [&](uint64_t ticks) { return double(ticks) / tsc_per_ms / frames; };
+  const auto us_ms = [&](uint64_t us) { return double(us) / 1000.0 / frames; };
+  const Window& w = g_window;
+  uint64_t total = 0;
+  for (uint32_t b = 0; b < kCount; ++b) total += w.ticks[b];
+  REXLOG_WARN(
+      "ps4 recorder split: {} frames, {:.1f} ms/frame = outside {:.2f} (of it frame-limit hold {:.2f}, "
+      "GPU wait {:.2f}, output image wait {:.2f}) + prepare-textures {:.2f} + loop {:.2f} + target {:.2f} "
+      "+ draw {:.2f} + bind {:.2f} + pipeline {:.2f} + clear {:.2f} + resolve {:.2f}; {:.0f} draws",
+      w.frames, ms(total), ms(w.ticks[kOutside]), us_ms(w.paced_us), us_ms(gpu - g_gpu_wait_start),
+      us_ms(image - g_image_wait_start), ms(w.ticks[kPrepare]), ms(w.ticks[kLoop]),
+      ms(w.ticks[kTarget]), ms(w.ticks[kDraw]), ms(w.ticks[kBind]), ms(w.ticks[kPipeline]),
+      ms(w.ticks[kClear]), ms(w.ticks[kResolve]), w.draws / frames);
+  g_window_start_ns = now_ns, g_gpu_wait_start = gpu, g_image_wait_start = image;
+  g_window = {};
+}
+}  // namespace ps4_rsplit
+#define PS4_RSPLIT(bucket) ps4_rsplit::Enter(ps4_rsplit::bucket)
+#define PS4_RSPLIT_SCOPE(bucket) const ps4_rsplit::Scope ps4_rsplit_scope(ps4_rsplit::bucket)
+#define PS4_RSPLIT_DRAW() (ps4_rsplit::g_on ? ++ps4_rsplit::g_window.draws : 0)
 #else
 #define PS4_SPLIT(bucket) ((void)0)
 #define PS4_SPLIT_COUNT(field) ((void)0)
+#define PS4_RSPLIT(bucket) ((void)0)
+#define PS4_RSPLIT_SCOPE(bucket) ((void)0)
+#define PS4_RSPLIT_DRAW() ((void)0)
 #endif
 
 uint32_t Gta4NativeGraphicsSystem::GetTitleCommandAbi(uint32_t title_id) const {
@@ -8646,6 +8728,9 @@ void Gta4NativeGraphicsSystem::FrameRecorderMain() {
     MarkFrameTimeline(timeline_frame, kTimelineRecorderStart);
     const int64_t recorder_begin_ns = rex::frame_stats::NowNs();
     rex::frame_stats::g_frame_pacer_us.store(0, std::memory_order_relaxed);
+#if REX_PLATFORM_PS4
+    ps4_rsplit::BeginFrame();
+#endif
     RunReleaseEffects(recording_release_effects_);
     BeginModernShaderFrame();
     FinishPresent(*job->present_command, job->present);
@@ -8656,6 +8741,9 @@ void Gta4NativeGraphicsSystem::FrameRecorderMain() {
       const uint64_t busy_us = total_us > paced_us ? total_us - paced_us : 0;
       rex::frame_stats::g_last_recorder_busy_us.store(uint32_t(busy_us), std::memory_order_relaxed);
       rex::frame_stats::NoteRecorderFrame(busy_us);
+#if REX_PLATFORM_PS4
+      ps4_rsplit::EndFrame(paced_us);
+#endif
     }
     MarkFrameTimeline(timeline_frame, kTimelinePublishEnd);
     LogFrameTimeline(timeline_frame);
@@ -20719,6 +20807,7 @@ void Gta4NativeGraphicsSystem::InvalidateCachedDescriptors(uint64_t image_lifeti
 bool Gta4NativeGraphicsSystem::PrepareFrameTextures(VkCommandBuffer command_buffer,
                                                     bool prepare_present, uint32_t submitted_frame,
                                                     bool trace_reflections) {
+  PS4_RSPLIT_SCOPE(kPrepare);
   NativeTextureUploadBatch upload_batch;
   const bool batch_uploads = REXCVAR_GET(gta4_native_batch_texture_uploads);
   // Even an early descriptor/capacity failure leaves successfully cached images
@@ -21643,7 +21732,15 @@ void Gta4NativeGraphicsSystem::QueueTextureProtection(const NativeCommand& comma
   if (command.protected_generations_collected && !command.protected_generation_count &&
       !command.protected_generations_overflow)
     return;
+#if REX_PLATFORM_PS4
+  if (!queued_protection_mutex_.try_lock()) {
+    PS4_SPLIT_COUNT(protect_contended);
+    queued_protection_mutex_.lock();
+  }
+  std::lock_guard lock(queued_protection_mutex_, std::adopt_lock);
+#else
   std::lock_guard lock(queued_protection_mutex_);
+#endif
   QueueTextureProtectionLocked(command, retain);
 }
 
@@ -22767,6 +22864,7 @@ bool Gta4NativeGraphicsSystem::ResolveRenderingTarget(const NativeCommand& comma
                                                       uint32_t presenter_height,
                                                       NativeRenderingTarget& target,
                                                       bool allow_allocation) {
+  PS4_RSPLIT_SCOPE(kTarget);
   const profile::CpuScope profile_scope(profile::CpuOp::kTargetRealization);
 
   target = {};
@@ -23190,6 +23288,7 @@ void Gta4NativeGraphicsSystem::TryPrewarmDrawPipeline(const NativeCommand& comma
 VkPipeline Gta4NativeGraphicsSystem::GetOrCreateDrawPipeline(
     const NativeCommand& command, uint32_t primitive_type, const NativeRenderingTarget& target,
     uint32_t user_pointer_stride, bool primitive_restart_enable, bool prewarm) {
+  PS4_RSPLIT_SCOPE(kPipeline);
   const profile::CpuScope profile_scope(profile::CpuOp::kPipelineLookup);
 
   if (!command.pipeline_state) {
@@ -24558,6 +24657,7 @@ bool Gta4NativeGraphicsSystem::BindCommonDrawState(
     uint32_t width, uint32_t height, uint32_t logical_width, uint32_t logical_height,
     VkSampleCountFlagBits samples, NativeFrameResources& resources,
     const NativeRenderingTarget& target) {
+  PS4_RSPLIT_SCOPE(kBind);
   const profile::CpuScope profile_scope(profile::CpuOp::kCommonBindings);
 
   const auto fail_common_state = [this, &command, pipeline](int line) {
@@ -25319,6 +25419,7 @@ uint32_t* WriteUpTriangleIndices(uint32_t* out, uint32_t type, uint32_t base, ui
 bool Gta4NativeGraphicsSystem::RecordPrimitiveUpBatch(
     VkCommandBuffer command_buffer, const std::vector<const NativeCommand*>& run, uint32_t width,
     uint32_t height, const NativeRenderingTarget& target, NativeFrameResources& resources) {
+  PS4_RSPLIT_SCOPE(kDraw);
   const NativeCommand& first = *run.front();
   const auto log_batch_stage = [this, &run, command_buffer](const char* stage, size_t payload_bytes,
                                              uint64_t vertex_total, uint64_t index_count,
@@ -25433,6 +25534,8 @@ bool Gta4NativeGraphicsSystem::RecordPrimitiveUp(VkCommandBuffer command_buffer,
                                                  uint32_t height,
                                                  const NativeRenderingTarget& target,
                                                  NativeFrameResources& resources) {
+  PS4_RSPLIT_SCOPE(kDraw);
+  PS4_RSPLIT_DRAW();
   const profile::CpuScope profile_scope(profile::CpuOp::kPrimitiveUp);
 
   auto fail = [this, &command, &target](const char* reason) {
@@ -25906,6 +26009,8 @@ bool Gta4NativeGraphicsSystem::RecordPrimitive(VkCommandBuffer command_buffer,
                                                const NativeCommand& command, uint32_t width,
                                                uint32_t height, const NativeRenderingTarget& target,
                                                NativeFrameResources& resources) {
+  PS4_RSPLIT_SCOPE(kDraw);
+  PS4_RSPLIT_DRAW();
   const profile::CpuScope profile_scope(profile::CpuOp::kPrimitive);
 
   auto fail = [&command, &target](const char* reason) {
@@ -26047,6 +26152,8 @@ bool Gta4NativeGraphicsSystem::RecordIndexedPrimitive(VkCommandBuffer command_bu
                                                       uint32_t height,
                                                       const NativeRenderingTarget& target,
                                                       NativeFrameResources& resources) {
+  PS4_RSPLIT_SCOPE(kDraw);
+  PS4_RSPLIT_DRAW();
   const profile::CpuScope profile_scope(profile::CpuOp::kIndexed);
 
   auto fail = [&command, &target](const char* reason) {
@@ -26708,6 +26815,7 @@ bool Gta4NativeGraphicsSystem::RecordClear(VkCommandBuffer command_buffer,
                                            const NativeCommand& command,
                                            const NativeRenderingTarget& target,
                                            bool skip_depth_stencil) {
+  PS4_RSPLIT_SCOPE(kClear);
   const profile::CpuScope profile_scope(profile::CpuOp::kClear);
 
   ClearCommand clear{};
@@ -29601,6 +29709,7 @@ bool Gta4NativeGraphicsSystem::RecordResolve(VkCommandBuffer command_buffer,
                                              NativeTextureImage* high_precision_destination,
                                              bool* high_precision_written,
                                              const NativeProducerDepthResolve* producer_depth_resolve) {
+  PS4_RSPLIT_SCOPE(kResolve);
   const profile::CpuScope profile_scope(profile::CpuOp::kResolve);
 
   SCOPE_profile_cpu_i("gpu", "GTA4 Native RecordResolve");
@@ -33205,6 +33314,7 @@ bool Gta4NativeGraphicsSystem::RecordNativeFrame(
       ps4_ramp_n == UINT32_MAX ? UINT32_MAX : (ps4_ramp_n == 0 ? 0 : ps4_ramp_n - 1);
 #endif
   for (size_t command_index = 0; command_index < current_frame_.size(); ++command_index) {
+    PS4_RSPLIT(kLoop);
     breadcrumb_command = command_index;
     if (prefetch_commands) {
       if (command_index + 4 < current_frame_.size()) prefetch_command(current_frame_[command_index + 4]);
@@ -38991,6 +39101,7 @@ bool Gta4NativeGraphicsSystem::RecordNativeFrame(
           native_surface_images_.size());
     }
   }
+  PS4_RSPLIT(kOutside);
   TraceArtificialLightActivity(submitted_frame, artificial_light_renderer_instances);
   if (rendering) {
     end_rendering(__LINE__);
