@@ -31,12 +31,17 @@ External inputs that Git does not contain:
   script checks their SHA-256 values before packaging. The stubs can be built
   from the OpenOrbis sources using orbis-win's
   `scripts/build-openorbis-module-stubs.sh`.
+- `PS4_DXC_ROOT` defaults to `~/codex_scratch/gta4-ps4-deps/dxc` for the
+  host shader compiler used by the clean build. The build script checks hashes
+  of `bin/dxc`, `lib/libdxcompiler.so`, and `lib/libdxil.so` before configuring.
 - The Linux `PkgTool.Core` needs OpenSSL 1.1. Set
   `PS4_PKGTOOL_OPENSSL_LIB` to the directory containing `libssl.so.1.1`
   and `libcrypto.so.1.1`. It is already cached at the path in the command
   above on this machine.
 
 The Xbox 360 game files are never staged; they remain on the console under
-`/data/LibertyRecomp/game`. Exact byte-for-byte PKG reproduction has not yet
-been demonstrated. A clean source build and package validation are the gates
-before removing the old build tree.
+`/data/LibertyRecomp/game`. A fresh detached checkout built and packaged
+successfully on 2026-11-08. The package passed all 28 validator checks.
+The clean EBOOT differs from the old CXIV EBOOT, so byte-for-byte reproduction
+of that historical build is not established. The older CMake cache had repeated
+compile flags and a different source path.

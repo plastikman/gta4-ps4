@@ -16,6 +16,9 @@ configures CMake, and builds with one job by default. Set `PS4_SDK_BUNDLE`,
 7 GB host, keep `PS4_BUILD_JOBS=1` for a clean build. The toolchain creates
 `$PS4_BUILD_DIR/glue/gta4-recomp/eboot.bin` and the matching unstripped `gta4`
 ELF used for symbolization.
+The build also uses the pinned host DXC under `~/codex_scratch/gta4-ps4-deps/dxc`
+(`PS4_DXC_ROOT` to override). Temporary shader files are placed under the
+build directory, outside `/tmp`.
 
 To make a package, see [package/README.md](package/README.md). The installed
 Xbox 360 game data lives separately at `/data/LibertyRecomp/game` on the

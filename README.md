@@ -109,19 +109,15 @@ Issues and pull requests are welcome.
 ## Building
 
 ```sh
-git submodule update --init --recursive
-# then apply the submodule patches: see ps4/patches/README.md
-
-cmake -S ps4 -B out/ps4 -G Ninja -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_TOOLCHAIN_FILE="$HOME/ps4-gladius/sdk/orbis-sdk-v1/toolchain/orbis-sdk.cmake"
-cmake --build out/ps4 --target gta4 --parallel 1
+ps4/build-clean.sh
 ```
 
-The Orbis executable is `out/ps4/glue/gta4-recomp/eboot.bin`. On a host with
-little memory (7 GB here), build with `--parallel 1` whenever the renderer
-rebuilds; `--parallel 2` is fine for the recompiled game code alone (see
-`AGENTS.md`). `out/ps4/glue/gta4-recomp/gta4` is the unstripped ELF: keep it for
-symbolizing logs, and **never package it as `eboot.bin`**.
+The script initializes the required submodules, applies the committed PS4
+patches, checks the external toolchain and host DXC, and builds with one job by
+default. See [`ps4/BUILD.md`](ps4/BUILD.md) for paths and overrides. The Orbis
+executable is `$PS4_BUILD_DIR/glue/gta4-recomp/eboot.bin`; the matching `gta4`
+file is the unstripped ELF for symbolizing logs and must never be staged as
+`eboot.bin`.
 
 ## Packaging
 
