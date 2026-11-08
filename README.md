@@ -125,31 +125,9 @@ symbolizing logs, and **never package it as `eboot.bin`**.
 
 ## Packaging
 
-The package staging directory is not in this repository yet. It looks like the
-tree below. `libc.prx` and `libSceFios2.prx` are OpenOrbis's empty homebrew stub
-modules, which point the loader at the system's own libraries and hold no Sony
-code. [orbis-win](https://github.com/plastikman/orbis-win) builds them from the
-OpenOrbis sources (GPL-3.0) with `scripts/build-openorbis-module-stubs.sh`; the
-packages tested so far used OpenOrbis's prebuilt 3.4 KB versions.
-
-```
-stage/
-  pkg.gp4                 GP4 project, title ID LBTY00001
-  eboot.bin               out/ps4/glue/gta4-recomp/eboot.bin
-  sce_sys/param.sfo, icon0.png
-  sce_module/libc.prx, libSceFios2.prx
-  Resources/button_prompts/, font_atlases/, aes_key.bin
-```
-
-Build and validate it with the SDK's `PkgTool.Core`:
-
-```sh
-PkgTool.Core pkg_build pkg.gp4 out/
-PkgTool.Core pkg_validate out/IV0000-LBTY00001_00-GTA4PS4000000000.pkg
-```
-
-Keep game files out of the package: the GP4 must have no `game/` entries.
-Install the PKG with GoldHEN's package installer.
+The game-free package recipe, external inputs, and validation command are in
+[`ps4/package/README.md`](ps4/package/README.md). Install its `GTA4.pkg`
+with GoldHEN's package installer.
 
 ## Configuration
 

@@ -4,17 +4,20 @@ The PS4 target uses the Graine/ReXGlue application and the Orbis RADV bundle
 already used by `ps4-gladius`. The bundle keeps the OpenOrbis SDK, matching
 Mesa headers, RADV archive, and Vulkan entry point shim together.
 
-Configure from the repository root, pointing CMake at that bundle's toolchain:
+From a fresh checkout, run:
 
 ```sh
-cmake -S ps4 -B out/ps4 -G Ninja -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_TOOLCHAIN_FILE="$HOME/ps4-gladius/sdk/orbis-sdk-v1/toolchain/orbis-sdk.cmake"
-cmake --build out/ps4 --target gta4 --parallel 4
+ps4/build-clean.sh
 ```
 
-The toolchain creates the Orbis executable at
-`out/ps4/glue/gta4-recomp/eboot.bin` after linking. Package that EBOOT with
-the game-free GP4 stage; the installed Xbox 360 game data lives separately at
-`/data/LibertyRecomp/game` on the console. Never package the host `gta4` ELF
-or any `game/` files. See [the current PS4 handoff](HANDOFF-2026-11-02.md)
-for the exact package, console status, and next diagnostic run.
+This initializes the glue submodules and XenosRecomp's zstd dependency, applies the committed PS4 patches,
+configures CMake, and builds with one job by default. Set `PS4_SDK_BUNDLE`,
+`PS4_BUILD_DIR`, or `PS4_BUILD_JOBS` (1 to 4) to override the defaults. On this
+7 GB host, keep `PS4_BUILD_JOBS=1` for a clean build. The toolchain creates
+`$PS4_BUILD_DIR/glue/gta4-recomp/eboot.bin` and the matching unstripped `gta4`
+ELF used for symbolization.
+
+To make a package, see [package/README.md](package/README.md). The installed
+Xbox 360 game data lives separately at `/data/LibertyRecomp/game` on the
+console. Never package the host `gta4` ELF or any `game/` files. See
+[the current PS4 handoff](HANDOFF-2026-11-02.md) for console status.

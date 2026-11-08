@@ -1,0 +1,94 @@
+<?xml version='1.0' encoding='utf-8'?>
+<psproject fmt="gp4" version="1000">
+	<volume>
+		<volume_type>pkg_ps4_app</volume_type>
+		<volume_id>PS4VOLUME</volume_id>
+		<volume_ts>2026-10-22 10:14:08</volume_ts>
+		<package content_id="IV0000-LBTY00001_00-GTA4PS4000000000" passcode="00000000000000000000000000000000" storage_type="digital50" app_type="full" />
+		<chunk_info chunk_count="1" scenario_count="1">
+			<chunks>
+				<chunk id="0" layer_no="0" label="Chunk #0" />
+			</chunks>
+			<scenarios default_id="0">
+				<scenario id="0" type="sp" initial_chunk_count="1" label="Scenario #0">0</scenario>
+			</scenarios>
+		</chunk_info>
+	</volume>
+	<files img_no="0">
+		<file targ_path="eboot.bin" orig_path="eboot.bin" />
+		<file targ_path="sce_sys/param.sfo" orig_path="sce_sys/param.sfo" />
+		<file targ_path="sce_sys/icon0.png" orig_path="sce_sys/icon0.png" />
+		<file targ_path="Resources/button_prompts/xbox360/buttons_360.xtd" orig_path="Resources/button_prompts/xbox360/buttons_360.xtd" />
+		<file targ_path="Resources/button_prompts/xbox_one/buttons_360.xtd" orig_path="Resources/button_prompts/xbox_one/buttons_360.xtd" />
+		<file targ_path="Resources/button_prompts/xbox_series_x/buttons_360.xtd" orig_path="Resources/button_prompts/xbox_series_x/buttons_360.xtd" />
+		<file targ_path="Resources/button_prompts/ps3/buttons_360.xtd" orig_path="Resources/button_prompts/ps3/buttons_360.xtd" />
+		<file targ_path="Resources/button_prompts/ps4/buttons_360.xtd" orig_path="Resources/button_prompts/ps4/buttons_360.xtd" />
+		<file targ_path="Resources/button_prompts/ps5/buttons_360.xtd" orig_path="Resources/button_prompts/ps5/buttons_360.xtd" />
+		<file targ_path="Resources/button_prompts/switch/buttons_360.xtd" orig_path="Resources/button_prompts/switch/buttons_360.xtd" />
+		<file targ_path="Resources/button_prompts/steam_controller/buttons_360.xtd" orig_path="Resources/button_prompts/steam_controller/buttons_360.xtd" />
+		<file targ_path="Resources/button_prompts/steam_deck/buttons_360.xtd" orig_path="Resources/button_prompts/steam_deck/buttons_360.xtd" />
+		<file targ_path="Resources/font_atlases/font1.png" orig_path="Resources/font_atlases/font1.png" />
+		<file targ_path="Resources/font_atlases/font2.png" orig_path="Resources/font_atlases/font2.png" />
+		<file targ_path="Resources/font_atlases/font3.png" orig_path="Resources/font_atlases/font3.png" />
+		<file targ_path="Resources/font_atlases/manifest.json" orig_path="Resources/font_atlases/manifest.json" />
+		<file targ_path="Resources/font_atlases/tlad/font1.png" orig_path="Resources/font_atlases/tlad/font1.png" />
+		<file targ_path="Resources/font_atlases/tlad/font2.png" orig_path="Resources/font_atlases/tlad/font2.png" />
+		<file targ_path="Resources/font_atlases/tlad/font3.png" orig_path="Resources/font_atlases/tlad/font3.png" />
+		<file targ_path="Resources/font_atlases/tlad/manifest.json" orig_path="Resources/font_atlases/tlad/manifest.json" />
+		<file targ_path="Resources/font_atlases/tbogt/font1.png" orig_path="Resources/font_atlases/tbogt/font1.png" />
+		<file targ_path="Resources/font_atlases/tbogt/font2.png" orig_path="Resources/font_atlases/tbogt/font2.png" />
+		<file targ_path="Resources/font_atlases/tbogt/font3.png" orig_path="Resources/font_atlases/tbogt/font3.png" />
+		<file targ_path="Resources/font_atlases/tbogt/manifest.json" orig_path="Resources/font_atlases/tbogt/manifest.json" />
+		<file targ_path="Resources/aes_key.bin" orig_path="Resources/aes_key.bin" />
+		<file targ_path="sce_module/libc.prx" orig_path="sce_module/libc.prx" />
+		<file targ_path="sce_module/libSceFios2.prx" orig_path="sce_module/libSceFios2.prx" />
+		</files>
+	<rootdir>
+		<dir targ_name="Resources">
+			<dir targ_name="button_prompts">
+				<dir targ_name="ps3">
+				</dir>
+				<dir targ_name="ps4">
+				</dir>
+				<dir targ_name="ps5">
+				</dir>
+				<dir targ_name="steam_controller">
+				</dir>
+				<dir targ_name="steam_deck">
+				</dir>
+				<dir targ_name="switch">
+				</dir>
+				<dir targ_name="xbox360">
+				</dir>
+				<dir targ_name="xbox_one">
+				</dir>
+				<dir targ_name="xbox_series_x">
+				</dir>
+			</dir>
+			<dir targ_name="font_atlases">
+				<dir targ_name="tbogt">
+				</dir>
+				<dir targ_name="tlad">
+				</dir>
+			</dir>
+		</dir>
+		<dir targ_name="assets">
+			<dir targ_name="audio">
+			</dir>
+			<dir targ_name="fonts">
+			</dir>
+			<dir targ_name="images">
+			</dir>
+			<dir targ_name="misc">
+			</dir>
+			<dir targ_name="videos">
+			</dir>
+		</dir>
+		<dir targ_name="sce_module">
+		</dir>
+		<dir targ_name="sce_sys">
+			<dir targ_name="about">
+			</dir>
+		</dir>
+	</rootdir>
+</psproject>
