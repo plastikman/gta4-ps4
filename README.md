@@ -115,9 +115,9 @@ ps4/build-clean.sh
 The script initializes the required submodules, applies the committed PS4
 patches, checks the external toolchain and host DXC, and builds with one job by
 default. See [`ps4/BUILD.md`](ps4/BUILD.md) for paths and overrides. The Orbis
-executable is `$PS4_BUILD_DIR/glue/gta4-recomp/eboot.bin`; the matching `gta4`
-file is the unstripped ELF for symbolizing logs and must never be staged as
-`eboot.bin`.
+executable is `~/codex_scratch/gta4-ps4-clean/build/glue/gta4-recomp/eboot.bin`
+by default; set `PS4_BUILD_DIR` to change it. The matching `gta4` file is the
+unstripped ELF for symbolizing logs and must never be staged as `eboot.bin`.
 
 ## Packaging
 

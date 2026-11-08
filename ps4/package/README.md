@@ -12,10 +12,12 @@ PS4_PKGTOOL_OPENSSL_LIB="$HOME/codex_scratch/libssl1.1/usr/lib/x86_64-linux-gnu"
   ps4/package/build-package.sh
 ```
 
-The default build and package directories are under
-`~/codex_scratch/gta4-ps4-clean/`. Set `PS4_BUILD_DIR` and `PS4_PACKAGE_DIR`
-to select others. The package script refuses to overwrite an existing stage.
-It writes `out/GTA4.pkg` as a link to the validated content-ID PKG.
+The default build directory is
+`~/codex_scratch/gta4-ps4-clean/build`; the default package directory is
+`~/codex_scratch/gta4-ps4-clean/package`. Set `PS4_BUILD_DIR` and
+`PS4_PACKAGE_DIR` to select others. The package script refuses to overwrite an
+existing stage, so choose a new `PS4_PACKAGE_DIR` for each package run. It
+writes `out/GTA4.pkg` as a link to the validated content-ID PKG.
 
 External inputs that Git does not contain:
 

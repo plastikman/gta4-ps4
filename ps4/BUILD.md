@@ -4,14 +4,20 @@ The PS4 target uses the Graine/ReXGlue application and the Orbis RADV bundle
 already used by `ps4-gladius`. The bundle keeps the OpenOrbis SDK, matching
 Mesa headers, RADV archive, and Vulkan entry point shim together.
 
+The supported clean-build host is Linux x86-64 with Git, CMake 3.25 or newer,
+Ninja, Python 3, and `sha256sum`. The Orbis SDK and host shader compiler are
+external inputs; their pinned locations and fingerprints are checked by the
+script. Packaging additionally needs OpenSSL 1.1 for `PkgTool.Core`.
+
 From a fresh checkout, run:
 
 ```sh
 ps4/build-clean.sh
 ```
 
-This initializes the glue submodules and XenosRecomp's zstd dependency, applies the committed PS4 patches,
-configures CMake, and builds with one job by default. Set `PS4_SDK_BUNDLE`,
+This initializes the glue submodules and XenosRecomp's required dependencies,
+applies the committed PS4 patches, configures CMake, and builds with one job
+by default. Set `PS4_SDK_BUNDLE`,
 `PS4_BUILD_DIR`, or `PS4_BUILD_JOBS` (1 to 4) to override the defaults. On this
 7 GB host, keep `PS4_BUILD_JOBS=1` for a clean build. The toolchain creates
 `$PS4_BUILD_DIR/glue/gta4-recomp/eboot.bin` and the matching unstripped `gta4`
