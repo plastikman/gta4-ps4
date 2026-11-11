@@ -29,7 +29,7 @@ build directory, outside `/tmp`.
 
 GitHub Actions runs a NASM assembly check on pull requests. The full Orbis
 build and game-free package validation run on pushes to `ps4-port` using the
-`orbis-win-build` Kubernetes runner. The workflow checks out the pinned
+`gta4-ps4-build` Kubernetes runner. The workflow checks out the pinned
 Orbis-Win runner setup, attaches its `/orbis-cache` SDK and dependencies,
 downloads the pinned DXC archive, and builds the OpenOrbis stubs. Fork pull
 requests run only on GitHub-hosted runners.

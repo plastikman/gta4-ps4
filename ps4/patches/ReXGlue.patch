@@ -1,0 +1,30 @@
+diff --git a/glue/rexglue-sdk-main/thirdparty/CMakeLists.txt b/glue/rexglue-sdk-main/thirdparty/CMakeLists.txt
+index 018ef20..75932ac 100644
+--- a/glue/rexglue-sdk-main/thirdparty/CMakeLists.txt
++++ b/glue/rexglue-sdk-main/thirdparty/CMakeLists.txt
+@@ -347,13 +347,23 @@ if(PS4)
+     # platform case. Set its FreeBSD/POSIX feature flags after SDL's project()
+     # command initializes the system; the rest of the project keeps the SDK's
+     # Generic platform identity.
+-    set(_REXGLUE_SDL_ORIGINAL_PROJECT_INCLUDE "${CMAKE_PROJECT_INCLUDE}")
++    if(DEFINED CMAKE_PROJECT_INCLUDE AND NOT "${CMAKE_PROJECT_INCLUDE}" STREQUAL "")
++        set(_REXGLUE_SDL_HAD_PROJECT_INCLUDE TRUE)
++        set(_REXGLUE_SDL_ORIGINAL_PROJECT_INCLUDE "${CMAKE_PROJECT_INCLUDE}")
++    else()
++        set(_REXGLUE_SDL_HAD_PROJECT_INCLUDE FALSE)
++    endif()
+     set(CMAKE_PROJECT_INCLUDE
+         "${CMAKE_CURRENT_SOURCE_DIR}/../../../ps4/cmake/sdl-platform.cmake")
+ endif()
+ add_subdirectory(sdl3)
+ if(PS4)
+-    set(CMAKE_PROJECT_INCLUDE "${_REXGLUE_SDL_ORIGINAL_PROJECT_INCLUDE}")
++    if(_REXGLUE_SDL_HAD_PROJECT_INCLUDE)
++        set(CMAKE_PROJECT_INCLUDE "${_REXGLUE_SDL_ORIGINAL_PROJECT_INCLUDE}")
++    else()
++        unset(CMAKE_PROJECT_INCLUDE)
++    endif()
++    unset(_REXGLUE_SDL_HAD_PROJECT_INCLUDE)
+     unset(_REXGLUE_SDL_ORIGINAL_PROJECT_INCLUDE)
+ endif()
+ 

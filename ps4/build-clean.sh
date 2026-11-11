@@ -34,8 +34,9 @@ git -C "$repo" submodule update --init -- "${submodules[@]}" tools/XenosRecomp
 git -C "$repo/tools/XenosRecomp" submodule update --init -- \
   thirdparty/zstd thirdparty/smol-v thirdparty/dxc-bin
 
-for name in FFmpeg glslang libmspack sdl3 spdlog XenosRecomp XenosRecomp-zstd; do
+for name in FFmpeg glslang libmspack ReXGlue sdl3 spdlog XenosRecomp XenosRecomp-zstd; do
   case "$name" in
+    ReXGlue) sub="$repo" ;;
     XenosRecomp) sub="$repo/tools/XenosRecomp" ;;
     XenosRecomp-zstd) sub="$repo/tools/XenosRecomp/thirdparty/zstd" ;;
     *) sub="$repo/glue/rexglue-sdk-main/thirdparty/$name" ;;

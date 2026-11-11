@@ -7,6 +7,7 @@ them live here as patches. After cloning and `git submodule update --init
 | Patch | Apply in |
 |---|---|
 | FFmpeg.patch (includes the new `config_ps5_x86_64.h`) | `glue/rexglue-sdk-main/thirdparty/FFmpeg` |
+| ReXGlue.patch | repository root (fixes restoring an unset CMake project include) |
 | glslang.patch | `glue/rexglue-sdk-main/thirdparty/glslang` |
 | libmspack.patch | `glue/rexglue-sdk-main/thirdparty/libmspack` |
 | sdl3.patch | `glue/rexglue-sdk-main/thirdparty/sdl3` |
