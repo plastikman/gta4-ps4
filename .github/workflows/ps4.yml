@@ -91,7 +91,7 @@ jobs:
         env:
           PS4_SDK_BUNDLE: /home/zpeirce/ps4-gladius/sdk/orbis-sdk-v1
           PS4_BUILD_DIR: ${{ steps.paths.outputs.build }}
-          PS4_BUILD_JOBS: 1
+          PS4_BUILD_JOBS: 4
           PS4_DXC_ROOT: ${{ runner.temp }}/gta4-dxc
         run: ps4/build-clean.sh
       - name: Build and validate game-free PKG
