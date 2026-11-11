@@ -759,3 +759,24 @@ set_target_properties(libavutil libavcodec PROPERTIES
     C_VISIBILITY_PRESET hidden
     VISIBILITY_INLINES_HIDDEN ON
     FOLDER "FFmpeg")
+
+# --- PS4 NASM Assembly Enablement ---
+if(IS_X86_64 AND (PS4 OR PS5))
+  set(CMAKE_ASM_NASM_OBJECT_FORMAT elf64)
+  enable_language(ASM_NASM)
+  set(CMAKE_ASM_NASM_FLAGS "${CMAKE_ASM_NASM_FLAGS} -I${FFMPEG_DIR}/ -I${FFMPEG_DIR}/libavutil/x86/ -I${FFMPEG_DIR}/libavcodec/x86/ -P${CMAKE_CURRENT_SOURCE_DIR}/ffmpeg-overlay/config.asm -DPIC")
+
+  target_sources(libavutil PRIVATE
+      ${FFMPEG_DIR}/libavutil/x86/cpuid.asm
+      ${FFMPEG_DIR}/libavutil/x86/fixed_dsp.asm
+      ${FFMPEG_DIR}/libavutil/x86/float_dsp.asm
+      ${FFMPEG_DIR}/libavutil/x86/imgutils.asm
+      ${FFMPEG_DIR}/libavutil/x86/lls.asm
+  )
+  target_sources(libavcodec PRIVATE
+      ${FFMPEG_DIR}/libavcodec/x86/dct32.asm
+      ${FFMPEG_DIR}/libavcodec/x86/fft.asm
+      ${FFMPEG_DIR}/libavcodec/x86/idctdsp.asm
+      ${FFMPEG_DIR}/libavcodec/x86/imdct36.asm
+  )
+endif()
