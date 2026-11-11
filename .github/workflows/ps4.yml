@@ -31,7 +31,7 @@ jobs:
   orbis-build-package:
     name: Orbis build and package validation
     if: github.event_name != 'pull_request'
-    runs-on: orbis-win-build
+    runs-on: gta4-ps4-build
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
