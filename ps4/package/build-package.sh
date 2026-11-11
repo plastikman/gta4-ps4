@@ -18,8 +18,13 @@ done
 expected_bundle=b86155980a3f47d48f2dec7b55559afc41dcb6039020358ec001f5a0b6ec5639
 actual_bundle="$(sha256sum "$sdk/BUNDLE.txt" | cut -d' ' -f1)"
 [[ "$actual_bundle" == "$expected_bundle" ]] || { echo "Unexpected SDK bundle: $actual_bundle" >&2; exit 1; }
-[[ "$(sha256sum "$stubs/libc.prx" | cut -d' ' -f1)" == 7b857f4a5f405e58d046914f883b1dad6ac0d9574e685c4d6fe834222f894c0a ]] || { echo 'Unexpected libc.prx' >&2; exit 1; }
-[[ "$(sha256sum "$stubs/libSceFios2.prx" | cut -d' ' -f1)" == cf447a458f86c96768a56a4b2be9edf042e6cae27084c80f925478b02ca1194d ]] || { echo 'Unexpected libSceFios2.prx' >&2; exit 1; }
+expected_libc="${PS4_EXPECTED_LIBC_SHA256:-7b857f4a5f405e58d046914f883b1dad6ac0d9574e685c4d6fe834222f894c0a}"
+expected_fios2="${PS4_EXPECTED_FIOS2_SHA256:-cf447a458f86c96768a56a4b2be9edf042e6cae27084c80f925478b02ca1194d}"
+for expected in "$expected_libc" "$expected_fios2"; do
+  [[ "$expected" =~ ^[[:xdigit:]]{64}$ ]] || { echo 'Expected stub hashes must be 64 hex characters' >&2; exit 1; }
+done
+[[ "$(sha256sum "$stubs/libc.prx" | cut -d' ' -f1)" == "$expected_libc" ]] || { echo 'Unexpected libc.prx' >&2; exit 1; }
+[[ "$(sha256sum "$stubs/libSceFios2.prx" | cut -d' ' -f1)" == "$expected_fios2" ]] || { echo 'Unexpected libSceFios2.prx' >&2; exit 1; }
 
 mkdir -p "$package_dir"
 [[ ! -e "$stage" ]] || { echo "Stage already exists: $stage (choose a new PS4_PACKAGE_DIR)" >&2; exit 1; }

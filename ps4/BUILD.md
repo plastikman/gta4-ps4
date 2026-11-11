@@ -28,9 +28,11 @@ The build also uses the pinned host DXC under `~/codex_scratch/gta4-ps4-deps/dxc
 build directory, outside `/tmp`.
 
 GitHub Actions runs a NASM assembly check on pull requests. The full Orbis
-build and game-free package validation run on pushes to `ps4-port` using a
-self-hosted Linux x64 runner with the SDK, DXC, OpenOrbis stubs, and PkgTool
-dependencies listed below. Fork pull requests do not execute on that runner.
+build and game-free package validation run on pushes to `ps4-port` using the
+`orbis-win-build` Kubernetes runner. The workflow checks out the pinned
+Orbis-Win runner setup, attaches its `/orbis-cache` SDK and dependencies,
+downloads the pinned DXC archive, and builds the OpenOrbis stubs. Fork pull
+requests run only on GitHub-hosted runners.
 
 To make a package, see [package/README.md](package/README.md). The installed
 Xbox 360 game data lives separately at `/data/LibertyRecomp/game` on the

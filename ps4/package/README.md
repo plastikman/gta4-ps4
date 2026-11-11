@@ -30,8 +30,10 @@ External inputs that Git does not contain:
 - `PS4_STUBS_DIR` defaults to
   `~/codex_scratch/gta4-ps4-deps/openorbis-stubs`. Its `libc.prx` and
   `libSceFios2.prx` are the source-built OpenOrbis stubs used by CXIV. The
-  script checks their SHA-256 values before packaging. The stubs can be built
-  from the OpenOrbis sources using orbis-win's
+  script checks their SHA-256 values before packaging. `PS4_EXPECTED_LIBC_SHA256`
+  and `PS4_EXPECTED_FIOS2_SHA256` can override those pins for a separately
+  recorded build provenance, as the CI job does for its pinned Orbis-Win runner
+  toolchain. The stubs can be built from the OpenOrbis sources using orbis-win's
   `scripts/build-openorbis-module-stubs.sh`.
 - `PS4_DXC_ROOT` defaults to `~/codex_scratch/gta4-ps4-deps/dxc` for the
   host shader compiler used by the clean build. The build script checks hashes
