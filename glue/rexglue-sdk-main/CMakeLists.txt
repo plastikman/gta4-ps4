@@ -124,9 +124,9 @@ if(NOT WIN32)
     # and signer expect.
     if(CMAKE_SYSTEM_PROCESSOR MATCHES "AMD64|x86_64" AND NOT APPLE AND NOT PS5 AND NOT PS4)
         # Large code model on Linux x86_64 for linking with very large recompiled executables (35MB+).
-        add_compile_options(-mcmodel=large)
+        add_compile_options($<$<NOT:$<COMPILE_LANGUAGE:ASM_NASM>>:-mcmodel=large>)
     else()
-        add_compile_options(-mcmodel=small)
+        add_compile_options($<$<NOT:$<COMPILE_LANGUAGE:ASM_NASM>>:-mcmodel=small>)
     endif()
     # Position-independent code for all targets
     set(CMAKE_POSITION_INDEPENDENT_CODE ON)
@@ -140,17 +140,17 @@ endif()
 # renderer's float code; guest FP semantics live in the generated code, which
 # never had it. Contract off still forbids fusing into FMA.
 if(ANDROID)
-    add_compile_options(-ffp-contract=off $<$<CONFIG:RELWITHDEBINFO>:-O3>)
+    add_compile_options($<$<NOT:$<COMPILE_LANGUAGE:ASM_NASM>>:-ffp-contract=off> $<$<AND:$<NOT:$<COMPILE_LANGUAGE:ASM_NASM>>,$<CONFIG:RELWITHDEBINFO>>:-O3>)
 else()
-    add_compile_options(-ffp-model=strict)
+    add_compile_options($<$<NOT:$<COMPILE_LANGUAGE:ASM_NASM>>:-ffp-model=strict>)
 endif()
 add_compile_options(
-    -fno-strict-aliasing
-    $<$<CONFIG:DEBUG>:-g>
-    $<$<CONFIG:DEBUG>:-O0>
-    $<$<CONFIG:RELEASE>:-O3>
-    $<$<CONFIG:RELEASE>:-DNDEBUG>
-    -fno-char8_t
+    $<$<NOT:$<COMPILE_LANGUAGE:ASM_NASM>>:-fno-strict-aliasing>
+    $<$<AND:$<NOT:$<COMPILE_LANGUAGE:ASM_NASM>>,$<CONFIG:DEBUG>>:-g>
+    $<$<AND:$<NOT:$<COMPILE_LANGUAGE:ASM_NASM>>,$<CONFIG:DEBUG>>:-O0>
+    $<$<AND:$<NOT:$<COMPILE_LANGUAGE:ASM_NASM>>,$<CONFIG:RELEASE>>:-O3>
+    $<$<AND:$<NOT:$<COMPILE_LANGUAGE:ASM_NASM>>,$<CONFIG:RELEASE>>:-DNDEBUG>
+    $<$<NOT:$<COMPILE_LANGUAGE:ASM_NASM>>:-fno-char8_t>
 )
 
 # Platform detection (supports AMD64 and ARM64)
@@ -267,8 +267,8 @@ include("${REXGLUE_ROOT}/cmake/rexglue_dlss.cmake")
 
 # Enable warnings after thirdparty
 add_compile_options(
-    -Wall
-    -Wextra
+    $<$<NOT:$<COMPILE_LANGUAGE:ASM_NASM>>:-Wall>
+    $<$<NOT:$<COMPILE_LANGUAGE:ASM_NASM>>:-Wextra>
 )
 
 include_directories(${REXGLUE_ROOT}/include)

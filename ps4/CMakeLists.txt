@@ -23,7 +23,10 @@ endif()
 # access), LZCNT/POPCNT/BMI1, SSE4.2. No FMA, so REX_FMA stays a*b+c.
 # AVX off: the SDK's intrinsic headers lack the 256-bit types (snappy uses them
 # when __AVX__ is set), and Jaguar splits 256-bit work in two anyway.
-add_compile_options(-march=btver2 -mno-avx)
+add_compile_options(
+    $<$<NOT:$<COMPILE_LANGUAGE:ASM_NASM>>:-march=btver2>
+    $<$<NOT:$<COMPILE_LANGUAGE:ASM_NASM>>:-mno-avx>
+)
 set(LIBERTY_RECOMP_TARGET_PLATFORM "ps4" CACHE STRING "" FORCE)
 set(REXSDK_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../glue/rexglue-sdk-main"
     CACHE PATH "Path to the Graine ReXGlue SDK")

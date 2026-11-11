@@ -617,7 +617,7 @@ target_include_directories(libavutil
     PRIVATE ${FFMPEG_ATOMICS_INCLUDE}
 )
 target_compile_definitions(libavutil PRIVATE ${FFMPEG_COMMON_DEFINES})
-target_compile_options(libavutil PRIVATE -w)  # Suppress warnings in third-party code
+target_compile_options(libavutil PRIVATE $<$<NOT:$<COMPILE_LANGUAGE:ASM_NASM>>:-w>)  # Suppress warnings in third-party code
 if(WIN32)
     target_link_libraries(libavutil PRIVATE bcrypt)
 endif()
@@ -746,7 +746,7 @@ target_include_directories(libavcodec
     PRIVATE ${FFMPEG_ATOMICS_INCLUDE}
 )
 target_compile_definitions(libavcodec PRIVATE ${FFMPEG_COMMON_DEFINES})
-target_compile_options(libavcodec PRIVATE -w)  # Suppress warnings in third-party code
+target_compile_options(libavcodec PRIVATE $<$<NOT:$<COMPILE_LANGUAGE:ASM_NASM>>:-w>)  # Suppress warnings in third-party code
 target_link_libraries(libavcodec PUBLIC libavutil)
 if(WIN32)
     target_link_libraries(libavcodec PRIVATE bcrypt)
@@ -778,5 +778,19 @@ if(IS_X86_64 AND (PS4 OR PS5))
       ${FFMPEG_DIR}/libavcodec/x86/fft.asm
       ${FFMPEG_DIR}/libavcodec/x86/idctdsp.asm
       ${FFMPEG_DIR}/libavcodec/x86/imdct36.asm
+  )
+  # This project already enables generic ASM for the Orbis SDK. Explicitly
+  # mark FFmpeg's .asm files so CMake invokes NASM instead of Clang's assembler.
+  set_source_files_properties(
+      ${FFMPEG_DIR}/libavutil/x86/cpuid.asm
+      ${FFMPEG_DIR}/libavutil/x86/fixed_dsp.asm
+      ${FFMPEG_DIR}/libavutil/x86/float_dsp.asm
+      ${FFMPEG_DIR}/libavutil/x86/imgutils.asm
+      ${FFMPEG_DIR}/libavutil/x86/lls.asm
+      ${FFMPEG_DIR}/libavcodec/x86/dct32.asm
+      ${FFMPEG_DIR}/libavcodec/x86/fft.asm
+      ${FFMPEG_DIR}/libavcodec/x86/idctdsp.asm
+      ${FFMPEG_DIR}/libavcodec/x86/imdct36.asm
+      PROPERTIES LANGUAGE ASM_NASM
   )
 endif()

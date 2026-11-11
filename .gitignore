@@ -744,6 +744,7 @@ scripts/
 # Repository setup and validation are maintained source, not local scripts.
 !/tools/setup_repo.py
 !/tools/test_setup_repo.py
+!/ps4/ci-check-ffmpeg-asm.sh
 !/update_submodules.sh
 /CMakeFiles/
 /glue/rexglue-sdk-main/CMakeFiles/
@@ -755,6 +756,7 @@ CMakeUserPresets.json
 /.github/workflows/*
 !/.github/workflows/repository-checks.yml
 !/.github/workflows/build-macos.yml
+!/.github/workflows/ps4.yml
 
 # Reproducible touch regression runner and arithmetic fixtures.
 !/glue/rexglue-sdk-main/tools/verify_controls_regressions.py

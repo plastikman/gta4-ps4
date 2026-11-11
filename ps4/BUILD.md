@@ -5,9 +5,10 @@ already used by `ps4-gladius`. The bundle keeps the OpenOrbis SDK, matching
 Mesa headers, RADV archive, and Vulkan entry point shim together.
 
 The supported clean-build host is Linux x86-64 with Git, CMake 3.25 or newer,
-Ninja, Python 3, and `sha256sum`. The Orbis SDK and host shader compiler are
-external inputs; their pinned locations and fingerprints are checked by the
-script. Packaging additionally needs OpenSSL 1.1 for `PkgTool.Core`.
+Ninja, NASM 2.16 or newer, Python 3, and `sha256sum`. The Orbis SDK and host
+shader compiler are external inputs; their pinned locations and fingerprints
+are checked by the script. Packaging additionally needs OpenSSL 1.1 for
+`PkgTool.Core`.
 
 From a fresh checkout, run:
 
@@ -25,6 +26,11 @@ ELF used for symbolization.
 The build also uses the pinned host DXC under `~/codex_scratch/gta4-ps4-deps/dxc`
 (`PS4_DXC_ROOT` to override). Temporary shader files are placed under the
 build directory, outside `/tmp`.
+
+GitHub Actions runs a NASM assembly check on pull requests. The full Orbis
+build and game-free package validation run on pushes to `ps4-port` using a
+self-hosted Linux x64 runner with the SDK, DXC, OpenOrbis stubs, and PkgTool
+dependencies listed below. Fork pull requests do not execute on that runner.
 
 To make a package, see [package/README.md](package/README.md). The installed
 Xbox 360 game data lives separately at `/data/LibertyRecomp/game` on the

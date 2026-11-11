@@ -15,6 +15,7 @@ actual_bundle="$(sha256sum "$sdk/BUNDLE.txt" | cut -d' ' -f1)"
 [[ "$jobs" =~ ^[1-4]$ ]] || { echo 'PS4_BUILD_JOBS must be 1-4' >&2; exit 1; }
 command -v cmake >/dev/null
 command -v ninja >/dev/null
+command -v nasm >/dev/null
 for spec in \
   'bin/dxc 3dfc856b76291ffc7e45e21fd37ab80e85b34101de76a03253df6608785c92a0' \
   'lib/libdxcompiler.so d40e4a7b3b46490313f4bfd08101946483a673831b3ea65c93d746de1c2f9216' \
@@ -51,6 +52,7 @@ done
 
 cmake -S "$repo/ps4" -B "$build_dir" -G Ninja -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_TOOLCHAIN_FILE="$sdk/toolchain/orbis-sdk.cmake" \
+  '-DCMAKE_ASM_COMPILE_OBJECT=<CMAKE_ASM_COMPILER> <DEFINES> <INCLUDES> <FLAGS> -c <SOURCE> -o <OBJECT>' \
   -DGTA4_NATIVE_DXC_EXECUTABLE="$dxc_root/bin/dxc" \
   -DGTA4_NATIVE_DXC_LIBRARY_PATH="$dxc_root/lib"
 cmake --build "$build_dir" --target gta4 --parallel "$jobs"

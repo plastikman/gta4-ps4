@@ -1,0 +1,77 @@
+name: PS4 CI
+
+on:
+  pull_request:
+    branches: [ps4-port]
+  push:
+    branches: [ps4-port]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ps4-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ffmpeg-assembly:
+    name: FFmpeg NASM assembly
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install NASM
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes nasm
+      - name: Assemble PS4 FFmpeg routines
+        run: ps4/ci-check-ffmpeg-asm.sh
+
+  orbis-build-package:
+    name: Orbis build and package validation
+    if: github.event_name != 'pull_request'
+    runs-on: [self-hosted, linux, x64]
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install NASM
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes nasm
+      - name: Allocate isolated build paths
+        id: paths
+        shell: bash
+        run: |
+          root="$HOME/codex_scratch/gta4-ps4-ci/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          mkdir -p "$root"
+          echo "root=$root" >> "$GITHUB_OUTPUT"
+          echo "build=$root/build" >> "$GITHUB_OUTPUT"
+          echo "package=$root/package" >> "$GITHUB_OUTPUT"
+      - name: Build Orbis EBOOT
+        env:
+          PS4_BUILD_DIR: ${{ steps.paths.outputs.build }}
+          PS4_BUILD_JOBS: 1
+        run: ps4/build-clean.sh
+      - name: Build and validate game-free PKG
+        env:
+          PS4_BUILD_DIR: ${{ steps.paths.outputs.build }}
+          PS4_PACKAGE_DIR: ${{ steps.paths.outputs.package }}
+        run: PS4_PKGTOOL_OPENSSL_LIB="$HOME/codex_scratch/libssl1.1/usr/lib/x86_64-linux-gnu" ps4/package/build-package.sh
+      - name: Clean isolated run data
+        if: always() && steps.paths.outputs.root != ''
+        env:
+          RUN_ROOT: ${{ steps.paths.outputs.root }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os
+          import shutil
+          from pathlib import Path
+
+          root = Path(os.environ['RUN_ROOT']).resolve()
+          parent = (Path.home() / 'codex_scratch/gta4-ps4-ci').resolve()
+          if root.parent != parent or not root.name.startswith(f"{os.environ['GITHUB_RUN_ID']}-"):
+              raise SystemExit(f"Refusing to clean unexpected path: {root}")
+          shutil.rmtree(root, ignore_errors=True)
+          PY
