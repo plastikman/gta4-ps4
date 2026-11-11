@@ -130,6 +130,7 @@ jobs:
         with:
           name: gta4-ps4-${{ github.run_number }}-${{ github.run_attempt }}
           path: |
+            ${{ steps.paths.outputs.package }}/out/IV0000-LBTY00001_00-GTA4PS4000000000.pkg
             ${{ steps.paths.outputs.package }}/SHA256SUMS
             ${{ steps.paths.outputs.package }}/validate.log
             ${{ steps.paths.outputs.package }}/BUILD-MANIFEST.txt
