@@ -23,6 +23,9 @@ by default. Set `PS4_SDK_BUNDLE`,
 7 GB host, keep `PS4_BUILD_JOBS=1` for a clean build. The toolchain creates
 `$PS4_BUILD_DIR/glue/gta4-recomp/eboot.bin` and the matching unstripped `gta4`
 ELF used for symbolization.
+The script also downloads and verifies zlib 1.3.1 headers into the build tree;
+the Orbis bundle supplies the matching `libz.a` but does not include those
+headers.
 The build also uses the pinned host DXC under `~/codex_scratch/gta4-ps4-deps/dxc`
 (`PS4_DXC_ROOT` to override). Temporary shader files are placed under the
 build directory, outside `/tmp`.

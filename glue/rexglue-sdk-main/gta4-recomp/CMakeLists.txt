@@ -467,6 +467,7 @@ elseif(PS4)
         ${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/imgui
         ${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/inja/third_party/include
         ${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/stb
+        ${PS4_ZLIB_INCLUDE_DIR}
     )
     set_property(SOURCE src/gta4_native_hooks.cpp APPEND PROPERTY INCLUDE_DIRECTORIES
         "${CMAKE_CURRENT_SOURCE_DIR}/../src")

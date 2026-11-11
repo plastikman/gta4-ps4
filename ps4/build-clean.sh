@@ -16,6 +16,7 @@ actual_bundle="$(sha256sum "$sdk/BUNDLE.txt" | cut -d' ' -f1)"
 command -v cmake >/dev/null
 command -v ninja >/dev/null
 command -v nasm >/dev/null
+command -v curl >/dev/null
 for spec in \
   'bin/dxc 3dfc856b76291ffc7e45e21fd37ab80e85b34101de76a03253df6608785c92a0' \
   'lib/libdxcompiler.so d40e4a7b3b46490313f4bfd08101946483a673831b3ea65c93d746de1c2f9216' \
@@ -28,6 +29,27 @@ for spec in \
 done
 export TMPDIR="${PS4_TMP_DIR:-$build_dir/tmp}"
 mkdir -p "$TMPDIR"
+
+# The Orbis bundle includes the matching zlib static archive but omits its
+# headers. gta4-recomp's installer uses the public zlib API, so pair the
+# archive with the headers from the same pinned upstream release.
+zlib_root="$build_dir/deps/zlib-1.3.1"
+zlib_archive="$build_dir/deps/zlib-v1.3.1.tar.gz"
+zlib_sha256=17e88863f3600672ab49182f217281b6fc4d3c762bde361935e436a95214d05c
+mkdir -p "$(dirname "$zlib_root")"
+if [[ ! -f "$zlib_archive" ]]; then
+  curl --fail --location --proto '=https' --tlsv1.2 --silent --show-error \
+    -o "$zlib_archive" \
+    https://github.com/madler/zlib/archive/refs/tags/v1.3.1.tar.gz
+fi
+echo "$zlib_sha256  $zlib_archive" | sha256sum --check --status || {
+  echo "Unexpected zlib archive: $zlib_archive" >&2
+  exit 1
+}
+if [[ ! -f "$zlib_root/zlib.h" || ! -f "$zlib_root/zconf.h" ]]; then
+  mkdir -p "$zlib_root"
+  tar --no-same-owner --strip-components=1 -xzf "$zlib_archive" -C "$zlib_root"
+fi
 
 mapfile -t submodules < <(git -C "$repo" config -f .gitmodules --get-regexp '^submodule\..*\.path$' | awk '$2 ~ /^glue\/rexglue-sdk-main\/thirdparty\// {print $2}')
 git -C "$repo" submodule update --init -- "${submodules[@]}" tools/XenosRecomp
@@ -53,6 +75,7 @@ done
 
 cmake -S "$repo/ps4" -B "$build_dir" -G Ninja -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_TOOLCHAIN_FILE="$sdk/toolchain/orbis-sdk.cmake" \
+  -DPS4_ZLIB_INCLUDE_DIR="$zlib_root" \
   '-DCMAKE_ASM_COMPILE_OBJECT=<CMAKE_ASM_COMPILER> <DEFINES> <INCLUDES> <FLAGS> -c <SOURCE> -o <OBJECT>' \
   -DGTA4_NATIVE_DXC_EXECUTABLE="$dxc_root/bin/dxc" \
   -DGTA4_NATIVE_DXC_LIBRARY_PATH="$dxc_root/lib"

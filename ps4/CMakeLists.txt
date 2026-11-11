@@ -36,6 +36,11 @@ set(REXGLUE_ENABLE_FIDELITYFX OFF CACHE BOOL "Optional FidelityFX providers" FOR
 set(REXGLUE_ENABLE_TRACY OFF CACHE BOOL "Tracy is not enabled in the console target" FORCE)
 set(REXGLUE_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 link_directories("${ORBIS_MESA_BUILD}/subprojects/zlib-1.3.1")
+if(NOT PS4_ZLIB_INCLUDE_DIR OR NOT EXISTS "${PS4_ZLIB_INCLUDE_DIR}/zlib.h")
+    message(FATAL_ERROR
+        "PS4_ZLIB_INCLUDE_DIR must point to the pinned zlib headers. "
+        "Run ps4/build-clean.sh to fetch and verify them.")
+endif()
 
 if(NOT ORBIS_COMPAT_DIR OR NOT ORBIS_MESA_SRC OR NOT ORBIS_MESA_BUILD)
     message(FATAL_ERROR
