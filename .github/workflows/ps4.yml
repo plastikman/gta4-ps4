@@ -20,6 +20,30 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  public-sdk:
+    name: Inspect public paired Orbis SDK
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Download and inspect SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/orbis"
+          cd "$RUNNER_TEMP/orbis"
+          base=https://github.com/orbis-ports/orbis-porting-kit/releases/download/orbis-sdk-v1
+          curl -fLsS --retry 3 -O "$base/orbis-sdk-v1.tar.gz"
+          curl -fLsS --retry 3 -O "$base/orbis-sdk-v1.tar.gz.sha256"
+          sha256sum -c orbis-sdk-v1.tar.gz.sha256
+          tar -xzf orbis-sdk-v1.tar.gz
+          sdk="$PWD/orbis-sdk-v1"
+          echo 'b86155980a3f47d48f2dec7b55559afc41dcb6039020358ec001f5a0b6ec5639  '"$sdk/BUNDLE.txt" | sha256sum -c
+          cat "$sdk/BUNDLE.txt"
+          cat "$sdk/toolchain/orbis-sdk.cmake"
+          cat "$sdk/verify.sh"
+          find "$sdk" -maxdepth 3 -type d
+          find "$sdk" -name '*.cmake' -o -name '*clang*' -o -name '*ssl*' -o -name '*PkgTool*'
   ffmpeg-assembly:
     name: FFmpeg NASM assembly
     runs-on: ubuntu-latest
