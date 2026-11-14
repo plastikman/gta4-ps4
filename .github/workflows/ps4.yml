@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       build_package:
-        description: 'Build PKG (requires an online gta4-ps4-build runner with /orbis-cache)'
+        description: 'Build and validate a game-free PKG using the public Orbis SDK'
         type: boolean
         default: false
 
@@ -60,8 +60,8 @@ jobs:
   orbis-build-package:
     name: Orbis build and package validation
     if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.build_package)
-    runs-on: gta4-ps4-build
-    timeout-minutes: 120
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
     steps:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
@@ -89,8 +89,29 @@ jobs:
           done
           clang --version | grep -q 'version 19\.1\.7' || {
             echo 'clang must be 19.1.7 to match the validated build workstation' >&2; exit 1; }
-      - name: Attach the Orbis-Win Kubernetes runner cache
-        run: orbis-win/scripts/ci/prepare-runner.sh
+      - name: Provision public paired Orbis SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/orbis"
+          cd "$RUNNER_TEMP/orbis"
+          base=https://github.com/orbis-ports/orbis-porting-kit/releases/download/orbis-sdk-v1
+          curl -fLsS --retry 3 -O "$base/orbis-sdk-v1.tar.gz"
+          curl -fLsS --retry 3 -O "$base/orbis-sdk-v1.tar.gz.sha256"
+          sha256sum -c orbis-sdk-v1.tar.gz.sha256
+          tar -xzf orbis-sdk-v1.tar.gz
+          sdk="$PWD/orbis-sdk-v1"
+          echo 'b86155980a3f47d48f2dec7b55559afc41dcb6039020358ec001f5a0b6ec5639  '"$sdk/BUNDLE.txt" | sha256sum -c
+          "$sdk/verify.sh" "$sdk"
+          echo "PS4_SDK_BUNDLE=$sdk" >> "$GITHUB_ENV"
+          echo "OO_PS4_TOOLCHAIN=$sdk/sdk" >> "$GITHUB_ENV"
+          # PkgTool's .NET runtime needs OpenSSL 1.1, absent on Ubuntu 24.04.
+          git clone --depth 1 --branch OpenSSL_1_1_1w https://github.com/openssl/openssl.git "$RUNNER_TEMP/openssl-src"
+          cd "$RUNNER_TEMP/openssl-src"
+          ./config shared --prefix="$RUNNER_TEMP/openssl11" --openssldir="$RUNNER_TEMP/openssl11/ssl"
+          make -j2
+          make install_sw
+          echo "PS4_PKGTOOL_OPENSSL_LIB=$RUNNER_TEMP/openssl11/lib" >> "$GITHUB_ENV"
       - name: Build pinned OpenOrbis module stubs
         env:
           PW_MODULE_STUBS_DIR: ${{ github.workspace }}/gta4-openorbis-stubs
@@ -118,24 +139,27 @@ jobs:
           echo "package=$root/package" >> "$GITHUB_OUTPUT"
       - name: Build Orbis EBOOT
         env:
-          PS4_SDK_BUNDLE: /home/zpeirce/ps4-gladius/sdk/orbis-sdk-v1
           PS4_BUILD_DIR: ${{ steps.paths.outputs.build }}
           PS4_BUILD_JOBS: 1
           PS4_DXC_ROOT: ${{ runner.temp }}/gta4-dxc
-        run: ps4/build-clean.sh
+        run: |
+          set -euo pipefail
+          ps4/build-clean.sh 2>&1 | tee "$RUNNER_TEMP/orbis-build.log"
+          if grep -E 'Killed|error:' "$RUNNER_TEMP/orbis-build.log"; then
+            echo 'Build log contains errors; refusing to package' >&2
+            exit 1
+          fi
+          stat "${PS4_BUILD_DIR}/glue/gta4-recomp/eboot.bin"
       - name: Build and validate game-free PKG
         env:
-          PS4_SDK_BUNDLE: /home/zpeirce/ps4-gladius/sdk/orbis-sdk-v1
           PS4_BUILD_DIR: ${{ steps.paths.outputs.build }}
           PS4_PACKAGE_DIR: ${{ steps.paths.outputs.package }}
           PS4_STUBS_DIR: ${{ github.workspace }}/gta4-openorbis-stubs
           PS4_EXPECTED_LIBC_SHA256: 5680c77d0215ead1c51deb00d76c5347f306e04c81b8b1119c9fd84580ebcf94
           PS4_EXPECTED_FIOS2_SHA256: 0ab6fa2479d1c15ebdc6b7621413bfc9f89b58c97da7563bc804cef3a495ea4a
-          PS4_PKGTOOL_OPENSSL_LIB: /orbis-cache/deps/openssl11/lib
         run: ps4/package/build-package.sh
       - name: Record build provenance
         env:
-          PS4_SDK_BUNDLE: /home/zpeirce/ps4-gladius/sdk/orbis-sdk-v1
           PS4_PACKAGE_DIR: ${{ steps.paths.outputs.package }}
           PS4_DXC_ROOT: ${{ runner.temp }}/gta4-dxc
           PW_MODULE_STUBS_DIR: ${{ github.workspace }}/gta4-openorbis-stubs
@@ -165,9 +189,20 @@ jobs:
             ${{ steps.paths.outputs.package }}/SHA256SUMS
             ${{ steps.paths.outputs.package }}/validate.log
             ${{ steps.paths.outputs.package }}/BUILD-MANIFEST.txt
+            ps4/configs/native.toml
           if-no-files-found: error
           retention-days: 30
           compression-level: 0
+      - name: Preserve failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ps4-build-failure-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/orbis-build.log
+            ${{ steps.paths.outputs.package }}/build.log
+            ${{ steps.paths.outputs.package }}/validate.log
+          if-no-files-found: warn
       - name: Clean isolated run data
         if: always() && steps.paths.outputs.root != ''
         env:
