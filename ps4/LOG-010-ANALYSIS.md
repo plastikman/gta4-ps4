@@ -2,6 +2,8 @@
 
 User-reported hardware: PS4 Pro, firmware 13.52. Analysis concerns the supplied
 runtime log only; there is no matching executable, ELF, configuration, or klog.
+The user subsequently identified the installed release as upstream
+`plastikman/gta4-ps4` **v0.1.0-ps4** (the original test release).
 The raw log is deliberately not committed.
 
 - SHA-256: `8E469C9723CD9CF2E268781387E0CA82D8198D60D95CD177835A9A43E879C807`
@@ -67,6 +69,34 @@ The raw log is deliberately not committed.
   unsafe given the documented PS4 hangs and is not supported by this log.
 
 ## Next evidence
+
+### Release identification follow-up
+
+The reported old release tag points to
+`d6f015fc09cb41e8f68faff2e27c9d64a256fd3a`. GitHub currently marks it as
+superseded and has removed its PKG asset. Its remaining checksum file now
+covers only the configuration; it cannot verify the user's installed PKG.
+
+The replacement release is named **v0.0.1**, despite the lower version number,
+published 2026-11-11 at 22:06 UTC. It explicitly identifies build source
+`d73f8f547831424b265e9ca98dba29c935694d74`, the base of this fork's fixes.
+The comparison contains 21 commits after the original tag, including SSE2
+memcmp, renderer spin-lock work, and FFmpeg NASM/SIMD changes. The heartbeat
+and six-core observations are consistent with the older release and must not
+be presented as regressions established against the newer source.
+
+Replacement asset: `GTA4-PS4-v0.0.1.pkg`, 147,193,856 bytes, GitHub asset digest
+`9d2402052548ce661b9bd6c9921d1422298f25ebe56d16f2acec3506e710f10c`.
+The digest above is release metadata, not a local verification of a download.
+Both releases list a `native.toml` asset with digest
+`4366b468ee76fb4d7941457461a0f57c3959df1dc4eb0e259fdaa5323156a812`;
+this does not establish the contents of the user's installed configuration.
+
+First obtain a same-route baseline on that newer validated upstream package,
+with the installed configuration preserved/backed up. It does not include
+this branch's shadow-off/HUD fixes. A fresh baseline can show whether the
+existing upstream changes address the reported symptoms before further
+scheduler modifications are attempted.
 
 Obtain the installed `native.toml`, tested release/commit or EBOOT SHA-256, and
 matching ELF if available. Repeat a short timed route with frame timeline and
