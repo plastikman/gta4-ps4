@@ -6,6 +6,11 @@ on:
   push:
     branches: [ps4-port]
   workflow_dispatch:
+    inputs:
+      build_package:
+        description: 'Build PKG (requires an online gta4-ps4-build runner with /orbis-cache)'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -30,7 +35,7 @@ jobs:
 
   orbis-build-package:
     name: Orbis build and package validation
-    if: github.event_name != 'pull_request'
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.build_package)
     runs-on: gta4-ps4-build
     timeout-minutes: 120
     steps:
@@ -91,7 +96,7 @@ jobs:
         env:
           PS4_SDK_BUNDLE: /home/zpeirce/ps4-gladius/sdk/orbis-sdk-v1
           PS4_BUILD_DIR: ${{ steps.paths.outputs.build }}
-          PS4_BUILD_JOBS: 4
+          PS4_BUILD_JOBS: 1
           PS4_DXC_ROOT: ${{ runner.temp }}/gta4-dxc
         run: ps4/build-clean.sh
       - name: Build and validate game-free PKG
@@ -130,7 +135,9 @@ jobs:
         with:
           name: gta4-ps4-${{ github.run_number }}-${{ github.run_attempt }}
           path: |
-            ${{ steps.paths.outputs.package }}/out/IV0000-LBTY00001_00-GTA4PS4000000000.pkg
+            ${{ steps.paths.outputs.package }}/out/GTA4.pkg
+            ${{ steps.paths.outputs.build }}/glue/gta4-recomp/eboot.bin
+            ${{ steps.paths.outputs.package }}/gta4.elf
             ${{ steps.paths.outputs.package }}/SHA256SUMS
             ${{ steps.paths.outputs.package }}/validate.log
             ${{ steps.paths.outputs.package }}/BUILD-MANIFEST.txt
