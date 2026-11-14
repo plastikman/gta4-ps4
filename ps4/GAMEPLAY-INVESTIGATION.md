@@ -4,8 +4,9 @@
 
 Reported hardware: PS4 Pro, firmware 13.52. Boot works; a roughly 30-minute
 session exhibited video delay, stutters (especially in sunlit areas), and a
-blank radar/navigation display. The session logs and exact tested build have
-not yet been supplied. These changes are source-level fixes, not a verified
+blank radar/navigation display. The session log has
+now been supplied as `Liberty.Recompiled_010.log`; the exact tested build and
+configuration are still unknown. These changes are source-level fixes, not a verified
 performance or radar fix. The existing handoff measurements used another
 console/firmware and must not be substituted for this run's measurements.
 
