@@ -7545,9 +7545,12 @@ bool DropSmallShadowDraw(uint8_t* base, uint32_t device, uint32_t index_count) {
   // nothing of them is handed over or recorded. The frame being built is
   // submitted as the device's counter + 1, the renderer's submitted_frame.
   const uint32_t interval = REXCVAR_GET(gta4_native_shadow_interval);
-  const bool shadow_rest = interval > 1 && device &&
-                           (LoadU32(base, device + kSubmittedFrameOffset) + 1) % interval != 0;
-  if (!shadow_rest && (!minimum || index_count >= minimum || !device)) return false;
+  // Off still clears/resolves the map in the recorder, but needs no draw
+  // capture. Do not let the small-object threshold re-enable large casters.
+  const bool shadow_rest = interval == 0 ||
+                           (interval > 1 && device &&
+                            (LoadU32(base, device + kSubmittedFrameOffset) + 1) % interval != 0);
+  if (!device || (!shadow_rest && (!minimum || index_count >= minimum))) return false;
 #else
   if (!minimum || index_count >= minimum || !device) return false;
 #endif

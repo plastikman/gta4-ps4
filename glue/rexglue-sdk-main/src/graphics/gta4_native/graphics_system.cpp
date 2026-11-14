@@ -1757,9 +1757,11 @@ class NativeSubmissionCompletion final
 
 uint64_t NextNativeTraceDiagnosticCount(std::atomic<uint64_t>& counter) {
   // [ps5 port] These are the renderer's own failure reports (a draw dropped,
-  // and why); they are bounded, and the PS5 log is the only way to see them.
+  // and why); they are sampled, and the console log is the only way to see them.
+  // HUD tracing must also enable these on PS4: otherwise a missing radar draw
+  // has no failure reason unless the expensive native-trace category is on.
   if (!CachedDiagnosticsEnabled(rex::diagnostics::Category::kNativeTrace) &&
-      !(REX_PLATFORM_PS5 && REXCVAR_GET(ps5_hud_trace))) {
+      !((REX_PLATFORM_PS5 || REX_PLATFORM_PS4) && REXCVAR_GET(ps5_hud_trace))) {
     return UINT64_MAX;
   }
   return counter.fetch_add(1, std::memory_order_relaxed) + 1;
